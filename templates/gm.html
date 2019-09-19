@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="stylesheet" type="text/css" href="static/css/normalize.css">
+  <link rel="stylesheet" type="text/css" href="static/css/mudfinder.css">
+  <meta charset="UTF-8">
+  <title>Flask SocketIO Test</title>
+</head>
+<body>
+<!--https://www.deviantart.com/boldfrontiers/art/City-of-Rocks-freebie--800677321-->
+  <div id="screenDiv" class="screenDiv">
+    <div id="tabsDiv" class="tabsDiv">
+      <div id="linkDiv" style="float:right;"></div>
+      <div class="tab" onClick="enableTab('mapWrapper')">Map</div>
+      <div class="tab" onClick="enableTab('encounterContainer')">Encounter</div>
+      <div class="tab" onClick="enableTab('saveGame')">Save</div>
+      <div class="tab" onClick="enableTab('links')">Players</div>
+      <div class="tab" onClick="enableTab('units')">Units</div>
+    </div>
+    <div id="centerDiv" class="centerDiv">
+      <div class="leftDivContainer">
+        <div id="initiativeDivContainer">
+          <div style="text-align:center;">Initiative</br></div>
+          <div id="initiativeDiv" class="leftDiv"></div>
+          <button class="centeredButton" id="beginInit" onclick="beginInit()">Begin Inititiative</button>
+          <button class="centeredButton" id="advanceInit" onclick="advanceInit()">Advance Inititiative</button>
+          <button class="centeredButton" id="endInit" onclick="endInit()">End Inititiative</button>
+        </div>
+        <div id="creatureDivContainer"><br>
+          <div style="text-align:center;">All Creatures</br></div>
+          <div id="unitsDiv" class="leftDiv"></div>
+          <button class="centeredButton" id="addInit" onclick="addInit()">Add to Inititiative</button>
+        </div>
+      </div>
+      <div id="activeTabDiv">
+        <div id="saveGame" style="display:none;">Savegame 
+          <form>
+            <textarea id="saveGameText" style="width:50%;height:50%;"></textarea>
+          </form>
+          <button onclick="saveGameInput()">Load Game</button><br>
+          <button onclick="downloadGame()">Download Game</button><br>
+        </div>
+        <div id="links" style="display:none;">Links<br></div>
+        <div id="encounterContainer" style="display:none;" class="encounterContainer">
+          <div id="savedEncounters">
+            <form style="text-align:center;" action="javascript:saveEncounter()"> Encounter title:<br />
+              <input type="text" id="encounterName"><br>
+            </form>
+            <button class="centeredButton" id="saveEncounter" onclick="saveEncounter()"> Save Encounter </button>
+            <div style="text-align:center;">Saved Encounters</br></div>
+            <div id="encountersDiv" class="encountersDiv"> </div>
+            <button class="centeredButton" id="loadEncounter" onclick="loadEncounter()"> Load Encounter </button>
+            <button class="centeredButton" id="clearMap" onclick="clearMap()"> Clear Map </button>
+            Clear locations:<input type="checkbox" id="clearLocations">
+          </div>
+          <div id="addDiv">
+            Creature Name:<br />
+            <input type="text" id="unitName"></input><br>
+            Initiative Count:<br />
+            <input type="text" id="unitInit"></input><br>
+            Short Name:<br />
+            <input type="text" id="unitShortName"></input><br>
+            HP:<br />
+            <input type="text" id="unitHP"></input><br>
+            Controlled By: 
+            <select id="unitControlledBy">
+              <option value="gm" selected="selected">gm</option>
+            </select> <br />
+            Type: 
+            <select id="unitType">
+              <option value="Mob" selected="selected">Mob</option>
+              <option value="Summon">Summon</option>
+              <option value="Pet">Pet</option>
+            </select> <br />
+            Color: 
+            <select id="unitColor">
+              <option value="black" selected="selected">black</option>
+              <option value="red">red</option>
+              <option value="blue">blue</option>
+              <option value="green">green</option>
+              <option value="brown">brown</option>
+            </select> <br />
+            Add to Initiative:
+            <input type="checkbox" id="addToInit"><br>
+            <button onclick="addUnit()">Add Unit</button>
+          </div>
+        </div>
+        <div id="mapWrapper">
+          <div id="mapContainer">
+            <div id="mapForm">
+              <form>
+                <textarea id="mapText" style="width:50%;height:50%;"></textarea>
+              </form>
+              <button onclick="mapInput()">Upload Map</button><br>
+              Map fully visable: <input type="checkbox" id="mapIsDiscovered"><br>
+              Width:<br>
+              <input type="text" id="mapWidth"></input><br>
+              Height:<br>
+              <input type="text" id="mapHeight"></input><br>
+              <button onclick="mapGenerate()">Generate Map</button><br>
+            </div>
+            <div style="display:none;" id='mapGraphic'></div>
+          </div>
+          <div id="zoomControls" style="text-align:center; float:right; font-size: 5em;"> <div id="zoomIn" onclick="zoomIn()"> + </div> <div id="zoomOut" onclick="zoomOut()">-</div></div>
+          <div id="mapTools">
+          <div class="nonSelected" style="float:left;">
+            <div id="floorTile"onclick="mapTool(event, 'floor')" style="margin:5px;" class="mapTile floorTile tooltip"><span class="tooltiptext">Floor Tile</span></div>
+          </div>
+          <div class="nonSelected" style="float:left;">
+            <div id="floorTileA"onclick="mapTool(event, 'floor')" style="margin:5px;" class="mapTile floorTileA tooltip"><span class="tooltiptext">Floor Tile</span></div>
+          </div>
+          <div class="nonSelected" style="float:left;">
+            <div id="floorTileB"onclick="mapTool(event, 'floor')" style="margin:5px;" class="mapTile floorTileB tooltip"><span class="tooltiptext">Floor Tile</span></div>
+          </div>
+          <div class="nonSelected" style="float:left;">
+            <div id="floorTileC"onclick="mapTool(event, 'floor')" style="margin:5px;" class="mapTile floorTileC tooltip"><span class="tooltiptext">Floor Tile</span></div>
+          </div>
+          <div class="nonSelected" style="float:left;">
+            <div id="wallTile" onclick="mapTool(event, 'wall')" style="margin:5px;" class="mapTile wallTile tooltip"><span class="tooltiptext">Wall Tile</span></div>
+          </div>
+          <div class="nonSelected" style="float:left;">
+            <div id="doorClosed" onclick="mapTool(event, 'wall')" style="margin:5px;" class="mapTile doorTileA tooltip"><span class="tooltiptext">Closed Door</span></div>
+          </div>
+          <!--<div class="nonSelected" style="float:left;">
+            <div id="doorTileB" onclick="mapTool(event, 'wall')" style="margin:5px;" class="mapTile doorTileB tooltip"><span class="tooltiptext">Closed Door</span></div>
+          </div>-->
+          <div class="nonSelected" style="float:left;">
+            <div id="doorOpen" onclick="mapTool(event, 'wall')" style="margin:5px;" class="mapTile doorTileAOpen tooltip"><span class="tooltiptext">Open Door</span></div>
+          </div>
+          <!--<div class="nonSelected" style="float:left;">
+            <div id="doorTileBOpen" onclick="mapTool(event, 'wall')" style="margin:5px;" class="mapTile doorTileBOpen tooltip"><span class="tooltiptext">Open Door</span></div>
+          </div>-->
+          <div class="nonSelected" style="float:left;">
+            <div id="stairsUp" onclick="mapTool(event, 'stair')" style="margin:5px;" class="mapTile stairTileLeft tooltip"><span class="tooltiptext">Stairs Up</span></div>
+          </div>
+          <div class="nonSelected" style="float:left;">
+            <div id="stairsDown" onclick="mapTool(event, 'stair')" style="margin:5px;" class="mapTile stairDownDownTileRight tooltip"><span class="tooltiptext">Stairs Down</span></div>
+          </div>
+          <div class="nonSelected" style="float:left;">
+            <div id="seen" onclick="mapTool(event, 'seen')" style="margin:5px;" class="mapTile seen tooltip"><span class="tooltiptext">Toggle Seen</span></div>
+          </div>
+          <div class="nonSelected" style="float:left;">
+            <div id="secret" onclick="mapTool(event, 'secret')" style="margin:5px;border-color:red" class="mapTile floorTile tooltip"><span class="tooltiptext">Toggle Secret</span></div>
+          </div>
+          <div id="movementDiv">
+          <button id="movementButton" style="float:left;" onclick="resetMovement()">Reset Movement</button>
+          <div style="float:left;" id="movement"></div>
+          <select id="movementSelector" style="float:left;">
+          <option>5 ft step</option>
+          <option>Move Action</option>
+          <option>Full Round Move</option>
+          <option>unlimited</option>
+          <option>untracked</option>
+          </select>
+          </div>
+          <div style="float:right;padding-right:100px;padding-top:10px;">Show discovered overlay: <input type="checkbox" id="seenOverlay" value="seenOverlay" onchange="seenOverlayToggle(this)" checked></div>
+          </div>
+        </div>
+        <div id="units" style="display:none;">
+
+    Need to make changes to <span id="charactername"></span>?<br>
+    <span style="display:none;" id="editCharNum"></span>
+    Map Icon (1-3 character abbreviation used when map is zoomed out):<br>
+    <input type="text" id="charShortName"><br>
+    DisplayColor:<br>
+    <select id="playerColor">
+      <option value="blueviolet" style="color:blueviolet;">blueviolet</option>
+      <option value="darkorange" style="color:darkorange;">darkorange</option>
+      <option value="dodgerblue" style="color:dodgerblue;">dodgerblue</option>
+      <option value="forestgreen" style="color:forestgreen;">forestgreen</option>
+      <option value="hotpink" style="color:hotpink;">hotpink</option>
+      <option value="lightcoral" style="color:lightcoral;">lightcoral</option>
+      <option value="mediumspringgreen" style="color:mediumspringgreen;">mediumspringgreen</option>
+      <option value="olivedrab" style="color:olivedrab;">olive</option>
+      <option value="salmon" style="color:salmon;">salmon</option>
+      <option value="sienna" style="color:sienna;">sienna</option>
+      <option value="skyblue" style="color:skyblue;">skyblue</option>
+      <option value="steelblue" style="color:steelblue;">steelblue</option>
+      <option value="tomato" style="color:tomato;">tomato</option>
+      <option value="custom" style="color:black;">custom</option>
+    </select><br>
+    <div style="display:none;" id="customColorDiv">
+      Custom Css color:<br>
+    <input type="text" id="customColor"><br>
+    </div>
+    Passive Perception: <br>
+    <input type="text" id="perception"><br>
+    Movement Speed <br>
+    <input type="text" id="movementSpeed"><br>
+    Dex Score: <br>
+    <input type="text" id="dex"><br>
+    Character Size: <br>
+    <select id="size">
+    <option value="large">large</option>
+    <option value="medium" selected="selected">medium</option>
+    <option value="small">small</option>
+    </select>
+    <br>
+    Has Darkvision: 
+    <input type="checkbox" id="darkvision"><br>
+    Has Low-Light Vision: 
+    <input type="checkbox" id="lowLight"><br>
+    Has Trapfinding: 
+    <input type="checkbox" id="trapfinding"><br>
+    Reveals the Map: 
+    <input type="checkbox" id="revealsMap"><br>
+    Hasted: 
+    <input type="checkbox" id="hasted"><br>
+    Permanent abilities: <br>
+    <textarea id="permanentAbilities"></textarea><br>
+
+    </p>
+    <button id="updateCharButton" onclick="updateChar()">Update</button>
+
+
+        </div>
+      </div>
+      <div class="rightDivContainer">
+        <div class="chatContainerDiv">
+          <div id="chatText" class="chatText"></div>
+          <div id="chatInput" class="chatInput">
+            <form action="javascript:sendChat()">
+            <input type="textarea" id="newChat" style="width:100%;height:50%;">
+            </form>
+          </div>
+        </div>
+        <div class="connectedPlayersContainer">Connected Players
+          <div id="connectedPlayers" class="connectedPlayers"></br></div>
+          <div>
+            <button onclick="requestInit()">Request initiative</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="bottomDiv" class="bottomDiv">
+     <!-- <div class="connectedPlayersContainer">Connected Players
+        <div id="connectedPlayers" class="connectedPlayers"></br></div>
+        <div>
+          <button onclick="requestInit()">Request initiative</button>
+        </div>
+      </div>-->
+    </div>
+  </div>
+<!--  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js" integrity="sha256-yr4fRk/GU1ehYJPAs8P4JlTgu0Hdsp4ZKrx8bDEDC3I=" crossorigin="anonymous"></script>-->
+  <script type="text/javascript" src="static/js/socket.io.js"></script>
+  <script type="text/javascript" src="static/js/shared.js"></script>
+  <script type="text/javascript" src="static/js/gm.js"></script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  
+  <title>Create a new game</title>
+</head>
+<body>
+  <div id="topDiv">
+    <p>Create a new game!</p>
+    <form action="javascript:createGame()">
+      <input type="text" id="gameName"><br>
+    </form>
+    <button onclick="createGame()">Create Game</button><br><br>
+    <form action = "upload.html" method = "POST" 
+         enctype = "multipart/form-data">
+         <input type = "file" name = "file" />
+         <input type = "submit"/>
+      </form>
+  </div>
+  <script src="static/js/socket.io.js"></script>
+  <script type="text/javascript" charset="utf-8">
+  var socket;
+  window.onload = function() {
+    socket = io.connect('http://' + document.domain + ':' + location.port, {transports: ['websocket'], upgrade: false});
+    // verify our websocket connection is established
+    socket.on('connect', function() {
+        console.log('Websocket connected!');
+        gmKey = Math.random().toString(36).substr(2);
+    });
+    socket.on('create_room', function(msg) {
+        console.log(msg.room);
+        room = msg.room;
+        document.getElementById("topDiv").innerHTML = 'New session created!' +
+          `<br> Users can use link: <a href="join.html?id=${msg.room}">this link!</a>`;
+        if (typeof msg.url != undefined) {
+          location.assign(msg.url);
+        }
+    });
+  }
+  function createGame() {
+    console.log('Creating game...');
+    socket.emit('create', {name: document.getElementById("gameName").value, gmKey: gmKey});
+  }
+  </script>
+</body>
+</html>

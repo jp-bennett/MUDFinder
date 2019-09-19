@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="stylesheet" type="text/css" href="static/css/html.css">
+  <link rel="stylesheet" type="text/css" href="static/css/mudfinder.css">
+  <meta charset="UTF-8">
+  <title>Spectator Mode!</title>
+</head>
+<body>
+  </div>
+  <div id="screenDiv" class="screenDiv">
+    <div id="tabsDiv" class="tabsDiv"></div>
+    <div id="centerDiv" class="centerDiv">
+      <div class="leftDivContainer" id="initiativeDivContainer">
+        <div style="text-align:center;">Initiative</br></div>
+        <div class="leftDiv" id="initiativeDiv"></div>
+      </div>
+      <div id="activeTabDiv">
+        <div id="mapWrapper">
+          <div id="mapContainer">
+            <div id="mapForm">
+              <form>
+                <textarea id="mapText" style="width:50%;height:50%;"></textarea>
+              </form>
+              <button onclick="mapInput()">Upload Map</button>
+            </div>
+            <div style="display:none;" id='mapGraphic'></div>
+          </div>
+          <div id="zoomControls" style="text-align:center; float:right; font-size: 5em;"> <div id="zoomIn" onclick="zoomIn()"> + </div> <div id="zoomOut" onclick="zoomOut()">-</div></div>
+        </div>
+      </div>
+      <div class="rightDivContainer">
+        <div class="chatContainerDiv">
+          <div id="chatText" class="chatText"></div>
+        </div>
+        <div class="connectedPlayersContainer">Connected Players
+          <div id="connectedPlayers" class="connectedPlayers"></br></div>
+        </div>
+      </div>
+    <div id="bottomDiv" class="bottomDiv">
+    </div>
+  </div>
+<!--  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js" integrity="sha256-yr4fRk/GU1ehYJPAs8P4JlTgu0Hdsp4ZKrx8bDEDC3I=" crossorigin="anonymous"></script>-->
+  <script type="text/javascript" src="static/js/socket.io.js"></script>
+  <script type="text/javascript" src="static/js/shared.js"></script>
+  <script type="text/javascript" charset="utf-8">
+    url_ob = new URL(window.location.href);
+    var room = url_ob.searchParams.get("room");
+    var socket;
+    var zoomSize = 20;
+    var playerdata;
+    window.onload = function() {
+      socket = io.connect('http://' + document.domain + ':' + location.port);
+    
+    // verify our websocket connection is established
+    socket.on('connect', function() {
+        console.log('Websocket connected!');
+        console.log('sending join');
+        socket.emit('spectator_join', {room: room});
+    });
+    socket.on('do_update', function(msg) {
+      playerData = msg;
+      console.log(playerData);
+      document.title = playerData.name
+      //populate map
+      updateMap(playerData);
+
+      // populate initiative
+      document.getElementById("initiativeDiv").innerHTML = "";
+      if (playerData.inInit) {
+        document.getElementById("initiativeDivContainer").style.display = "block";
+        for (var i = 0; i < playerData.initiativeList.length; i++) {
+          document.getElementById("initiativeDiv").innerHTML += `<div class="nonSelectedInit">` +
+            '<div style="float:left;">' + playerData.initiativeList[i].charName + '</div><div style="float:right;">' + playerData.initiativeList[i].initiative;
+        }
+        selectInitiative(playerData.initiativeCount - 1) //this value counts from 1
+      } else {
+        document.getElementById("initiativeDivContainer").style.display = "none";
+      }
+      //update player list
+      document.getElementById("connectedPlayers").innerHTML = "";
+      for (var i = 0; i < Object.keys(playerData.playerList).length; i++) {
+        tmpPlayerName = Object.keys(playerData.playerList)[i];
+        document.getElementById("connectedPlayers").innerHTML += tmpPlayerName + "<br >";
+      }
+    });
+
+    socket.on('chat', function(msg) {
+        console.log(msg);
+        now = new Date;
+        document.getElementById("chatText").innerText += "[" + now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0') +
+        ":" + now.getSeconds().toString().padStart(2, '0') + "] " + msg["charName"] + ": " + msg["chat"];
+        document.getElementById("chatText").innerHTML += "<br />";
+        document.getElementById("chatText").scrollTop = document.getElementById("chatText").scrollHeight;
+    });
+
+    } //end onload
+    function selectInitiative(initiativeNum) {
+        document.getElementById("initiativeDiv").children[initiativeNum].className = "selectedInit";
+        selectedInitiative = initiativeNum;
+    }
+
+    function zoomIn() {
+      zoomSize *= 1.5;
+      updateMap(playerData);
+    }
+    function zoomOut() {
+      zoomSize /= 1.5;
+      updateMap(playerData);
+    }
+    function mapClick(x, y) {
+        console.log("Clicked!" + x + ", " + y);
+    }
+  </script>
+</body>
+</html>
