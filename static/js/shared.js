@@ -217,6 +217,7 @@ function updateLore(msg, num) {
             tmpHTML += `<br><span>${msg[i].loreText}</span><br>`;
             if (isGM) {
                 tmpHTML += `Visible: <input onclick="changeLoreVisibility(${i})" type="checkbox" ${(msg[i].loreVisible) ? "checked" : ""}><br>`;
+                tmpHTML += `<button onclick="deleteLore(${i})">Delete</button><br>`;
             }
             tmpHTML += "</div>";
             document.getElementById("lorePage").innerHTML += tmpHTML
@@ -260,6 +261,11 @@ function enableLoreTab(tabName) {
 function changeLoreVisibility(i) {
     socket.emit("lore_visible", room, gmKey, i);
 }
+
+function deleteLore(i) {
+    socket.emit("delete_lore", room, gmKey, i);
+}
+
 function sendLoreURL () {
 console.log(document.getElementById("loreURL").value)
 socket.emit("lore_url", room, document.getElementById("loreURL").value, document.getElementById("loreName").value, document.getElementById("loreText").value);

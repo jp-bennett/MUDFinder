@@ -130,15 +130,19 @@ def save_download():
         )
         return response
 
+
 @socketio.on('lore_upload')
 def on_lore_upload(data):
     room = data['room']
 
+
 @socketio.on('lore_url')
 def on_lore_url(room, lore_url, lore_name, lore_text):
     if room in ROOMS:
-        ROOMS[room].lore.append({"loreURL": lore_url, "loreName": lore_name, "loreText": lore_text, "loreVisible": False})
+        ROOMS[room].lore.append(
+            {"loreURL": lore_url, "loreName": lore_name, "loreText": lore_text, "loreVisible": False})
         emit("showLore", {"lore": ROOMS[room].lore, "lore_num": None}, room=room)
+
 
 @socketio.on('lore_visible')
 def on_lore_visible(room, gmKey, lore_num):
@@ -149,11 +153,18 @@ def on_lore_visible(room, gmKey, lore_num):
             lore_num = None
         emit("showLore", {"lore": ROOMS[room].lore, "lore_num": lore_num}, room=room)
 
+
+@socketio.on('delete_lore')
+def on_delete_lore(room, gmKey, lore_num):
+    if room in ROOMS and ROOMS[room].gmKey == gmKey:
+        ROOMS[room].lore.pop(lore_num)
+        emit("showLore", {"lore": ROOMS[room].lore, "lore_num": None}, room=room)
+
+
 @socketio.on('get_lore')
 def on_get_lore(room):
     if room in ROOMS:
-        emit("showLore", {"lore": ROOMS[room].lore,"lore_num": None}, room=room)
-
+        emit("showLore", {"lore": ROOMS[room].lore, "lore_num": None}, room=room)
 
 
 @socketio.on('player_join')
@@ -439,8 +450,9 @@ def on_locate_unit(data):
         else:
             return
         if "gmKey" in data.keys() and ROOMS[room].gmKey == data['gmKey']:
-            if ROOMS[room].inInit and tmpUnit["inInit"] and tmpUnit == ROOMS[room].initiativeList[
-                ROOMS[room].initiativeCount] and "x" in tmpUnit.keys():
+            if ROOMS[room].inInit and tmpUnit["inInit"] and \
+                    tmpUnit == ROOMS[room].initiativeList[ROOMS[room].initiativeCount] and \
+                    "x" in tmpUnit.keys():
                 ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), data["moveType"])
             else:
                 ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), 5)
@@ -490,7 +502,8 @@ def on_remove_init(data):
     if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
         if ROOMS[room].inInit and ROOMS[room].initiativeCount > data['initCount']:
             ROOMS[room].initiativeCount -= 1
-        elif ROOMS[room].inInit and ROOMS[room].initiativeCount == data['initCount'] and data['initCount'] < len(data["initList"]):
+        elif ROOMS[room].inInit and ROOMS[room].initiativeCount == data['initCount'] and data['initCount'] < len(
+                data["initList"]):
             ROOMS[room].initiativeCount = 0
         ROOMS[room].initiativeList[data['initCount']]["inInit"] = False
         ROOMS[room].initiativeList.pop(data['initCount'])
@@ -503,7 +516,8 @@ def on_del_init(data):
     if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
         if ROOMS[room].inInit and ROOMS[room].initiativeCount > data['initCount']:
             ROOMS[room].initiativeCount -= 1
-        elif ROOMS[room].inInit and ROOMS[room].initiativeCount == data['initCount'] and data['initCount'] < len(data["initList"]):
+        elif ROOMS[room].inInit and ROOMS[room].initiativeCount == data['initCount'] and data['initCount'] < len(
+                data["initList"]):
             ROOMS[room].initiativeCount = 0
         ROOMS[room].unitList.pop(ROOMS[room].initiativeList[data['initCount']]["unitNum"])
         ROOMS[room].number_units()
