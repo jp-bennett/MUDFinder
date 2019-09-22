@@ -91,19 +91,19 @@ def css():
 
 @app.route('/player.html')
 def player_page():
-    return render_template('player.html')
+    return render_template('player.html', current_time=int(time.time()))
 
 
 @app.route('/spectator.html')
 def spectator_page():
-    return render_template('spectator.html')
+    return render_template('spectator.html', current_time=int(time.time()))
 
 
 @app.route('/gm.html')
 def gm_page():
     # look up room ID and check GM id.
     """gm view"""
-    return render_template('gm.html')
+    return render_template('gm.html', current_time=int(time.time()))
 
 
 @app.route('/upload.html', methods=['GET', 'POST'])
@@ -122,13 +122,38 @@ def save_download():
     room = request.args['room']
     if room in ROOMS and ROOMS[room].gmKey == request.args['gmKey']:
         response = app.response_class(
-            response=json.dumps(ROOMS[room].to_json()),
+            response=json.dumps(ROOMS[room].gen_save()),
             status=200,
             headers={"Content-disposition":
                          "attachment; filename=" + ROOMS[room].name + ".json"},
             mimetype='application/json'
         )
         return response
+
+@socketio.on('lore_upload')
+def on_lore_upload(data):
+    room = data['room']
+
+@socketio.on('lore_url')
+def on_lore_url(room, lore_url, lore_name, lore_text):
+    if room in ROOMS:
+        ROOMS[room].lore.append({"loreURL": lore_url, "loreName": lore_name, "loreText": lore_text, "loreVisible": False})
+        emit("showLore", {"lore": ROOMS[room].lore, "lore_num": None}, room=room)
+
+@socketio.on('lore_visible')
+def on_lore_visible(room, gmKey, lore_num):
+    print(lore_num)
+    if room in ROOMS and ROOMS[room].gmKey == gmKey:
+        ROOMS[room].lore[lore_num]["loreVisible"] = not ROOMS[room].lore[lore_num]["loreVisible"]
+        if not ROOMS[room].lore[lore_num]["loreVisible"]:
+            lore_num = None
+        emit("showLore", {"lore": ROOMS[room].lore, "lore_num": lore_num}, room=room)
+
+@socketio.on('get_lore')
+def on_get_lore(room):
+    if room in ROOMS:
+        emit("showLore", {"lore": ROOMS[room].lore,"lore_num": None}, room=room)
+
 
 
 @socketio.on('player_join')
@@ -352,6 +377,7 @@ def on_update_unit(data):
         tmp_unit["permanentAbilities"] = data["permanentAbilities"]
         if "gmKey" in data.keys() and ROOMS[room].gmKey == data['gmKey']:
             tmp_unit["revealsMap"] = data["revealsMap"]
+            tmp_unit["initiative"] = data["initiative"]
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 
@@ -464,6 +490,8 @@ def on_remove_init(data):
     if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
         if ROOMS[room].inInit and ROOMS[room].initiativeCount > data['initCount']:
             ROOMS[room].initiativeCount -= 1
+        elif ROOMS[room].inInit and ROOMS[room].initiativeCount == data['initCount'] and data['initCount'] < len(data["initList"]):
+            ROOMS[room].initiativeCount = 0
         ROOMS[room].initiativeList[data['initCount']]["inInit"] = False
         ROOMS[room].initiativeList.pop(data['initCount'])
         emit('do_update', ROOMS[room].player_json(), room=room)
@@ -475,6 +503,8 @@ def on_del_init(data):
     if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
         if ROOMS[room].inInit and ROOMS[room].initiativeCount > data['initCount']:
             ROOMS[room].initiativeCount -= 1
+        elif ROOMS[room].inInit and ROOMS[room].initiativeCount == data['initCount'] and data['initCount'] < len(data["initList"]):
+            ROOMS[room].initiativeCount = 0
         ROOMS[room].unitList.pop(ROOMS[room].initiativeList[data['initCount']]["unitNum"])
         ROOMS[room].number_units()
         ROOMS[room].initiativeList.pop(data['initCount'])
@@ -614,4 +644,4 @@ def on_player_disconnect(data):
 
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True, host='0.0.0.0', port="5000")
+    socketio.run(app, debug=False, host='0.0.0.0', port="5000")

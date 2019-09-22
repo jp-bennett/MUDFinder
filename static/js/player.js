@@ -10,8 +10,10 @@ var selectedUnit;
 var selectedInitiative;
 var lookingAtX;
 var lookingAtY;
+const isGM = false;
 window.onload = function() {
     enableTab("mapWrapper")
+    document.getElementById("updateCharButton").style.display = "none";
     socket = io.connect('http://' + document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
     // verify our websocket connection is established
     socket.on('connect', function() {
@@ -25,6 +27,7 @@ window.onload = function() {
             console.log('sending join');
             charName=url_ob.searchParams.get("charName")
             socket.emit('player_join', {room: room, charName: charName});
+            socket.emit("get_lore", room);
         }
     });
     socket.on('do_update', function(msg) {
@@ -131,6 +134,9 @@ window.onload = function() {
         document.getElementById("chatText").innerHTML += "<br />";
         document.getElementById("chatText").scrollTop = document.getElementById("chatText").scrollHeight;
     });
+    socket.on("showLore", function(msg) {
+        updateLore(msg.lore, msg.lore_num);
+    });
 } //end onload
 window.onunload = function() {
     socket.emit('player_disconnect', {room: room, charName: charName});
@@ -215,6 +221,11 @@ function sendChat() {
 }
 
 function joinGame() {
+
+            document.getElementById("charWrapper").appendChild( document.getElementById("charDiv"));
+            document.getElementById("joinGameButton").style.display = "none";
+            document.getElementById("updateCharButton").style.display = "block";
+
     console.log({room: room, charName: charName});
     document.getElementById("joinDiv").style.display = "none";
     document.getElementById("screenDiv").style.display = "block";
@@ -231,6 +242,7 @@ function joinGame() {
     permanentAbilities = document.getElementById("permanentAbilities").value;
     window.history.replaceState(null, null, window.location.href + `&charName=${charName}`);
     socket.emit('player_join', {room: room, charName: charName, charShortName: charShortName, color: color, perception: perception, movementSpeed: movementSpeed, dex: dex, size: size, darkvision: darkvision, lowLight: lowLight, trapfinding: trapfinding, permanentAbilities: permanentAbilities});
+    socket.emit("get_lore", room);
 }
 function selectUnit(e, selectedUnitNum) {
     if (typeof selectedUnit == "undefined") {

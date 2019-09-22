@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <link rel="stylesheet" type="text/css" href="static/css/normalize.css">
-  <link rel="stylesheet" type="text/css" href="static/css/mudfinder.css">
+  <link rel="stylesheet" type="text/css" href="static/css/mudfinder.css?time={{ current_time }}">
   <meta charset="UTF-8">
   <title>Flask SocketIO Test</title>
 </head>
@@ -16,6 +16,7 @@
       <div class="tab" onClick="enableTab('saveGame')">Save</div>
       <div class="tab" onClick="enableTab('links')">Players</div>
       <div class="tab" onClick="enableTab('units')">Units</div>
+      <div class="tab" onClick="enableTab('lore')">Lore</div>
     </div>
     <div id="centerDiv" class="centerDiv">
       <div class="leftDivContainer">
@@ -187,6 +188,8 @@
     <input type="text" id="perception"><br>
     Movement Speed <br>
     <input type="text" id="movementSpeed"><br>
+    Initiative: <br>
+    <input type="text" id="init"><br>
     Dex Score: <br>
     <input type="text" id="dex"><br>
     Character Size: <br>
@@ -213,6 +216,15 @@
     <button id="updateCharButton" onclick="updateChar()">Update</button>
 
 
+        </div>
+        <div id="lore">
+          <div class="lorePage" id="lorePage">
+            <img id="loreFilePreview"></img><br>
+            Image Link:<input type="text" id="loreURL">
+            <button onclick="sendLoreURL()">Send</button><br>
+            <textarea id="loreText"></textarea><br>
+          </div>
+          <div id="loreTabs"></div>
         </div>
       </div>
       <div class="rightDivContainer">
@@ -243,7 +255,7 @@
   </div>
 <!--  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js" integrity="sha256-yr4fRk/GU1ehYJPAs8P4JlTgu0Hdsp4ZKrx8bDEDC3I=" crossorigin="anonymous"></script>-->
   <script type="text/javascript" src="static/js/socket.io.js"></script>
-  <script type="text/javascript" src="static/js/shared.js"></script>
-  <script type="text/javascript" src="static/js/gm.js"></script>
+  <script type="text/javascript" src="static/js/shared.js?time={{ current_time }}"></script>
+  <script type="text/javascript" src="static/js/gm.js?time={{ current_time }}"></script>
 </body>
 </html>

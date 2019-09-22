@@ -4,6 +4,7 @@ var gmData;
 var zoomSize = 20;
 var selectedTool;
 var socket;
+const isGM = true;
 showSeenOverlay = true;
 window.onload = function() {
 socket = io.connect('http://' + document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
@@ -16,6 +17,9 @@ socket.on('connect', function() {
         document.getElementById("linkDiv").innerHTML = 'New session created!' +
         ` Players can use <a href="player.html?room=${room}">this link!</a><br>` +
         ` Spectators can use <a href="spectator.html?room=${room}">this link!</a>`;
+        socket.emit("get_lore", room);
+    } else{
+
     }
 });
 socket.on('chat', function(msg) {
@@ -125,9 +129,9 @@ socket.on('gm_update', function(msg) {
     }
     //populate saved encounters
     document.getElementById("encountersDiv").innerHTML = "";
-    for (var i = 0; i < Object.keys(gmData.savedEncounters).length; i++) {
-        document.getElementById("encountersDiv").innerHTML += `<div onclick="clickEncounter(this)" id="${Object.keys(gmData.savedEncounters)[i]}">` +
-        Object.keys(gmData.savedEncounters)[i] + `<button onclick="removeEncounter('${Object.keys(gmData.savedEncounters)[i]}')">X</button></div>`;
+    for (var i = 0; i < gmData.savedEncounters.length; i++) {
+        document.getElementById("encountersDiv").innerHTML += `<div onclick="clickEncounter(this)" id="${gmData.savedEncounters[i]}">` +
+        gmData.savedEncounters[i] + `<button onclick="removeEncounter('${gmData.savedEncounters[i]}')">X</button></div>`;
     }
     // populate player list
     document.getElementById("links").innerHTML = "Links<br>";
@@ -147,7 +151,9 @@ socket.on('do_update', function(msg) {
     console.log("Request GM Update");
     socket.emit('gm_update', {room: room, gmKey: gmKey});
 });
-
+socket.on("showLore", function(msg) {
+    updateLore(msg.lore, msg.lore_num);
+});
 } // end onload
 function mapInput() {
     mapText = document.getElementById('mapText').value;
@@ -428,5 +434,6 @@ function updateChar () {
     player.revealsMap = document.getElementById("revealsMap").checked;
     player.hasted = document.getElementById("hasted").checked;
     player.permanentAbilities = document.getElementById("permanentAbilities").value;
+    player.initiative = document.getElementById("init").value
     socket.emit('update_unit', player);
 }

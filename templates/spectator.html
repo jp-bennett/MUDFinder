@@ -2,14 +2,17 @@
 <html lang="en">
 <head>
   <link rel="stylesheet" type="text/css" href="static/css/html.css">
-  <link rel="stylesheet" type="text/css" href="static/css/mudfinder.css">
+  <link rel="stylesheet" type="text/css" href="static/css/mudfinder.css?time={{ current_time }}">
   <meta charset="UTF-8">
   <title>Spectator Mode!</title>
 </head>
 <body>
   </div>
   <div id="screenDiv" class="screenDiv">
-    <div id="tabsDiv" class="tabsDiv"></div>
+    <div id="tabsDiv" class="tabsDiv">
+      <div class="tab" onClick="enableTab('mapWrapper')">Map</div>
+      <div class="tab" onClick="enableTab('lore')">Lore</div>
+    </div>
     <div id="centerDiv" class="centerDiv">
       <div class="leftDivContainer" id="initiativeDivContainer">
         <div style="text-align:center;">Initiative</br></div>
@@ -28,6 +31,10 @@
           </div>
           <div id="zoomControls" style="text-align:center; float:right; font-size: 5em;"> <div id="zoomIn" onclick="zoomIn()"> + </div> <div id="zoomOut" onclick="zoomOut()">-</div></div>
         </div>
+                <div id="lore">
+          <div id="lorePage" class="lorePage"></div>
+          <div id="loreTabs"></div>
+        </div>
       </div>
       <div class="rightDivContainer">
         <div class="chatContainerDiv">
@@ -42,13 +49,14 @@
   </div>
 <!--  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js" integrity="sha256-yr4fRk/GU1ehYJPAs8P4JlTgu0Hdsp4ZKrx8bDEDC3I=" crossorigin="anonymous"></script>-->
   <script type="text/javascript" src="static/js/socket.io.js"></script>
-  <script type="text/javascript" src="static/js/shared.js"></script>
+  <script type="text/javascript" src="static/js/shared.js?time={{ current_time }}"></script>
   <script type="text/javascript" charset="utf-8">
     url_ob = new URL(window.location.href);
     var room = url_ob.searchParams.get("room");
     var socket;
     var zoomSize = 20;
     var playerdata;
+    var isGM = false;
     window.onload = function() {
       socket = io.connect('http://' + document.domain + ':' + location.port);
     
@@ -57,6 +65,10 @@
         console.log('Websocket connected!');
         console.log('sending join');
         socket.emit('spectator_join', {room: room});
+        socket.emit("get_lore", room);
+    });
+    socket.on("showLore", function(msg) {
+        updateLore(msg.lore, msg.lore_num);
     });
     socket.on('do_update', function(msg) {
       playerData = msg;

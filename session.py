@@ -13,8 +13,29 @@ class Session(object):
         self.savedEncounters = {}
         self.mapArray = []  # make this a list of lists of dicts
         self.movePath = []
+        self.lore = []
 
-    def to_json(self):
+    def to_json(self):  # need a full version for saves, and a partial version for updates
+        """Serialize object to JSON"""
+        keyNames = []
+        for key in self.savedEncounters.keys():
+            keyNames.append(key)
+        return {
+            "room": self.room,
+            "gmKey": self.gmKey,
+            "name": self.name,
+            "inInit": self.inInit,
+            "initiativeCount": self.initiativeCount,
+            "roundCount": self.roundCount,
+            "playerList": self.playerList,
+            "unitList": self.unitList,
+            "initiativeList": self.initiativeList,
+            "mapArray": self.mapArray,
+            "movePath": self.movePath,
+            "savedEncounters": keyNames
+        }
+
+    def gen_save(self):  # need a full version for saves, and a partial version for updates
         """Serialize object to JSON"""
         return {
             "room": self.room,
@@ -28,7 +49,8 @@ class Session(object):
             "initiativeList": self.initiativeList,
             "mapArray": self.mapArray,
             "movePath": self.movePath,
-            "savedEncounters": self.savedEncounters
+            "savedEncounters": self.savedEncounters,
+            "lore": self.lore
         }
 
     def from_json(self, obj):
@@ -43,6 +65,7 @@ class Session(object):
             if "inInit" in x.keys() and x["inInit"]:
                 self.initiativeList.append(x)
         self.mapArray = obj["mapArray"]
+        self.lore = obj["lore"]
         self.savedEncounters = obj["savedEncounters"]
         self.number_units()
         return

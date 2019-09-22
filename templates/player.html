@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <link rel="stylesheet" type="text/css" href="static/css/html.css">
-  <link rel="stylesheet" type="text/css" href="static/css/mudfinder.css">
+  <link rel="stylesheet" type="text/css" href="static/css/mudfinder.css?time={{ current_time }}">
   <meta charset="UTF-8">
   <title>Flask SocketIO Test</title>
 </head>
@@ -72,6 +72,7 @@
     <div id="tabsDiv" class="tabsDiv">
       <div class="tab" onClick="enableTab('mapWrapper')">Map</div>
       <div class="tab" onClick="enableTab('charWrapper')">Character</div>
+      <div class="tab" onClick="enableTab('lore')">Lore</div>
     </div>
     <div id="centerDiv" class="centerDiv">
       <div class="leftDivContainer">
@@ -133,6 +134,10 @@
             <button onclick="addUnit()">Add Unit</button>
           </div>
         </div><!-- CharWrapper -->
+        <div id="lore">
+          <div id="lorePage" class="lorePage"></div>
+          <div id="loreTabs"></div>
+        </div>
       </div>
       <div class="rightDivContainer">
         <div class="chatContainerDiv">
@@ -158,7 +163,7 @@
  <!-- <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/socket.io/1.3.6/socket.io.min.js"></script>-->
  <!-- <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/socket.io/1.3.6/socket.io.min.js"></script>-->
   <script type="text/javascript" src="static/js/socket.io.js"></script>
-  <script type="text/javascript" src="static/js/shared.js"></script>
-  <script type="text/javascript" src="static/js/player.js"></script>
+  <script type="text/javascript" src="static/js/shared.js?time={{ current_time }}"></script>
+  <script type="text/javascript" src="static/js/player.js?time={{ current_time }}"></script>
 </body>
 </html>

@@ -39,6 +39,24 @@ button {
     border-style:solid;
     border-width:thin;
 }
+#lore {
+    height:100%;
+}
+.lorePage {
+    height:90%;
+    overflow:auto;
+}
+#loreTabs {
+    height:10%
+}
+#loreText {
+    height: 50%;
+    width: 50%;
+}
+#loreFilePreview {
+    max-width: 100%;
+    max-height: 100%;
+    }
 #savedEncounters {
     float:right;
     padding:30px;
@@ -114,7 +132,7 @@ button {
     height:calc(100% - 40px);
     left: 20%;
     position: absolute;
-    /*overflow:auto;*/
+    overflow:auto;
 }
 .bottomDiv {
     height:25%;
