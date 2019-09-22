@@ -7,6 +7,9 @@ button {
     margin-top: 5px;
     margin-bottom: 5px;
 }
+img {
+    max-width:100%;
+}
 .centeredButton {
     margin: auto;
     margin-top: 5px;
