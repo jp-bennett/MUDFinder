@@ -4,9 +4,15 @@ var gmData;
 var zoomSize = 20;
 var selectedTool;
 var socket;
+var ds = new DragSelect({
+  selectables: document.getElementsByClassName('selectableTile'),
+  callback: function(elements) {handleDrag(elements);},
+  area: document.getElementById("mapContainer")
+});
 const isGM = true;
 showSeenOverlay = true;
 window.onload = function() {
+
 socket = io.connect('http://' + document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
 socket.on('connect', function() {
     console.log('Websocket connected!');
@@ -37,6 +43,12 @@ socket.on('gm_update', function(msg) {
     console.log(gmData);
     document.title = gmData.name
     updateMap(gmData);
+    if (typeof selectedTool !== "undefined") {
+        ds.setSelectables(document.getElementsByClassName('selectableTile'));
+
+    } else {
+        ds.setSelectables(document.getElementsByClassName('selectableUnit'));
+    }
     // populate units
     document.getElementById("unitsDiv").innerHTML = "";
 
@@ -174,10 +186,13 @@ function mapGenerate() {
 }
 function mapTool(e, tileName) {
     if (typeof selectedTool !== "undefined" && selectedTool == e.target) {
+        //ds.setSelectables(undefined, true, false);
+        ds.setSelectables(document.getElementsByClassName('selectableUnit'));
         deselectAll();
         return;
     }
     deselectAll();
+    ds.setSelectables(document.getElementsByClassName('selectableTile'));
     e.target.parentElement.className="selected"
     selectedTool = e.target;
 }
@@ -303,7 +318,8 @@ function mapClick(e, x, y) {
         socket.emit('locate_unit', {selectedUnit: selectedUnits[0], moveType: document.getElementById("movementSelector").selectedIndex, xCoord: x, yCoord: y, room: room, gmKey: gmKey});
         return;
     } else if (typeof selectedTool !== "undefined") {
-        socket.emit('map_edit', {newTile: selectedTool.id, xCoord: x, yCoord: y, room: room, gmKey: gmKey});
+        tiles = [{newTile: selectedTool.id, xCoord: x, yCoord: y}]
+        socket.emit('map_edit', {tiles: tiles, room: room, gmKey: gmKey});
         return
     } else {
         if (gmData.inInit && gmData.initiativeList[gmData.initiativeCount].controlledBy == "gm") {
@@ -315,13 +331,19 @@ function mapClick(e, x, y) {
         deselectAll()
         populateEditChar(gmData,0);
     }
-    for (i=0;i<gmData.unitList.length; i++) {
-        if (typeof gmData.unitList[i].x !== "undefined" && gmData.unitList[i].x == x && gmData.unitList[i].y == y){
-            document.getElementById("unitsDiv").children[i].children[0].className = "selected";
-            selectedUnits.push(i);
-            populateEditChar(gmData,i);
-        }
+    if (e.currentTarget.attributes.units.value != ""){
+        i = parseInt(e.currentTarget.attributes.units.value.split(" ")[0]);
+        document.getElementById("unitsDiv").children[i].children[0].className = "selected";
+        selectedUnits.push(i);
+        populateEditChar(gmData,i);
     }
+    //for (i=0;i<gmData.unitList.length; i++) {
+    //    if (typeof gmData.unitList[i].x !== "undefined" && gmData.unitList[i].x == x && gmData.unitList[i].y == y){
+    //        document.getElementById("unitsDiv").children[i].children[0].className = "selected";
+    //        selectedUnits.push(i);
+    //        populateEditChar(gmData,i);
+    //    }
+    //}
 }
 
 function changeHP(initnum) {
@@ -436,4 +458,33 @@ function updateChar () {
     player.permanentAbilities = document.getElementById("permanentAbilities").value;
     player.initiative = document.getElementById("init").value
     socket.emit('update_unit', player);
+}
+
+function handleDrag (elements) {
+    console.log(elements)
+    if (typeof selectedTool !== "undefined") {
+        if (elements.length < 2){
+            ds.clearSelection();
+            return;
+        }
+        tiles = [];
+        for (i=0; i<elements.length; i++) {
+            tiles.push({newTile: selectedTool.id, xCoord: parseInt(elements[i].attributes.x.value), yCoord: parseInt(elements[i].attributes.y.value)})
+        }
+
+        socket.emit('map_edit', {tiles: tiles, room: room, gmKey: gmKey});
+        ds.clearSelection();
+        return
+    } else {
+        deselectAll()
+        for (z=0; z<elements.length; z++) {
+            i = elements[z].attributes.units.value.split(" ");
+            for (y=0; y<i.length-1; y++) {
+                document.getElementById("unitsDiv").children[parseInt(i[y])].children[0].className = "selected";
+                selectedUnits.push(parseInt(i[y]));
+                populateEditChar(gmData,parseInt(i[y]));
+            }
+        }
+        ds.clearSelection();
+    }
 }

@@ -586,30 +586,31 @@ def on_map_generate(data):
 
 
 @socketio.on('map_edit')
-def on_map_edit(data):
-    room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
-        if "Tile" in data["newTile"] or "door" in data["newTile"]:
-            ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["tile"] = data["newTile"]
-            if data["newTile"] in ["doorClosed", "doorTileB"]:
+def on_map_edit(data_pack):
+    room = data_pack['room']
+    if room in ROOMS and ROOMS[room].gmKey == data_pack['gmKey']:
+        for data in data_pack["tiles"]:
+            if "Tile" in data["newTile"] or "door" in data["newTile"]:
+                ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["tile"] = data["newTile"]
+                if data["newTile"] in ["doorClosed", "doorTileB"]:
+                    ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["secret"] = False
+                if data["newTile"] in ["wallTile", "wallTileA", "wallTileB", "wallTileC", "doorClosed", "doorTileB"]:
+                    ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["walkable"] = False
+                else:
+                    ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["walkable"] = True
+            elif "stairs" in data["newTile"]:
+                ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["tile"] = data["newTile"]
                 ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["secret"] = False
-            if data["newTile"] in ["wallTile", "wallTileA", "wallTileB", "wallTileC", "doorClosed", "doorTileB"]:
-                ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["walkable"] = False
-            else:
                 ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["walkable"] = True
-        elif "stairs" in data["newTile"]:
-            ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["tile"] = data["newTile"]
-            ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["secret"] = False
-            ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["walkable"] = True
-        elif data["newTile"] == "secret":
-            ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["secret"] = not \
-                ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["secret"]
-        elif data["newTile"] == "seen":
-            ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["seen"] = not \
-                ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["seen"]
-        if data["newTile"] in ["doorTileAOpen", "doorTileBOpen"]:
-            for players in ROOMS[room].playerList.keys():
-                ROOMS[room].reveal_map(ROOMS[room].playerList[players]["unitNum"])
+            elif data["newTile"] == "secret":
+                ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["secret"] = not \
+                    ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["secret"]
+            elif data["newTile"] == "seen":
+                ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["seen"] = not \
+                    ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["seen"]
+            if data["newTile"] in ["doorTileAOpen", "doorTileBOpen"]:
+                for players in ROOMS[room].playerList.keys():
+                    ROOMS[room].reveal_map(ROOMS[room].playerList[players]["unitNum"])
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 

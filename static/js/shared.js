@@ -10,7 +10,7 @@ function updateMap(Data) {
     newMapText = "";
     for (x = 0; x < Data.mapArray.length; x++) {
       for (y = 0; y < Data.mapArray[x].length; y++) {
-        newMapText += `<div id="tile${x},${y}" onclick="mapClick(event, ${x}, ${y})"`;
+        newMapText += `<div id="tile${x},${y}" onclick="mapClick(event, ${x}, ${y})" x="${x}" y="${y}" units=""`;
         newMapText += `style="width:${zoomSize}px;height:${zoomSize}px;position:absolute;top:${x*zoomSize}px;left:${y*zoomSize}px;`;
         if (typeof Data.mapArray[x][y].seen !== "undefined") {
             if (!Data.mapArray[x][y].seen && showSeenOverlay) {
@@ -21,7 +21,7 @@ function updateMap(Data) {
             newMapText += 'border-color:red;';
         }
         newMapText += '"';
-        newMapText += `class='mapTile `;
+        newMapText += `class='mapTile selectableTile `;
         if (Data.mapArray[x][y].tile == "doorOpen") {
           if (Data.mapArray[x+1][y].tile =="floorTile" || Data.mapArray[x-1][y].tile =="floorTile") {
             newMapText += "doorTileAOpen";
@@ -93,6 +93,8 @@ function updateMap(Data) {
         }
         tmpHTML += "</div>";
         document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).innerHTML += tmpHTML;
+        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).className += " selectableUnit"
+        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).attributes.units.value += i + " ";
       }
     }
     if (Data.inInit /*&& Data.initiativeList[Data.initiativeCount].movePath.length > 0*/) {
