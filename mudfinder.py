@@ -202,7 +202,7 @@ def on_player_join(data):
     room = data['room']
     if room in ROOMS:
         join_room(room)
-        if not any(d == data['charName'] for d in ROOMS[room].playerList):
+        if not any(d == data['charName'] for d in ROOMS[room].playerList):  # TODO: make this a class function
             ROOMS[room].playerList[
                 data['charName']] = data  # ({"charName": data['charName'], "sid": request.sid, "requestInit": False})
             ROOMS[room].playerList[data['charName']]["requestInit"] = False
@@ -216,6 +216,15 @@ def on_player_join(data):
             ROOMS[room].playerList[data['charName']]["controlledBy"] = ROOMS[room].playerList[data['charName']][
                 "charName"]
             ROOMS[room].unitList.append(ROOMS[room].playerList[data['charName']])
+
+        if "connections" not in  ROOMS[room].playerList[data['charName']]:  # Can be removed once versioning is a thing
+            ROOMS[room].playerList[data['charName']]["connections"] = 0
+        if "inventories" not in  ROOMS[room].playerList[data['charName']]:
+            ROOMS[room].playerList[data['charName']]["inventories"] = {}
+            ROOMS[room].playerList[data['charName']]["inventories"][data['charName']] = {}
+            ROOMS[room].playerList[data['charName']]["inventories"][data['charName']]["gp"] = []
+            ROOMS[room].playerList[data['charName']]["inventories"][data['charName']]["inventory"] = []
+
         ROOMS[room].playerList[data['charName']]["sid"] = request.sid
         ROOMS[room].playerList[data['charName']]["type"] = "player"
         ROOMS[room].playerList[data['charName']]["connections"] += 1

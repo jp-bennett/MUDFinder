@@ -67,7 +67,10 @@ class Session(object):
             if "inInit" in x.keys() and x["inInit"]:
                 self.initiativeList.append(x)
         self.mapArray = obj["mapArray"]
-        self.lore = obj["lore"]
+        if "lore" in obj:
+            self.lore = obj["lore"]
+        else:
+            self.lore = []
         if "loreFiles" in obj.keys():
             print("found")
             print(obj["loreFiles"].keys())
