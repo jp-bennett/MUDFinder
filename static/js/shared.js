@@ -1,5 +1,5 @@
 const chunk_size = 64 * 1024;
-
+var loreImages = new Array();
 function updateMap(Data) {
   if (typeof Data.mapArray[0] === "undefined" ) {
     document.getElementById("mapGraphic").innerHTML = "";
@@ -159,12 +159,12 @@ function uploadLore () { //https://github.com/miguelgrinberg/socketio-examples
     if (typeof document.getElementById("loreFileUpload").files[0] == "undefined") {
         return;
     }
-    FReader = new FileReader();
+    //FReader = new FileReader();
     Name = document.getElementById('loreFileUpload').value;
     file = document.getElementById('loreFileUpload').files[0];
-    socket.emit('lore_upload', {"filename": file.name, "filesize": file.size}, function(loreSlot) {//we prime the server
+    socket.emit('lore_upload', room, file.size, document.getElementById("loreName").value, document.getElementById("loreText").value, function(loreSlot) {//we prime the server
         this.loreSlot = loreSlot; // and then get back the data needed to do the rest of the transfer.
-        readFileChunk(this.file, 0, chunk_size,
+        readFileChunk(file, 0, chunk_size,
             onReadSuccess.bind(this),
             onReadError.bind(this));
     }.bind(file));
@@ -191,20 +191,19 @@ function onReadSuccess(file, offset, length, data) {
         setTimeout(onReadSuccess.bind(this, file, offset, length, data), 5000);
         return;
     }
-    socket.emit('write-chunk', this.lore_slot, offset, data, function(offset, ack) {
+    socket.emit('write_chunk', room, this.loreSlot, offset, data, function(offset, ack) {
         if (!ack)
             onReadError(this.file, offset, 0, 'Transfer aborted by server')
     }.bind(this, offset));
     end_offset = offset + length;
-    this.progress.style.width = parseInt(300 * end_offset / file.size) + "px";
+    document.getElementById("uploadProgress").style.width = parseInt(300 * end_offset / file.size) + "px";
     if (end_offset < file.size)
         readFileChunk(file, end_offset, chunk_size,
             onReadSuccess.bind(this),
             onReadError.bind(this));
     else {
-        this.progress.classList.add('complete');
-        this.progress.classList.remove('in-progress');
         this.done = true;
+        socket.emit("get_lore", room);
     }
 }
 
@@ -213,7 +212,12 @@ function updateLore(msg, num) {
     document.getElementById("loreTabs").innerHTML = "";
     for (i=0; i< msg.length; i++) {
         if(isGM || msg[i].loreVisible) {
-            tmpHTML = `<div style="display:none;"><img src="${msg[i].loreURL}"></img>`;
+            tmpHTML = `<div style="display:none;" id=loreTab${i}>`;
+            if (typeof msg[i].loreSize == "undefined" || msg[i].loreSize == 0) {
+                tmpHTML += `<img id="loreIMG${i}" src="${msg[i].loreURL}"></img>`;
+            } else {
+                tmpHTML += `<img id="loreIMG${i}"></img>`;
+            }
             tmpHTML += `<br><span>${msg[i].loreText}</span><br>`;
             if (isGM) {
                 tmpHTML += `Visible: <input onclick="changeLoreVisibility(${i})" type="checkbox" ${(msg[i].loreVisible) ? "checked" : ""}><br>`;
@@ -222,17 +226,28 @@ function updateLore(msg, num) {
             tmpHTML += "</div>";
             document.getElementById("lorePage").innerHTML += tmpHTML
             document.getElementById("loreTabs").innerHTML += `<div class="tab" onClick="enableLoreTab('${i}')">${msg[i].loreName}</div>`;
+            if (typeof msg[i].loreSize !== "undefined" && msg[i].loreSize !== 0) {
+                if (typeof loreImages[i] == "undefined") {
+                    downloadLoreImage(i)
+                } else {
+                    document.getElementById(`loreIMG${i}`).src = "data:image;base64, " + loreImages[i];
+                }
+            }
         }
     }
+
     if (isGM || typeof charName !== "undefined") {
-        document.getElementById("lorePage").innerHTML += `<div style="display:none;">Image Link:<input type="text" id="loreURL"><br>` +
+        document.getElementById("lorePage").innerHTML += `<div style="display:none;"><img id="loreFilePreview"></img><br>` +
+            `Image Link:<input type="text" id="loreURL" onchange="previewLoreURL(this.value)"><br>` +
+            `Or upload a file: <input type="file" id="loreFileUpload" onchange="previewLoreFile()"><br>` +
+            `<div style="background:blue; height: 40px; width:0px;" id="uploadProgress"></div>` +
             `Name: <input type="text" id="loreName"><br>` +
             `Text: <textarea id="loreText"></textarea><br>` +
             `<button onclick="sendLoreURL()">Send</button></div>`;
             document.getElementById("loreTabs").innerHTML += `<div class="tab" onClick="enableLoreTab('${i}')">Add</div>`;
     } else {
-        document.getElementById("lorePage").innerHTML += `<div style="display:none;"></div>`;
-        document.getElementById("loreTabs").innerHTML += `<div class="tab" onClick="enableLoreTab('${i}')">Blank</div>`;
+        //document.getElementById("lorePage").innerHTML += `<div style="display:none;"></div>`;
+        //document.getElementById("loreTabs").innerHTML += `<div class="tab" onClick="enableLoreTab('${i}')">Blank</div>`;
     }
     if (num == null) {
         enableLoreTab(0);
@@ -250,11 +265,12 @@ function enableLoreTab(tabName) {
     //hide all of them
     children = document.getElementById("lorePage").children
     for (x = 0; x < children.length; x++) {
-        if (x == tabName) {
-        children[x].style.display = "block";
-        } else {
+        //if (x == tabName) {
+        //children[x].style.display = "block";
+        //} else {
         children[x].style.display = "none";
-        }
+        //}
+        document.getElementById(`loreTab${tabName}`).style.display = "block"
     }
 
 }
@@ -267,6 +283,26 @@ function deleteLore(i) {
 }
 
 function sendLoreURL () {
-console.log(document.getElementById("loreURL").value)
-socket.emit("lore_url", room, document.getElementById("loreURL").value, document.getElementById("loreName").value, document.getElementById("loreText").value);
+    if (document.getElementById("loreFileUpload").value == "") {
+        console.log(document.getElementById("loreURL").value)
+        socket.emit("lore_url", room, document.getElementById("loreURL").value, document.getElementById("loreName").value, document.getElementById("loreText").value);
+    } else {
+        uploadLore();
+    }
+}
+
+function previewLoreURL (value) {
+    document.getElementById("loreFilePreview").src = value;
+}
+
+function onReadError(file, offset, length, error) {
+    console.log('Upload error for ' + file.name + ': ' + error);
+    this.done = true;
+}
+
+function downloadLoreImage(slotNum) {
+    socket.emit("get_lore_file", room, slotNum, function (returnedImage){
+        loreImages[slotNum] = returnedImage;
+        document.getElementById(`loreIMG${slotNum}`).src = "data:image;base64, " + loreImages[slotNum];
+    })
 }

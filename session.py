@@ -14,6 +14,7 @@ class Session(object):
         self.mapArray = []  # make this a list of lists of dicts
         self.movePath = []
         self.lore = []
+        self.loreFiles = {}
 
     def to_json(self):  # need a full version for saves, and a partial version for updates
         """Serialize object to JSON"""
@@ -50,7 +51,8 @@ class Session(object):
             "mapArray": self.mapArray,
             "movePath": self.movePath,
             "savedEncounters": self.savedEncounters,
-            "lore": self.lore
+            "lore": self.lore,
+            "loreFiles": self.loreFiles
         }
 
     def from_json(self, obj):
@@ -66,6 +68,8 @@ class Session(object):
                 self.initiativeList.append(x)
         self.mapArray = obj["mapArray"]
         self.lore = obj["lore"]
+        if "loreFiles" in obj:
+            self.loreFiles = obj["loreFiles"]
         self.savedEncounters = obj["savedEncounters"]
         self.number_units()
         return

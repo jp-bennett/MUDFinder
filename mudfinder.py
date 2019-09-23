@@ -1,10 +1,12 @@
 import copy
 import json
 import time
+import io
+import base64
 from random import randint
 
 from flask import Flask, render_template, request, redirect
-from flask_socketio import SocketIO, join_room, emit
+from flask_socketio import SocketIO, join_room, emit, send
 
 from session import Session
 
@@ -132,15 +134,33 @@ def save_download():
 
 
 @socketio.on('lore_upload')
-def on_lore_upload(data):
-    room = data['room']
+def on_lore_upload(room, lore_size, lore_name, lore_text):
+    if room in ROOMS:
+        loreNum = len(ROOMS[room].lore)
+        ROOMS[room].lore.append(
+            {"loreSize": lore_size, "loreName": lore_name, "loreText": lore_text, "loreVisible": False}
+        )
+        ROOMS[room].loreFiles[loreNum] = io.BytesIO()
+        return loreNum
+
+@socketio.on('write_chunk')
+def write_chunk(room, loreNum, offset, data):
+    if room in ROOMS:
+        ROOMS[room].loreFiles[loreNum].seek(offset)
+        ROOMS[room].loreFiles[loreNum].write(data)
+
+
+@socketio.on('get_lore_file')
+def get_lore_file(room, loreNum):
+    if room in ROOMS:
+        return base64.b64encode(ROOMS[room].loreFiles[loreNum].getvalue()).decode()
 
 
 @socketio.on('lore_url')
 def on_lore_url(room, lore_url, lore_name, lore_text):
     if room in ROOMS:
         ROOMS[room].lore.append(
-            {"loreURL": lore_url, "loreName": lore_name, "loreText": lore_text, "loreVisible": False})
+            {"loreURL": lore_url, "loreName": lore_name, "loreText": lore_text, "loreVisible": False, "loreSize": 0})
         emit("showLore", {"lore": ROOMS[room].lore, "lore_num": None}, room=room)
 
 
@@ -158,13 +178,19 @@ def on_lore_visible(room, gmKey, lore_num):
 def on_delete_lore(room, gmKey, lore_num):
     if room in ROOMS and ROOMS[room].gmKey == gmKey:
         ROOMS[room].lore.pop(lore_num)
+        tmp_keys = []
+        for x in ROOMS[room].loreFiles:
+            tmp_keys.append(x)
+        for x in tmp_keys:
+            if x > lore_num:
+                ROOMS[room].loreFiles[x-1] = ROOMS[room].loreFiles[x]
         emit("showLore", {"lore": ROOMS[room].lore, "lore_num": None}, room=room)
 
 
 @socketio.on('get_lore')
 def on_get_lore(room):
     if room in ROOMS:
-        emit("showLore", {"lore": ROOMS[room].lore, "lore_num": None}, room=room)
+        emit("showLore", {"lore": ROOMS[room].lore, "lore_num": None})
 
 
 @socketio.on('player_join')
