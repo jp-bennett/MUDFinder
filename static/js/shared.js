@@ -117,6 +117,7 @@ function enableTab(tabName) {
 }
 
 function populateEditChar (Data, unitNum) {
+    if (Data.unitList.length == 0) {return}
     for (x = 0; x < Data.unitList.length; x++){
         if (Data.unitList[x].unitNum == unitNum){
             playerUnitNum = x;
@@ -212,7 +213,7 @@ function updateLore(msg, num) {
     document.getElementById("loreTabs").innerHTML = "";
     for (i=0; i< msg.length; i++) {
         if(isGM || msg[i].loreVisible) {
-            tmpHTML = `<div style="display:none;" id=loreTab${i}>`;
+            tmpHTML = `<div id="loreTab${i}" style="display:none;" id=loreTab${i}>`;
             if (typeof msg[i].loreSize == "undefined" || msg[i].loreSize == 0) {
                 tmpHTML += `<img id="loreIMG${i}" src="${msg[i].loreURL}"></img>`;
             } else {
@@ -237,7 +238,7 @@ function updateLore(msg, num) {
     }
 
     if (isGM || typeof charName !== "undefined") {
-        document.getElementById("lorePage").innerHTML += `<div style="display:none;"><img id="loreFilePreview"></img><br>` +
+        document.getElementById("lorePage").innerHTML += `<div id="loreTab${i}" style="display:none;"><img id="loreFilePreview"></img><br>` +
             `Image Link:<input type="text" id="loreURL" onchange="previewLoreURL(this.value)"><br>` +
             `Or upload a file: <input type="file" id="loreFileUpload" onchange="previewLoreFile()"><br>` +
             `<div style="background:blue; height: 40px; width:0px;" id="uploadProgress"></div>` +
@@ -270,8 +271,8 @@ function enableLoreTab(tabName) {
         //} else {
         children[x].style.display = "none";
         //}
-        document.getElementById(`loreTab${tabName}`).style.display = "block"
     }
+    document.getElementById(`loreTab${tabName}`).style.display = "block"
 
 }
 function changeLoreVisibility(i) {

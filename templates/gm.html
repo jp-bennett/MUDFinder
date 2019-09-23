@@ -219,12 +219,18 @@
         </div>
         <div id="lore">
           <div class="lorePage" id="lorePage">
-            <img id="loreFilePreview"></img><br>
-            Image Link:<input type="text" id="loreURL">
-            <button onclick="sendLoreURL()">Send</button><br>
-            <textarea id="loreText"></textarea><br>
+
+            <div id="loreTab0" style="display:none;"><img id="loreFilePreview"></img><br>
+            Image Link:<input type="text" id="loreURL" onchange="previewLoreURL(this.value)"><br>
+            Or upload a file: <input type="file" id="loreFileUpload" onchange="previewLoreFile()"><br>
+            <div style="background:blue; height: 40px; width:0px;" id="uploadProgress"></div>
+            Name: <input type="text" id="loreName"><br>
+            Text: <textarea id="loreText"></textarea><br>
+            <button onclick="sendLoreURL()">Send</button></div>
           </div>
-          <div id="loreTabs"></div>
+          <div id="loreTabs">
+            <div class="tab" onClick="enableLoreTab('0')">Add</div>
+          </div>
         </div>
       </div>
       <div class="rightDivContainer">
