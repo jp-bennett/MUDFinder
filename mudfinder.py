@@ -6,7 +6,7 @@ import base64
 from random import randint
 
 from flask import Flask, render_template, request, redirect
-from flask_socketio import SocketIO, join_room, emit, send
+from flask_socketio import SocketIO, join_room, emit
 
 from session import Session
 
@@ -203,12 +203,14 @@ def on_player_join(data):
             ROOMS[room].playerList[
                 data['charName']] = data  # ({"charName": data['charName'], "sid": request.sid, "requestInit": False})
             ROOMS[room].playerList[data['charName']]["requestInit"] = False
+            ROOMS[room].playerList[data['charName']]["connections"] = 0
             ROOMS[room].playerList[data['charName']]["revealsMap"] = True
             ROOMS[room].playerList[data['charName']]["controlledBy"] = ROOMS[room].playerList[data['charName']][
                 "charName"]
             ROOMS[room].unitList.append(ROOMS[room].playerList[data['charName']])
         ROOMS[room].playerList[data['charName']]["sid"] = request.sid
         ROOMS[room].playerList[data['charName']]["type"] = "player"
+        ROOMS[room].playerList[data['charName']]["connections"] += 1
         ROOMS[room].playerList[data['charName']]["connected"] = True
         ROOMS[room].number_units()
         emit('do_update', ROOMS[room].player_json(), room=room)
@@ -674,12 +676,13 @@ def on_game_upload(data):
 
 @socketio.on('player_disconnect')
 def on_player_disconnect(data):
-    print('Client disconnected')
     room = data['room']
     charName = data['charName']
     if room in ROOMS and any(d == charName for d in ROOMS[room].playerList):
-        # ROOMS[room].playerList[charName]["connected"] = False
-        emit("chat", {'chat': charName + " has disconnected", 'charName': "System"}, room=data['room'])
+        ROOMS[room].playerList[charName]["connections"] -= 1
+        if ROOMS[room].playerList[charName]["connections"] < 1:
+            ROOMS[room].playerList[charName]["connected"] = False
+            emit("chat", {'chat': charName + " has disconnected", 'charName': "System"}, room=data['room'])
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 
