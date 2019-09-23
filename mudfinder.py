@@ -203,6 +203,11 @@ def on_player_join(data):
             ROOMS[room].playerList[
                 data['charName']] = data  # ({"charName": data['charName'], "sid": request.sid, "requestInit": False})
             ROOMS[room].playerList[data['charName']]["requestInit"] = False
+            ROOMS[room].playerList[data['charName']]["inventories"] = {}
+            ROOMS[room].playerList[data['charName']]["inventories"][data['charName']] = {}
+            ROOMS[room].playerList[data['charName']]["inventories"][data['charName']]["gp"] = []
+            ROOMS[room].playerList[data['charName']]["inventories"][data['charName']]["inventory"] = []
+
             ROOMS[room].playerList[data['charName']]["connections"] = 0
             ROOMS[room].playerList[data['charName']]["revealsMap"] = True
             ROOMS[room].playerList[data['charName']]["controlledBy"] = ROOMS[room].playerList[data['charName']][
@@ -685,6 +690,26 @@ def on_player_disconnect(data):
             emit("chat", {'chat': charName + " has disconnected", 'charName': "System"}, room=data['room'])
         emit('do_update', ROOMS[room].player_json(), room=room)
 
+@socketio.on('add_gp')
+def add_gp(room, player, inventory, description, increment, decrement):
+    if room in ROOMS and player in ROOMS[room].playerList.keys():
+        tmpInventory = ROOMS[room].playerList[player]["inventories"][inventory]["gp"]
+        if len(tmpInventory) == 0:
+            tmpTotal = 0
+        else:
+            tmpTotal = tmpInventory[-1]["result"]
+        tmpEntry = {}
+        tmpEntry["result"] = tmpTotal + increment - decrement
+        tmpEntry["description"] = description
+        tmpEntry["increment"] = increment
+        tmpEntry["decrement"] = decrement
+        tmpInventory.append(tmpEntry)
+        emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
+
+@socketio.on('get_inventories')
+def get_inventories(room, player):
+    if room in ROOMS and player in ROOMS[room].playerList.keys():
+        emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
 
 if __name__ == '__main__':
     socketio.run(app, debug=False, host='0.0.0.0', port="5000")

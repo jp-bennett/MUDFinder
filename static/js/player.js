@@ -10,8 +10,10 @@ var selectedUnit;
 var selectedInitiative;
 var lookingAtX;
 var lookingAtY;
+var gpTableSavedHTML;
 const isGM = false;
 window.onload = function() {
+    gpTableSavedHTML = document.getElementById("gpTable").innerHTML;
     enableTab("mapWrapper")
     document.getElementById("updateCharButton").style.display = "none";
     socket = io.connect('http://' + document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
@@ -28,6 +30,7 @@ window.onload = function() {
             charName=url_ob.searchParams.get("charName")
             socket.emit('player_join', {room: room, charName: charName});
             socket.emit("get_lore", room);
+            socket.emit("get_inventories", room, charName)
         }
     });
     socket.on('do_update', function(msg) {
@@ -136,6 +139,23 @@ window.onload = function() {
     });
     socket.on("showLore", function(msg) {
         updateLore(msg.lore, msg.lore_num);
+    });
+    socket.on("update_inventory", function(inventories) {
+        tmpInventory = inventories[charName].gp;
+        console.log(tmpInventory);
+        var table = document.getElementById("gpTable");
+        table.innerHTML = gpTableSavedHTML;
+        for (x=0;x<tmpInventory.length;x++){
+            var row = table.insertRow(x+1);
+            var descriptionCell = row.insertCell(0);
+            var decrementCell = row.insertCell(1);
+            var incrementCell = row.insertCell(2);
+            var totalCell = row.insertCell(3);
+            descriptionCell.innerText = tmpInventory[x].description
+            decrementCell.innerText = tmpInventory[x].decrement
+            incrementCell.innerText = tmpInventory[x].increment
+            totalCell.innerText = tmpInventory[x].result
+        }
     });
 } //end onload
 window.onunload = function() {
@@ -297,4 +317,12 @@ function updateChar () {
     player.trapfinding = document.getElementById("trapfinding").checked;
     player.permanentAbilities = document.getElementById("permanentAbilities").value;
     socket.emit('update_unit', player);
+}
+
+function recordGP() {
+    description = document.getElementById("gpDescription").value;
+    increment = Number(document.getElementById("gpIncrement").value);
+    decrement = Number(document.getElementById("gpDecrement").value);
+
+    socket.emit("add_gp", room, charName, charName, description, increment, decrement)
 }

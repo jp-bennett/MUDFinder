@@ -72,6 +72,7 @@
     <div id="tabsDiv" class="tabsDiv">
       <div class="tab" onClick="enableTab('mapWrapper')">Map</div>
       <div class="tab" onClick="enableTab('charWrapper')">Character</div>
+      <div class="tab" onClick="enableTab('inventory')">Inventory</div>
       <div class="tab" onClick="enableTab('lore')">Lore</div>
     </div>
     <div id="centerDiv" class="centerDiv">
@@ -134,7 +135,29 @@
             <button onclick="addUnit()">Add Unit</button>
           </div>
         </div><!-- CharWrapper -->
-        <div id="lore">
+        <div id="inventory" style="display:none; height:100%;">
+          <div id="register" style="overflow:auto;">
+            <table class="inventoryTable" id="gpTable">
+              <tr>
+                <th>Description</th>
+                <th>Decrease</th>
+                <th>Increase</th>
+                <th>Total</th>
+              </tr>
+              <tr>
+                <td><textarea type="textarea" id="gpDescription"></textarea></td>
+                <td><input type="text" id="gpDecrement"></td>
+                <td><input type="text" id="gpIncrement"></td>
+                <td><button onclick="recordGP()">Record</button></td>
+              </tr>
+
+            </table>
+          </div>
+          <div id="items">
+            Items:
+          </div>
+        </div>
+        <div id="lore" display="style:none;">
           <div id="lorePage" class="lorePage"></div>
           <div id="loreTabs"></div>
         </div>

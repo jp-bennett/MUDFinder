@@ -10,6 +10,12 @@ button {
 img {
     max-width:100%;
 }
+#register {
+    height:50%;
+}
+#items {
+    height:50%;
+}
 .centeredButton {
     margin: auto;
     margin-top: 5px;
@@ -144,10 +150,14 @@ img {
     width:100%;
     display:none;
 }
+tr:nth-child(even) {background-color: #f2f2f2;}
+.inventoryTable{
+    margin:auto;
+}
 .connectedPlayers {
     width:200px;
     min-height:10px;
-    margin: 20px;
+    margin: auto;
     padding:10px;
     border-style:solid;
     border-width:thin;
@@ -155,11 +165,9 @@ img {
 }
 
 .connectedPlayersContainer {
-    float:right;
     min-height:10px;
-    margin: 20px;
+    margin: auto;
     text-align:center;
-    float:right;
 }
 .promptDiv {
     width: 50%;
