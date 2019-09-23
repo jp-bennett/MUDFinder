@@ -68,8 +68,11 @@ class Session(object):
                 self.initiativeList.append(x)
         self.mapArray = obj["mapArray"]
         self.lore = obj["lore"]
-        if "loreFiles" in obj:
-            self.loreFiles = obj["loreFiles"]
+        if "loreFiles" in obj.keys():
+            print("found")
+            print(obj["loreFiles"].keys())
+            for x in obj["loreFiles"]:
+                self.loreFiles[int(x)] = obj["loreFiles"][x]
         self.savedEncounters = obj["savedEncounters"]
         self.number_units()
         return

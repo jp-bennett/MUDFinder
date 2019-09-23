@@ -148,12 +148,15 @@ def write_chunk(room, loreNum, offset, data):
     if room in ROOMS:
         ROOMS[room].loreFiles[loreNum].seek(offset)
         ROOMS[room].loreFiles[loreNum].write(data)
+        if offset + len(data) >= ROOMS[room].lore[loreNum]["loreSize"]:
+            ROOMS[room].loreFiles[loreNum] = base64.b64encode(ROOMS[room].loreFiles[loreNum].getvalue()).decode()
 
 
 @socketio.on('get_lore_file')
 def get_lore_file(room, loreNum):
     if room in ROOMS:
-        return base64.b64encode(ROOMS[room].loreFiles[loreNum].getvalue()).decode()
+        return ROOMS[room].loreFiles[loreNum]
+        #return base64.b64encode(ROOMS[room].loreFiles[loreNum].getvalue()).decode()
 
 
 @socketio.on('lore_url')
