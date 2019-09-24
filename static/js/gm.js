@@ -462,6 +462,10 @@ function updateChar () {
 
 function handleDrag (elements) {
     console.log(elements)
+    selectionSize = ds.getCursorPositionDifference();
+    if (selectionSize.x < 10 && selectionSize.y < 10){
+        return;
+    }
     if (typeof selectedTool !== "undefined") {
         if (elements.length < 2){
             ds.clearSelection();
