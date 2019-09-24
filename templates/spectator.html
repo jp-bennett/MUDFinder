@@ -92,8 +92,11 @@
       //update player list
       document.getElementById("connectedPlayers").innerHTML = "";
       for (var i = 0; i < Object.keys(playerData.playerList).length; i++) {
-        tmpPlayerName = Object.keys(playerData.playerList)[i];
-        document.getElementById("connectedPlayers").innerHTML += tmpPlayerName + "<br >";
+      tmpPlayerName = Object.keys(playerData.playerList)[i];
+        if (playerData.playerList[tmpPlayerName].connected) {
+
+          document.getElementById("connectedPlayers").innerHTML += tmpPlayerName + "<br >";
+        }
       }
     });
 
