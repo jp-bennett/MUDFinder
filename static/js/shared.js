@@ -23,7 +23,7 @@ function updateMap(Data) {
         newMapText += '"';
         newMapText += `class='mapTile selectableTile `;
         if (Data.mapArray[x][y].tile == "doorOpen") {
-          if (Data.mapArray[x+1][y].tile =="floorTile" || Data.mapArray[x-1][y].tile =="floorTile") {
+          if ((typeof Data.mapArray[x+1] !== "undefined" && Data.mapArray[x+1][y].tile =="floorTile") || (typeof Data.mapArray[x-1] !== "undefined" && Data.mapArray[x-1][y].tile =="floorTile")) {
             newMapText += "doorTileAOpen";
           } else {
             newMapText += "doorTileBOpen";

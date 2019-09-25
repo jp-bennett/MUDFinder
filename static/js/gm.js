@@ -51,13 +51,14 @@ socket.on('gm_update', function(msg) {
     }
     // populate units
     document.getElementById("unitsDiv").innerHTML = "";
-
-    if (typeof selectedInitiative !== "undefined") {
-        populateEditChar(gmData, gmData.initiativeList[selectedInitiative].unitNum)
-    } else if (typeof selectedUnits[0] !== "undefined") {
-        populateEditChar(gmData, selectedUnits[0])
-    } else {
-        populateEditChar(gmData, 0)
+    if (document.getElementById("units").style.display == "none"){
+        if (typeof selectedInitiative !== "undefined") {
+            populateEditChar(gmData, gmData.initiativeList[selectedInitiative].unitNum)
+        } else if (typeof selectedUnits[0] !== "undefined") {
+            populateEditChar(gmData, selectedUnits[0])
+        } else {
+            populateEditChar(gmData, 0)
+        }
     }
 
     for (var i = 0; i < gmData.unitList.length; i++) {

@@ -159,6 +159,8 @@ class Session(object):
         if "hasted" in tmpUnit.keys() and tmpUnit["hasted"] and not moveType == 0:
             maxMove = min(maxMove * 2, maxMove + 6)
         maxMove -= tmpUnit["distance"]
+        if maxMove < 0:
+            maxMove = 0
         # print((tmpUnit["x"], tmpUnit["y"]))
         path = astar(self.mapArray, (tmpUnit["x"], tmpUnit["y"]), end, maxMove)
         tmpUnit["distance"] += path.pop(0)
@@ -265,10 +267,8 @@ def astar(maze, start, end, maxMove):
         if current_node == end_node:
             path = []
             current = current_node
-            print(current.g)
             totalDistance = 0
             while current is not None:
-                print(current.position)
                 if maxMove < 0 or current.g < maxMove + 1:
                     if totalDistance == 0:
                         totalDistance = current.g

@@ -608,7 +608,7 @@ def on_map_edit(data_pack):
             elif data["newTile"] == "seen":
                 ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["seen"] = not \
                     ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["seen"]
-            if data["newTile"] in ["doorTileAOpen", "doorTileBOpen"]:
+            if data["newTile"] in ["doorOpen", "doorTileAOpen", "doorTileBOpen"]:
                 for players in ROOMS[room].playerList.keys():
                     ROOMS[room].reveal_map(ROOMS[room].playerList[players]["unitNum"])
         emit('do_update', ROOMS[room].player_json(), room=room)
@@ -702,6 +702,7 @@ def on_player_disconnect(data):
             ROOMS[room].playerList[charName]["connected"] = False
             emit("chat", {'chat': charName + " has disconnected", 'charName': "System"}, room=data['room'])
         emit('do_update', ROOMS[room].player_json(), room=room)
+
 
 @socketio.on('add_gp')
 def add_gp(room, player, inventory, description, increment, decrement):

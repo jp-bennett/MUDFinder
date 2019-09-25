@@ -43,15 +43,15 @@ window.onload = function() {
         } else {
             selectedInitiative = undefined;
         }
-
-        if (typeof selectedUnit !== "undefined" && playerData.unitList[selectedUnit].controlledBy == charName) {
-            populateEditChar(playerData, playerData.unitList[selectedUnit].unitNum)
-        } else if (typeof selectedInitiative !== "undefined" && playerData.initiativeList[selectedInitiative].controlledBy == charName) {
-            populateEditChar(playerData, playerData.initiativeList[selectiveInitiative].unitNum)
-        } else {
-            populateEditChar(playerData, playerData.playerList[charName].unitNum)
+        if (document.getElementById("charWrapper").style.display == "none"){
+            if (typeof selectedUnit !== "undefined" && playerData.unitList[selectedUnit].controlledBy == charName) {
+                populateEditChar(playerData, playerData.unitList[selectedUnit].unitNum)
+            } else if (typeof selectedInitiative !== "undefined" && playerData.initiativeList[selectedInitiative].controlledBy == charName) {
+                populateEditChar(playerData, playerData.initiativeList[selectedInitiative].unitNum)
+            } else {
+                populateEditChar(playerData, playerData.playerList[charName].unitNum)
+            }
         }
-
         // populate initiative
         document.getElementById("initiativeDiv").innerHTML = "";
         document.getElementById("unitDiv").innerHTML = "";
