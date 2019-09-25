@@ -465,6 +465,7 @@ function handleDrag (elements) {
     console.log(elements)
     selectionSize = ds.getCursorPositionDifference();
     if (selectionSize.x < 10 && selectionSize.y < 10){
+        ds.clearSelection();
         return;
     }
     if (typeof selectedTool !== "undefined") {
