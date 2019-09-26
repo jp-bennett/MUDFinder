@@ -4,4 +4,8 @@ MUDFinder is written in Python3, and uses flask-socketio. It's intended to emula
 It's a tool for running Pathfinder (and other D&D) games over the internet. It can be thought of as a replacement for
 roll20 and DnD Beyond, though not all of that functionality is finished yet.
 
+The MUDFinder project is licensed as AGPLv3 as a whole, but the individual contributor contributions are licensed as GPLv3.
+The purpose of this is to allow the project owner to add user management glue code in his offering of MUDFinder as a service,
+and not distribute that glue code as part of this project.
+
 Makes use of https://github.com/ThibaultJanBeyer/DragSelect
