@@ -11,9 +11,11 @@ var selectedInitiative;
 var lookingAtX;
 var lookingAtY;
 var gpTableSavedHTML;
+var inventoryTableSavedHTML;
 const isGM = false;
 window.onload = function() {
     gpTableSavedHTML = document.getElementById("gpTable").innerHTML;
+    inventoryTableSavedHTML = document.getElementById("itemTable").innerHTML;
     enableTab("mapWrapper")
     document.getElementById("updateCharButton").style.display = "none";
     socket = io.connect('http://' + document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
@@ -142,7 +144,7 @@ window.onload = function() {
     });
     socket.on("update_inventory", function(inventories) {
         tmpInventory = inventories[charName].gp;
-        console.log(tmpInventory);
+        console.log(inventories[charName]);
         var table = document.getElementById("gpTable");
         table.innerHTML = gpTableSavedHTML;
         for (x=0;x<tmpInventory.length;x++){
@@ -155,6 +157,22 @@ window.onload = function() {
             decrementCell.innerText = tmpInventory[x].decrement
             incrementCell.innerText = tmpInventory[x].increment
             totalCell.innerText = tmpInventory[x].result
+            if (x == tmpInventory.length-1){
+            row.insertCell(4).innerHTML = '<button onclick="deleteLastGPTransaction()">Delete</button>';
+            }
+        }
+        document.getElementById("register").scrollTop = document.getElementById("register").scrollHeight
+        tmpInventory = inventories[charName].inventory;
+        var table = document.getElementById("itemTable");
+        table.innerHTML = inventoryTableSavedHTML;
+        for (x=0;x<tmpInventory.length;x++){
+            var row = table.insertRow(x+1);
+            row.insertCell(0).innerText = tmpInventory[x].item;
+            row.insertCell(1).innerText = tmpInventory[x].itemSlot;
+            row.insertCell(2).innerText = tmpInventory[x].isWorn;
+            row.insertCell(3).innerText = tmpInventory[x].itemWeight;
+            row.insertCell(4).innerText = tmpInventory[x].itemValue;
+            row.insertCell(5).innerText = tmpInventory[x].itemCount;
         }
     });
 } //end onload
@@ -325,4 +343,22 @@ function recordGP() {
     decrement = Number(document.getElementById("gpDecrement").value);
 
     socket.emit("add_gp", room, charName, charName, description, increment, decrement)
+}
+
+
+function deleteLastGPTransaction() {
+socket.emit("delete_gp_transaction", room, charName, charName);
+}
+
+function recordItem() {
+    itemObj = {}
+    itemObj.item = document.getElementById("itemText").value;
+    itemObj.itemSlot = document.getElementById("itemSlot").value;
+    itemObj.isWorn = document.getElementById("isWorn").checked;
+    itemObj.itemWeight = document.getElementById("itemWeight").value;
+    itemObj.itemValue = document.getElementById("itemValue").value;
+    itemObj.itemCount = document.getElementById("itemCount").value;
+
+
+    socket.emit("add_item", room, charName, charName, itemObj)
 }

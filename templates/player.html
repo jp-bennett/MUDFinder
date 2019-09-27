@@ -72,7 +72,7 @@
     <div id="tabsDiv" class="tabsDiv">
       <div class="tab" onClick="enableTab('mapWrapper')">Map</div>
       <div class="tab" onClick="enableTab('charWrapper')">Character</div>
-      <div class="tab" onClick="enableTab('inventory')">Inventory</div>
+      <div class="tab" onClick="enableTab('inventory'); document.getElementById('register').scrollTop = document.getElementById('register').scrollHeight">Inventory</div>
       <div class="tab" onClick="enableTab('lore')">Lore</div>
     </div>
     <div id="centerDiv" class="centerDiv">
@@ -139,7 +139,7 @@
           <div id="register" style="overflow:auto;">
             <table class="inventoryTable" id="gpTable">
               <tr>
-                <th>Description</th>
+                <th>Transaction Description</th>
                 <th>Decrease</th>
                 <th>Increase</th>
                 <th>Total</th>
@@ -154,7 +154,50 @@
             </table>
           </div>
           <div id="items">
-            Items:
+            <table class="inventoryTable" id="itemTable">
+              <tr>
+                <th>Item</th>
+                <th>Slot</th>
+                <th>Worn</th>
+                <th>Weight</th>
+                <th>Value</th>
+                <th>Count</th>
+                <th></th>
+              </tr>
+              <tr>
+                <td>
+                  <!--<select onchange="changeItemCat(this)" id="itemCategory">
+                    <option>Ring</option>
+                    <option>Custom</option>
+                  </select><br>
+                  <select id="itemSelect"><option>Ring of Protection 1</option></select>-->
+                  <input type="text" id="itemText">
+                </td>
+                <td>
+                  <select id="itemSlot">
+                    <option>Belt</option>
+                    <option>Body</option>
+                    <option>Chest</option>
+                    <option>Eyes</option>
+                    <option>Feet</option>
+                    <option>Hands</option>
+                    <option>Head</option>
+                    <option>Headband</option>
+                    <option>Neck</option>
+                    <option>Shoulders</option>
+                    <option>Wrists</option>
+                    <option>Slotless</option>
+                  </select>
+
+                </td>
+                <td><input type="checkbox" id="isWorn"></td>
+                <td><input type="text" id="itemWeight" style="width:40px;"></td>
+                <td><input type="text" id="itemValue" style="width:40px;"></td>
+                <td><input type="text" id="itemCount" style="width:40px;"></td>
+                <td><button onclick="recordItem()">Record</button></td>
+              </tr>
+
+            </table>
           </div>
         </div> <!-- Inventory -->
         <div id="lore" display="style:none;">

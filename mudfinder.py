@@ -720,10 +720,29 @@ def add_gp(room, player, inventory, description, increment, decrement):
         tmpInventory.append(tmpEntry)
         emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
 
+
+@socketio.on('delete_gp_transaction')
+def delete_gp(room, player, inventory):
+    if room in ROOMS and player in ROOMS[room].playerList.keys():
+        tmpInventory = ROOMS[room].playerList[player]["inventories"][inventory]["gp"]
+        if len(tmpInventory) == 0:
+            return
+        else:
+            tmpInventory.pop()
+            emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
+
+
+@socketio.on('add_item')
+def add_item(room, player, inventory, data):
+    if room in ROOMS and player in ROOMS[room].playerList.keys():
+        tmpInventory = ROOMS[room].playerList[player]["inventories"][inventory]["inventory"]
+        tmpInventory.append(data)
+        emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
+
 @socketio.on('get_inventories')
 def get_inventories(room, player):
     if room in ROOMS and player in ROOMS[room].playerList.keys():
         emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
 
 if __name__ == '__main__':
-    socketio.run(app, debug=False, host='0.0.0.0', port="5000")
+    socketio.run(app, debug=True, host='0.0.0.0', port="5000")

@@ -309,3 +309,13 @@ function downloadLoreImage(slotNum) {
         document.getElementById(`loreIMG${slotNum}`).src = "data:image;base64, " + loreImages[slotNum];
     })
 }
+
+function changeItemCat(target) {
+    if (target.value == "Custom") {
+        document.getElementById("itemSelect").style.display = "none"
+        document.getElementById("itemText").style.display = "block"
+    } else {
+        document.getElementById("itemSelect").style.display = "block"
+        document.getElementById("itemText").style.display = "none"
+    }
+}
