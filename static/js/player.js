@@ -169,16 +169,29 @@ window.onload = function() {
             var row = table.insertRow(x+1);
             row.insertCell(0).innerText = tmpInventory[x].item;
             row.insertCell(1).innerText = tmpInventory[x].itemSlot;
-            row.insertCell(2).innerText = tmpInventory[x].isWorn;
+            row.insertCell(2).innerHTML = `<input type="checkbox" ${(tmpInventory[x].isWorn) ? "checked" : ""}>`;
+            //row.insertCell(2).innerHTML = tmpInventory[x].isWorn;
             row.insertCell(3).innerText = tmpInventory[x].itemWeight;
             row.insertCell(4).innerText = tmpInventory[x].itemValue;
-            row.insertCell(5).innerText = tmpInventory[x].itemCount;
+            row.insertCell(5).innerHTML = '<input type="text" style="width:40px;" value="' + tmpInventory[x].itemCount + '"></input>';
+            row.insertCell(6).innerHTML = `<button onclick="updateInv(this, ${x})">Update</button><button onclick="deleteItem( ${x})">Delete</button>`;
         }
     });
 } //end onload
 window.onunload = function() {
     socket.emit('player_disconnect', {room: room, charName: charName});
     socket.close();
+}
+function updateInv(element, invNum) {
+    itemObj = {}
+    itemObj.invNum = invNum;
+    itemObj.isWorn = element.parentElement.parentElement.children[2].children[0].checked
+    itemObj.itemCount = element.parentElement.parentElement.children[5].children[0].value
+    console.log(invNum)
+    socket.emit('update_item', room, charName, charName, itemObj);
+}
+function deleteItem(invNum) {
+    socket.emit('delete_item', room, charName, charName, invNum);
 }
 function advanceInit() {
     socket.emit('advance_init', {room: room, charName: charName});
