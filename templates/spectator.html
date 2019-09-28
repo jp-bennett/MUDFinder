@@ -22,10 +22,7 @@
         <div id="mapWrapper">
           <div id="mapContainer">
             <div id="mapForm">
-              <form>
-                <textarea id="mapText" style="width:50%;height:50%;"></textarea>
-              </form>
-              <button onclick="mapInput()">Upload Map</button>
+
             </div>
             <div style="display:none;" id='mapGraphic'></div>
           </div>
@@ -66,6 +63,7 @@
         console.log('sending join');
         socket.emit('spectator_join', {room: room});
         socket.emit("get_lore", room);
+        enableTab('mapWrapper');
     });
     socket.on("showLore", function(msg) {
         updateLore(msg.lore, msg.lore_num);
