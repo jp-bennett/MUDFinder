@@ -163,6 +163,8 @@ class Session(object):
             maxMove = 0
         # print((tmpUnit["x"], tmpUnit["y"]))
         path = astar(self.mapArray, (tmpUnit["x"], tmpUnit["y"]), end, maxMove)
+        if "distance" not in tmpUnit:
+            tmpUnit["distance"] = 0
         tmpUnit["distance"] += path.pop(0)
         for x in path:
             tmpUnit["movePath"].append(x)
@@ -288,7 +290,7 @@ def astar(maze, start, end, maxMove):
 
             # Make sure within range
             if node_position[0] > (len(maze) - 1) or node_position[0] < 0 or node_position[1] > (
-                    len(maze[len(maze) - 1]) - 1) or node_position[1] < 0:
+                    len(maze[node_position[0]]) - 1) or node_position[1] < 0:
                 continue
 
             # test diagonal step
