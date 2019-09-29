@@ -116,9 +116,9 @@
           <div id="addDiv">
             ---Add a Unit---<br>
             Creature Name:<br />
-            <input type="text" id="unitName"></input><br>
+            <input type="text" id="unitName"><br>
             Short Name:<br />
-            <input type="text" id="unitShortName"></input><br>
+            <input type="text" id="unitShortName"><br>
             Type: 
             <select id="unitType">
               <option value="Summon" selected="selected">Summon</option>
@@ -131,7 +131,10 @@
               <option value="blue">blue</option>
               <option value="green">green</option>
               <option value="brown">brown</option>
-            </select> <br />
+            </select> <br>
+            Speed:
+            <input id="unitSpeed">
+            <br>
             <button onclick="addUnit()">Add Unit</button>
           </div>
         </div><!-- CharWrapper -->

@@ -295,10 +295,12 @@ function addUnit() {
     unit.charShortName = document.getElementById("unitShortName").value;
     unit.color = document.getElementById("unitColor").value;
     unit.type = document.getElementById("unitType").value;
+    unit.movementSpeed = document.getElementById("unitSpeed").value;
     socket.emit('add_player_unit', {unit: unit, room: room, charName: charName});
     document.getElementById("unitName").value = "";
     document.getElementById("unitName").focus();
     document.getElementById("unitShortName").value = "";
+    document.getElementById("unitSpeed").value = "";
 }
 function resetMovement() {
     socket.emit('reset_movement', {selectedInit: playerData.initiativeCount, room: room});
