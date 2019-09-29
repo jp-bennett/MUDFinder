@@ -72,7 +72,7 @@
     <div id="tabsDiv" class="tabsDiv">
       <div class="tab" onClick="enableTab('mapWrapper')">Map</div>
       <div class="tab" onClick="enableTab('charWrapper')">Character</div>
-      <div class="tab" onClick="enableTab('inventory'); document.getElementById('register').scrollTop = document.getElementById('register').scrollHeight">Inventory</div>
+      <div class="tab" onClick="enableTab('inventory')">Inventory</div>
       <div class="tab" onClick="enableTab('lore')">Lore</div>
     </div>
     <div id="centerDiv" class="centerDiv">
@@ -135,8 +135,11 @@
             <button onclick="addUnit()">Add Unit</button>
           </div>
         </div><!-- CharWrapper -->
+
         <div id="inventory" style="display:none; height:100%;">
-          <div id="register" style="overflow:auto;">
+
+          <div id="register">
+            <div id="inventoryTitle">Player Inventory:</div>
             <table class="inventoryTable" id="gpTable">
               <tr>
                 <th>Transaction Description</th>
@@ -150,7 +153,6 @@
                 <td><input type="text" id="gpIncrement"></td>
                 <td><button onclick="recordGP()">Record</button></td>
               </tr>
-
             </table>
           </div>
           <div id="items">
@@ -188,7 +190,6 @@
                     <option>Shoulders</option>
                     <option>Wrists</option>
                   </select>
-
                 </td>
                 <td><input type="checkbox" id="isWorn"></td>
                 <td><input type="text" id="itemWeight" style="width:40px;"></td>
@@ -196,9 +197,13 @@
                 <td><input type="text" id="itemCount" style="width:40px;"></td>
                 <td><button onclick="recordItem()">Record</button></td>
               </tr>
-
             </table>
           </div>
+          <div id="addInv" style="display:none;">
+            <br> Inventory name: <input style="text" id="newInventoryName"> <button onclick="newInventory()">Submit</button>
+          </div>
+          <div id="inventoryTabs"></div>
+
         </div> <!-- Inventory -->
         <div id="lore" display="style:none;">
           <div id="lorePage" class="lorePage"></div>

@@ -115,6 +115,10 @@ function enableTab(tabName) {
         children[x].style.display = "none";
     }
     document.getElementById(tabName).style.display="block";
+    if (tabName == "inventory") {
+    document.getElementById('register').scrollTop = document.getElementById('register').scrollHeight
+    document.getElementById('items').scrollTop = document.getElementById('items').scrollHeight
+    }
     //show the one that was passed
 }
 
@@ -319,3 +323,4 @@ function changeItemCat(target) {
         document.getElementById("itemText").style.display = "none"
     }
 }
+

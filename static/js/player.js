@@ -12,6 +12,8 @@ var lookingAtX;
 var lookingAtY;
 var gpTableSavedHTML;
 var inventoryTableSavedHTML;
+var selectedInventory;
+var savedInventories;
 const isGM = false;
 window.onload = function() {
     gpTableSavedHTML = document.getElementById("gpTable").innerHTML;
@@ -32,7 +34,8 @@ window.onload = function() {
             charName=url_ob.searchParams.get("charName")
             socket.emit('player_join', {room: room, charName: charName});
             socket.emit("get_lore", room);
-            socket.emit("get_inventories", room, charName)
+            socket.emit("get_inventories", room, charName);
+            selectedInventory = charName;
         }
     });
     socket.on('do_update', function(msg) {
@@ -142,41 +145,7 @@ window.onload = function() {
     socket.on("showLore", function(msg) {
         updateLore(msg.lore, msg.lore_num);
     });
-    socket.on("update_inventory", function(inventories) {
-        tmpInventory = inventories[charName].gp;
-        console.log(inventories[charName]);
-        var table = document.getElementById("gpTable");
-        table.innerHTML = gpTableSavedHTML;
-        for (x=0;x<tmpInventory.length;x++){
-            var row = table.insertRow(x+1);
-            var descriptionCell = row.insertCell(0);
-            var decrementCell = row.insertCell(1);
-            var incrementCell = row.insertCell(2);
-            var totalCell = row.insertCell(3);
-            descriptionCell.innerText = tmpInventory[x].description
-            decrementCell.innerText = tmpInventory[x].decrement
-            incrementCell.innerText = tmpInventory[x].increment
-            totalCell.innerText = tmpInventory[x].result
-            if (x == tmpInventory.length-1){
-            row.insertCell(4).innerHTML = '<button onclick="deleteLastGPTransaction()">Delete</button>';
-            }
-        }
-        document.getElementById("register").scrollTop = document.getElementById("register").scrollHeight
-        tmpInventory = inventories[charName].inventory;
-        var table = document.getElementById("itemTable");
-        table.innerHTML = inventoryTableSavedHTML;
-        for (x=0;x<tmpInventory.length;x++){
-            var row = table.insertRow(x+1);
-            row.insertCell(0).innerText = tmpInventory[x].item;
-            row.insertCell(1).innerText = tmpInventory[x].itemSlot;
-            row.insertCell(2).innerHTML = `<input type="checkbox" ${(tmpInventory[x].isWorn) ? "checked" : ""}>`;
-            //row.insertCell(2).innerHTML = tmpInventory[x].isWorn;
-            row.insertCell(3).innerText = tmpInventory[x].itemWeight;
-            row.insertCell(4).innerText = tmpInventory[x].itemValue;
-            row.insertCell(5).innerHTML = '<input type="text" style="width:40px;" value="' + tmpInventory[x].itemCount + '"></input>';
-            row.insertCell(6).innerHTML = `<button onclick="updateInv(this, ${x})">Update</button><button onclick="deleteItem( ${x})">Delete</button>`;
-        }
-    });
+    socket.on("update_inventory", populateInventory);
 } //end onload
 window.onunload = function() {
     socket.emit('player_disconnect', {room: room, charName: charName});
@@ -186,12 +155,14 @@ function updateInv(element, invNum) {
     itemObj = {}
     itemObj.invNum = invNum;
     itemObj.isWorn = element.parentElement.parentElement.children[2].children[0].checked
+    itemObj.itemWeight = element.parentElement.parentElement.children[3].children[0].value
+    itemObj.itemValue = element.parentElement.parentElement.children[4].children[0].value
     itemObj.itemCount = element.parentElement.parentElement.children[5].children[0].value
     console.log(invNum)
-    socket.emit('update_item', room, charName, charName, itemObj);
+    socket.emit('update_item', room, charName, selectedInventory, itemObj);
 }
 function deleteItem(invNum) {
-    socket.emit('delete_item', room, charName, charName, invNum);
+    socket.emit('delete_item', room, charName, selectedInventory, invNum);
 }
 function advanceInit() {
     socket.emit('advance_init', {room: room, charName: charName});
@@ -272,11 +243,9 @@ function sendChat() {
 }
 
 function joinGame() {
-
-            document.getElementById("charWrapper").appendChild( document.getElementById("charDiv"));
-            document.getElementById("joinGameButton").style.display = "none";
-            document.getElementById("updateCharButton").style.display = "block";
-
+    document.getElementById("charWrapper").appendChild( document.getElementById("charDiv"));
+    document.getElementById("joinGameButton").style.display = "none";
+    document.getElementById("updateCharButton").style.display = "block";
     console.log({room: room, charName: charName});
     document.getElementById("joinDiv").style.display = "none";
     document.getElementById("screenDiv").style.display = "block";
@@ -294,7 +263,11 @@ function joinGame() {
     window.history.replaceState(null, null, window.location.href + `&charName=${charName}`);
     socket.emit('player_join', {room: room, charName: charName, charShortName: charShortName, color: color, perception: perception, movementSpeed: movementSpeed, dex: dex, size: size, darkvision: darkvision, lowLight: lowLight, trapfinding: trapfinding, permanentAbilities: permanentAbilities});
     socket.emit("get_lore", room);
+    selectedInventory = charName;
+    socket.emit("get_inventories", room, charName);
 }
+
+
 function selectUnit(e, selectedUnitNum) {
     if (typeof selectedUnit == "undefined") {
         e.className = "selected";
@@ -354,13 +327,12 @@ function recordGP() {
     description = document.getElementById("gpDescription").value;
     increment = Number(document.getElementById("gpIncrement").value);
     decrement = Number(document.getElementById("gpDecrement").value);
-
-    socket.emit("add_gp", room, charName, charName, description, increment, decrement)
+    socket.emit("add_gp", room, charName, selectedInventory, description, increment, decrement);
 }
 
 
 function deleteLastGPTransaction() {
-socket.emit("delete_gp_transaction", room, charName, charName);
+socket.emit("delete_gp_transaction", room, charName, selectedInventory);
 }
 
 function recordItem() {
@@ -371,7 +343,81 @@ function recordItem() {
     itemObj.itemWeight = document.getElementById("itemWeight").value;
     itemObj.itemValue = document.getElementById("itemValue").value;
     itemObj.itemCount = document.getElementById("itemCount").value;
+    socket.emit("add_item", room, charName, selectedInventory, itemObj)
+}
 
+function changeInventory(newInventory) {
+    selectedInventory = newInventory;
+    if (selectedInventory == "add") {
+        document.getElementById("addInv").style.display="block";
+        document.getElementById("register").style.display="none";
+        document.getElementById("items").style.display="none";
+    } else {
+        populateInventory(savedInventories);
+    }
+}
 
-    socket.emit("add_item", room, charName, charName, itemObj)
+function populateInventory(inventories) {
+    document.getElementById("addInv").style.display="none";
+    document.getElementById("register").style.display="block";
+    document.getElementById("items").style.display="block";
+    document.getElementById("inventoryTitle").innerText = selectedInventory;
+    if (selectedInventory !== Object.keys(inventories)[0]) {
+        document.getElementById("inventoryTitle").innerHTML += `<br><button onclick="deleteInventory('${selectedInventory}')">delete</button>`
+    }
+    savedInventories = inventories;
+    tmpInventory = inventories[selectedInventory].gp;
+    console.log(inventories[charName]);
+    var table = document.getElementById("gpTable");
+    table.innerHTML = gpTableSavedHTML;
+    for (x=0;x<tmpInventory.length;x++){
+        var row = table.insertRow(x+1);
+        var descriptionCell = row.insertCell(0);
+        var decrementCell = row.insertCell(1);
+        var incrementCell = row.insertCell(2);
+        var totalCell = row.insertCell(3);
+        descriptionCell.innerText = tmpInventory[x].description
+        decrementCell.innerText = tmpInventory[x].decrement
+        incrementCell.innerText = tmpInventory[x].increment
+        totalCell.innerText = tmpInventory[x].result
+        if (x == tmpInventory.length-1){
+            row.insertCell(4).innerHTML = '<button onclick="deleteLastGPTransaction()">Delete</button>';
+        }
+    }
+    document.getElementById("register").scrollTop = document.getElementById("register").scrollHeight
+    tmpInventory = inventories[selectedInventory].inventory;
+    var table = document.getElementById("itemTable");
+    table.innerHTML = inventoryTableSavedHTML;
+    for (x=0;x<tmpInventory.length;x++){
+        var row = table.insertRow(x+1);
+        row.insertCell(0).innerText = tmpInventory[x].item;
+        row.insertCell(1).innerText = tmpInventory[x].itemSlot;
+        row.insertCell(2).innerHTML = `<input type="checkbox" ${(tmpInventory[x].isWorn) ? "checked" : ""}>`;
+        row.insertCell(3).innerHTML = '<input type="text" style="width:40px;" value="' + tmpInventory[x].itemWeight + '"></input>';
+        row.insertCell(4).innerHTML = '<input type="text" style="width:40px;" value="' + tmpInventory[x].itemValue + '"></input>';
+        row.insertCell(5).innerHTML = '<input type="text" style="width:40px;" value="' + tmpInventory[x].itemCount + '"></input>';
+        row.insertCell(6).innerHTML = `<button onclick="updateInv(this, ${x})">Update</button><button onclick="deleteItem( ${x})">Delete</button>`;
+    }
+    tmpHTML = '';
+    for (x=0;x<Object.keys(inventories).length; x++) {
+        tmpName = Object.keys(inventories)[x];
+        tmpHTML += `<div class="tab" onClick="changeInventory('${tmpName}')">${tmpName}</div>`;
+    }
+    tmpHTML += `<div class="tab" onClick="changeInventory('add')">add</div>`;
+    document.getElementById("inventoryTabs").innerHTML = tmpHTML;
+}
+
+function newInventory() {
+    tmpSelectedInventory = document.getElementById("newInventoryName").value;
+    if (typeof savedInventories[tmpSelectedInventory] == "undefined") {
+    selectedInventory = tmpSelectedInventory;
+    socket.emit("add_inventory", room, charName, selectedInventory)
+    }
+}
+
+function deleteInventory(invToDel) {
+    if (invToDel !== Object.keys(savedInventories)[0]) {
+        selectedInventory = Object.keys(savedInventories)[0]
+        socket.emit("del_inventory", room, charName, invToDel)
+    }
 }

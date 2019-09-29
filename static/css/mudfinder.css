@@ -11,10 +11,20 @@ img {
     max-width:100%;
 }
 #register {
-    height:50%;
+    height:calc(50% - 40px);
+    overflow:auto;
 }
 #items {
-    height:50%;
+    height:calc(50% - 40px);
+    overflow:auto;
+}
+#addInv {
+    height:calc(100% - 80px);
+}
+#inventoryTitle {
+    text-align:center;
+    padding:10px;
+    font-weight:bold;
 }
 .centeredButton {
     margin: auto;

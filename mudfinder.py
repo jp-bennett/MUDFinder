@@ -745,6 +745,8 @@ def update_item(room, player, inventory, data):
         tmpItem = ROOMS[room].playerList[player]["inventories"][inventory]["inventory"][data["invNum"]]
         tmpItem["isWorn"] = data["isWorn"]
         tmpItem["itemCount"] = data["itemCount"]
+        tmpItem["itemWeight"] = data["itemWeight"]
+        tmpItem["itemValue"] = data["itemValue"]
         emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
 
 
@@ -759,6 +761,23 @@ def delete_item(room, player, inventory, invNum):
 def get_inventories(room, player):
     if room in ROOMS and player in ROOMS[room].playerList.keys():
         emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
+
+
+@socketio.on('add_inventory')
+def add_inventory(room, player, inventory_name):
+    if room in ROOMS and player in ROOMS[room].playerList.keys():
+        ROOMS[room].playerList[player]["inventories"][inventory_name] = {}
+        ROOMS[room].playerList[player]["inventories"][inventory_name]['gp'] = []
+        ROOMS[room].playerList[player]["inventories"][inventory_name]['inventory'] = []
+        emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
+
+
+@socketio.on('del_inventory')
+def del_inventory(room, player, inventory_name):
+    if room in ROOMS and player in ROOMS[room].playerList.keys():
+        ROOMS[room].playerList[player]["inventories"].pop(inventory_name)
+        emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
+
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port="5000")
