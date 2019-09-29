@@ -64,6 +64,8 @@ class Session(object):
         for x in self.unitList:
             if x["type"] == "player":
                 self.playerList[x["charName"]] = x
+                x["connections"] = 0
+                x["connected"] = False
             if "inInit" in x.keys() and x["inInit"]:
                 self.initiativeList.append(x)
         self.mapArray = obj["mapArray"]
