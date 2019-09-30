@@ -224,7 +224,6 @@ def on_player_join(data):
             ROOMS[room].playerList[data['charName']]["inventories"][data['charName']] = {}
             ROOMS[room].playerList[data['charName']]["inventories"][data['charName']]["gp"] = []
             ROOMS[room].playerList[data['charName']]["inventories"][data['charName']]["inventory"] = []
-
         ROOMS[room].playerList[data['charName']]["sid"] = request.sid
         ROOMS[room].playerList[data['charName']]["type"] = "player"
         ROOMS[room].playerList[data['charName']]["connections"] += 1
@@ -324,6 +323,8 @@ def on_end_init(data):
             x["inInit"] = False
             x["movePath"] = []
             x["distance"] = 0
+            if x["type"] == "player":
+                x["initiative"] = ""
         ROOMS[room].initiativeCount = 0
         ROOMS[room].initiativeList = []
         emit('do_update', ROOMS[room].player_json(), room=room)
@@ -442,10 +443,13 @@ def on_add_to_initiative(data):
     room = data['room']
     if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
         for x in data["selectedUnits"]:
-            ROOMS[room].unitList[x]["inInit"] = True
-            ROOMS[room].unitList[x]["movePath"] = []
-            ROOMS[room].unitList[x]["distance"] = 0
-            ROOMS[room].insert_initiative(ROOMS[room].unitList[x])
+            if ROOMS[room].unitList[x]["type"] == "player":
+                ROOMS[room].unitList[x]["requestInit"] = True
+            else:
+                ROOMS[room].unitList[x]["inInit"] = True
+                ROOMS[room].unitList[x]["movePath"] = []
+                ROOMS[room].unitList[x]["distance"] = 0
+                ROOMS[room].insert_initiative(ROOMS[room].unitList[x])
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 
