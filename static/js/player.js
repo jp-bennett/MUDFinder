@@ -38,6 +38,11 @@ window.onload = function() {
             selectedInventory = charName;
         }
     });
+    socket.on('reconnect', function () {
+        console.log('you have been reconnected');
+        // where username is a global variable for the client
+        socket.emit('player_reconnect', room, charName);
+    });
     socket.on('do_update', function(msg) {
         playerData = msg;
         console.log(playerData);

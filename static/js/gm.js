@@ -152,9 +152,10 @@ socket.on('gm_update', function(msg) {
     document.getElementById("unitControlledBy").innerHTML =  '<option value="gm" selected="selected">gm</option>';
     for (var i = 0; i < Object.keys(gmData.playerList).length; i++) {
         tmpPlayerName = Object.keys(gmData.playerList)[i];
-        document.getElementById("links").innerHTML += `<a href="player.html?room=${room}&charName=${tmpPlayerName}">${tmpPlayerName}</a><br>`
+        document.getElementById("links").innerHTML += `<a href="player.html?room=${room}&charName=${tmpPlayerName}">${tmpPlayerName}</a>` +
+            `<button onclick="deleteUser('${tmpPlayerName}')">Delete</button><br>`;
+        document.getElementById("unitControlledBy").innerHTML += `<option value="${tmpPlayerName}">${tmpPlayerName}</option>`;
         if (gmData.playerList[tmpPlayerName].connected) {
-            document.getElementById("unitControlledBy").innerHTML += `<option value="${tmpPlayerName}">${tmpPlayerName}</option>`;
             document.getElementById("connectedPlayers").innerHTML += tmpPlayerName + "<br >";
         }
     }
@@ -492,5 +493,12 @@ function handleDrag (elements) {
             }
         }
         ds.clearSelection();
+    }
+}
+
+function deleteUser(delUser) {
+    if (confirm("Delete " + delUser + "?")) {
+        console.log("Deleting");
+        socket.emit('delete_player', room, gmKey, delUser);
     }
 }

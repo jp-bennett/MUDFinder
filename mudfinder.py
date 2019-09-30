@@ -201,6 +201,7 @@ def on_player_join(data):
     """Join a game lobby"""
     room = data['room']
     if room in ROOMS:
+        print("new connect")
         join_room(room)
         if not any(d == data['charName'] for d in ROOMS[room].playerList):  # TODO: make this a class function
             ROOMS[room].playerList[
@@ -704,6 +705,13 @@ def on_player_disconnect(data):
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 
+@socketio.on('player_reconnect')
+def on_player_reconnect(room, charName):
+    print("reconnect")
+    if room in ROOMS and any(d == charName for d in ROOMS[room].playerList):
+        ROOMS[room].playerList[charName]["connections"] -= 1
+
+
 @socketio.on('add_gp')
 def add_gp(room, player, inventory, description, increment, decrement):
     if room in ROOMS and player in ROOMS[room].playerList.keys():
@@ -777,6 +785,13 @@ def del_inventory(room, player, inventory_name):
     if room in ROOMS and player in ROOMS[room].playerList.keys():
         ROOMS[room].playerList[player]["inventories"].pop(inventory_name)
         emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
+
+@socketio.on('delete_player')
+def delete_player(room, gmKey, player_name):
+    if room in ROOMS and gmKey == ROOMS[room].gmKey:
+        ROOMS[room].unitList.pop(ROOMS[room].playerList[player_name]["unitNum"])
+        ROOMS[room].playerList.pop(player_name)
+        emit('do_update', ROOMS[room].player_json(), room=room)
 
 
 if __name__ == '__main__':
