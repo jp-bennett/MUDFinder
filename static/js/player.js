@@ -82,7 +82,7 @@ window.onload = function() {
                   tmpHTML += `<div class="nonSelectedInit">`;
               }
               tmpHTML += '<div style="float:left; padding:7px;">' + playerData.initiativeList[i].charName + '</div><div style="float:right;">' + playerData.initiativeList[i].initiative +
-              '</div></div><div id="activeInit"><--</div></div>';
+              '</div></div><div id="activeInit"><-</div></div>';
               document.getElementById("initiativeDiv").innerHTML += tmpHTML;
 
           }
@@ -395,6 +395,7 @@ function populateInventory(inventories) {
     tmpInventory = inventories[selectedInventory].inventory;
     var table = document.getElementById("itemTable");
     table.innerHTML = inventoryTableSavedHTML;
+    tmpWeight = 0;
     for (x=0;x<tmpInventory.length;x++){
         var row = table.insertRow(x+1);
         row.insertCell(0).innerText = tmpInventory[x].item;
@@ -404,7 +405,11 @@ function populateInventory(inventories) {
         row.insertCell(4).innerHTML = '<input type="text" style="width:40px;" value="' + tmpInventory[x].itemValue + '"></input>';
         row.insertCell(5).innerHTML = '<input type="text" style="width:40px;" value="' + tmpInventory[x].itemCount + '"></input>';
         row.insertCell(6).innerHTML = `<button onclick="updateInv(this, ${x})">Update</button><button onclick="deleteItem( ${x})">Delete</button>`;
+        if (!isNaN(tmpInventory[x].itemWeight) && !isNaN(tmpInventory[x].itemCount)) {
+            tmpWeight += Number(tmpInventory[x].itemWeight) * Number(tmpInventory[x].itemCount);
+        }
     }
+    document.getElementById("totalWeight").innerHTML = "Total Weight: " + tmpWeight;
     tmpHTML = '';
     for (x=0;x<Object.keys(inventories).length; x++) {
         tmpName = Object.keys(inventories)[x];

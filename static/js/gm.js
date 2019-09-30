@@ -119,7 +119,7 @@ socket.on('gm_update', function(msg) {
                 tmpHTML += `</div>
                 <div style="float:right;"> <span style="cursor: default;" onclick="earlierInit(event, ${i})">&#9650;</span> <br> <span style="cursor: default;" onclick="laterInit(event, ${i})">&#9660;</span></div>
               </div>
-              <div id="activeInit"><--
+              <div id="activeInit"><-
             </div>
           </div>`;
         document.getElementById("initiativeDiv").innerHTML += tmpHTML;
