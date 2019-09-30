@@ -281,12 +281,14 @@ def on_initiative(data):
     if room in ROOMS:
         ROOMS[room].playerList[data['charName']]["requestInit"] = False
         for x in ROOMS[room].unitList:
-            if x["controlledBy"] == data['charName']:
-                x["initiative"] = data["initiative"].pop(0)
-                x["inInit"] = True
-                x["movePath"] = []
-                x["distance"] = 0
-                ROOMS[room].insert_initiative(x)
+            if x["controlledBy"] == data['charName'] and not x["inInit"]:
+                tmpInit = data["initiative"].pop(0)
+                if tmpInit != "":
+                    x["initiative"] = tmpInit
+                    x["inInit"] = True
+                    x["movePath"] = []
+                    x["distance"] = 0
+                    ROOMS[room].insert_initiative(x)
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 
@@ -445,7 +447,7 @@ def on_add_to_initiative(data):
         for x in data["selectedUnits"]:
             if ROOMS[room].unitList[x]["type"] == "player":
                 ROOMS[room].unitList[x]["requestInit"] = True
-            else:
+            elif ROOMS[room].unitList[x]["controlledBy"] == "gm":
                 ROOMS[room].unitList[x]["inInit"] = True
                 ROOMS[room].unitList[x]["movePath"] = []
                 ROOMS[room].unitList[x]["distance"] = 0
@@ -749,6 +751,7 @@ def add_item(room, player, inventory, data):
         tmpInventory = ROOMS[room].playerList[player]["inventories"][inventory]["inventory"]
         tmpInventory.append(data)
         emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
+
 
 @socketio.on('update_item')
 def update_item(room, player, inventory, data):

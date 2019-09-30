@@ -126,7 +126,7 @@ window.onload = function() {
             document.getElementById("bottomDiv").style.display = "block";
             tmpHTML = '<form action="javascript:sendInit()">';
             for (i=0; i< playerData.unitList.length;i++) {
-                if (playerData.unitList[i].controlledBy == charName) {
+                if (playerData.unitList[i].controlledBy == charName && !playerData.unitList[i].inInit) {
                     tmpHTML += '<div style="display: inline-block; padding:4px;">';
                     tmpHTML += playerData.unitList[i].charName + ': <br>';
                     tmpHTML += `<input type="text" id="init${i}">`;
@@ -193,8 +193,8 @@ function sendInit() {
     console.log(room);
     tmpInit = [];
     for (i=0; i< playerData.unitList.length;i++) {
-        if (playerData.unitList[i].controlledBy == charName) {
-            if (Number.isNaN(parseInt(document.getElementById(`init${i}`).value))){
+        if (playerData.unitList[i].controlledBy == charName && !playerData.unitList[i].inInit) {
+            if (Number.isNaN(parseInt(document.getElementById(`init${i}`).value)) && document.getElementById(`init${i}`).value !== ""){
                 return
             }
             tmpInit.push(document.getElementById(`init${i}`).value)
