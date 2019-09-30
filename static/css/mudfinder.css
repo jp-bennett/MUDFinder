@@ -65,6 +65,12 @@ img {
     height:90%;
     overflow:auto;
 }
+.loreIMG {
+    max-height: calc(100% - 40px);
+}
+.loreTab {
+    height:100%;
+}
 #loreTabs {
     height:10%
 }

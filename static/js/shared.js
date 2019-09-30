@@ -169,7 +169,7 @@ function uploadLore () { //https://github.com/miguelgrinberg/socketio-examples
     //FReader = new FileReader();
     Name = document.getElementById('loreFileUpload').value;
     file = document.getElementById('loreFileUpload').files[0];
-    socket.emit('lore_upload', room, file.size, document.getElementById("loreName").value, document.getElementById("loreText").value, function(loreSlot) {//we prime the server
+    socket.emit('lore_upload', room, file.size, document.getElementById("loreName").value, document.getElementById("loreText").value, charName, function(loreSlot) {//we prime the server
         this.loreSlot = loreSlot; // and then get back the data needed to do the rest of the transfer.
         readFileChunk(file, 0, chunk_size,
             onReadSuccess.bind(this),
@@ -218,15 +218,15 @@ function updateLore(msg, num) {
     document.getElementById("lorePage").innerHTML = "";
     document.getElementById("loreTabs").innerHTML = "";
     for (i=0; i< msg.length; i++) {
-        if(isGM || msg[i].loreVisible) {
-            tmpHTML = `<div id="loreTab${i}" style="display:none;" id=loreTab${i}>`;
+        if(isGM || msg[i].loreVisible || msg[i].loreOwner == charName) {
+            tmpHTML = `<div class="loreTab" id="loreTab${i}" style="display:none;" id=loreTab${i}>`;
             if (typeof msg[i].loreSize == "undefined" || msg[i].loreSize == 0) {
-                tmpHTML += `<img id="loreIMG${i}" src="${msg[i].loreURL}"></img>`;
+                tmpHTML += `<img class="loreIMG" id="loreIMG${i}" src="${msg[i].loreURL}"></img>`;
             } else {
-                tmpHTML += `<img id="loreIMG${i}"></img>`;
+                tmpHTML += `<img class="loreIMG" id="loreIMG${i}"></img>`;
             }
             tmpHTML += `<br><span>${msg[i].loreText}</span><br>`;
-            if (isGM) {
+            if (isGM || msg[i].loreOwner == charName) {
                 tmpHTML += `Visible: <input onclick="changeLoreVisibility(${i})" type="checkbox" ${(msg[i].loreVisible) ? "checked" : ""}><br>`;
                 tmpHTML += `<button onclick="deleteLore(${i})">Delete</button><br>`;
             }
@@ -272,27 +272,31 @@ function enableLoreTab(tabName) {
     //hide all of them
     children = document.getElementById("lorePage").children
     for (x = 0; x < children.length; x++) {
-        //if (x == tabName) {
-        //children[x].style.display = "block";
-        //} else {
         children[x].style.display = "none";
-        //}
     }
     document.getElementById(`loreTab${tabName}`).style.display = "block"
 
 }
 function changeLoreVisibility(i) {
-    socket.emit("lore_visible", room, gmKey, i);
+    if (isGM) {
+        socket.emit("lore_visible", room, gmKey, i);
+    } else {
+        socket.emit("lore_visible", room, charName, i);
+    }
 }
 
 function deleteLore(i) {
-    socket.emit("delete_lore", room, gmKey, i);
+    if (isGM) {
+        socket.emit("delete_lore", room, gmKey, i);
+    } else {
+        socket.emit("delete_lore", room, charName, i);
+    }
 }
 
 function sendLoreURL () {
     if (document.getElementById("loreFileUpload").value == "") {
         console.log(document.getElementById("loreURL").value)
-        socket.emit("lore_url", room, document.getElementById("loreURL").value, document.getElementById("loreName").value, document.getElementById("loreText").value);
+        socket.emit("lore_url", room, document.getElementById("loreURL").value, document.getElementById("loreName").value, document.getElementById("loreText").value, charName);
     } else {
         uploadLore();
     }

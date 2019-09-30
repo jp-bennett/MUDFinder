@@ -134,11 +134,11 @@ def save_download():
 
 
 @socketio.on('lore_upload')
-def on_lore_upload(room, lore_size, lore_name, lore_text):
+def on_lore_upload(room, lore_size, lore_name, lore_text, lore_owner):
     if room in ROOMS:
         loreNum = len(ROOMS[room].lore)
         ROOMS[room].lore.append(
-            {"loreSize": lore_size, "loreName": lore_name, "loreText": lore_text, "loreVisible": False}
+            {"loreSize": lore_size, "loreName": lore_name, "loreText": lore_text, "loreVisible": False, "loreOwner": lore_owner}
         )
         ROOMS[room].loreFiles[loreNum] = io.BytesIO()
         return loreNum
@@ -156,21 +156,20 @@ def write_chunk(room, loreNum, offset, data):
 def get_lore_file(room, loreNum):
     if room in ROOMS:
         return ROOMS[room].loreFiles[loreNum]
-        #return base64.b64encode(ROOMS[room].loreFiles[loreNum].getvalue()).decode()
 
 
 @socketio.on('lore_url')
-def on_lore_url(room, lore_url, lore_name, lore_text):
+def on_lore_url(room, lore_url, lore_name, lore_text, lore_owner):
     if room in ROOMS:
         ROOMS[room].lore.append(
-            {"loreURL": lore_url, "loreName": lore_name, "loreText": lore_text, "loreVisible": False, "loreSize": 0})
+            {"loreURL": lore_url, "loreName": lore_name, "loreText": lore_text, "loreVisible": False, "loreSize": 0, "loreOwner": lore_owner})
         emit("showLore", {"lore": ROOMS[room].lore, "lore_num": None}, room=room)
 
 
 @socketio.on('lore_visible')
-def on_lore_visible(room, gmKey, lore_num):
+def on_lore_visible(room, gmKey, lore_num):  # but player can choose. TODO:
     print(lore_num)
-    if room in ROOMS and ROOMS[room].gmKey == gmKey:
+    if room in ROOMS and (ROOMS[room].gmKey == gmKey or gmKey == ROOMS[room].lore[lore_num]["loreOwner"]):
         ROOMS[room].lore[lore_num]["loreVisible"] = not ROOMS[room].lore[lore_num]["loreVisible"]
         if not ROOMS[room].lore[lore_num]["loreVisible"]:
             lore_num = None
@@ -179,7 +178,7 @@ def on_lore_visible(room, gmKey, lore_num):
 
 @socketio.on('delete_lore')
 def on_delete_lore(room, gmKey, lore_num):
-    if room in ROOMS and ROOMS[room].gmKey == gmKey:
+    if room in ROOMS and (ROOMS[room].gmKey == gmKey or gmKey == ROOMS[room].lore[lore_num]["loreOwner"]):
         ROOMS[room].lore.pop(lore_num)
         tmp_keys = []
         for x in ROOMS[room].loreFiles:

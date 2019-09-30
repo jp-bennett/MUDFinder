@@ -4,6 +4,7 @@ var gmData;
 var zoomSize = 20;
 var selectedTool;
 var socket;
+var charName = "GM";
 var ds = new DragSelect({
   selectables: document.getElementsByClassName('selectableTile'),
   callback: function(elements) {handleDrag(elements);},
