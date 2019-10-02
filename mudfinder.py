@@ -567,8 +567,8 @@ def on_del_init(data):
     if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
         if ROOMS[room].inInit and ROOMS[room].initiativeCount > data['initCount']:
             ROOMS[room].initiativeCount -= 1
-        elif ROOMS[room].inInit and ROOMS[room].initiativeCount == data['initCount'] and data['initCount'] < len(
-                data["initList"]):
+        elif ROOMS[room].inInit and ROOMS[room].initiativeCount == data['initCount'] and data['initCount'] == len(
+                ROOMS[room].initList) - 1:
             ROOMS[room].initiativeCount = 0
         ROOMS[room].unitList.pop(ROOMS[room].initiativeList[data['initCount']]["unitNum"])
         ROOMS[room].number_units()
@@ -673,6 +673,8 @@ def on_later_initiative(data):
 def on_chat(data):
     room = data['room']
     if room in ROOMS:
+        if len(data['chat']) == 0:
+            return
         if data['charName'] == "gm":
             if ROOMS[room].gmKey == data['gmKey']:
                 emit("chat", {'chat': data['chat'], 'charName': data['charName']}, room=data['room'])

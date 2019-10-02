@@ -22,7 +22,7 @@
   <script type="text/javascript" charset="utf-8">
   var socket;
   window.onload = function() {
-    socket = io.connect('http://' + document.domain + ':' + location.port, {transports: ['websocket'], upgrade: false});
+    socket = io.connect(document.domain + ':' + location.port, {transports: ['websocket'], upgrade: false});
     // verify our websocket connection is established
     socket.on('connect', function() {
         console.log('Websocket connected!');

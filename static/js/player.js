@@ -20,7 +20,7 @@ window.onload = function() {
     inventoryTableSavedHTML = document.getElementById("itemTable").innerHTML;
     enableTab("mapWrapper")
     document.getElementById("updateCharButton").style.display = "none";
-    socket = io.connect('http://' + document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
+    socket = io.connect(document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
     // verify our websocket connection is established
     socket.on('connect', function() {
         console.log('Websocket connected!');

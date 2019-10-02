@@ -14,7 +14,7 @@ const isGM = true;
 showSeenOverlay = true;
 window.onload = function() {
 
-socket = io.connect('http://' + document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
+socket = io.connect(document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
 socket.on('connect', function() {
     console.log('Websocket connected!');
     if (typeof window.location.search.split("&")[1] != "undefined") {

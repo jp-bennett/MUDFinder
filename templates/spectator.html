@@ -55,7 +55,7 @@
     var playerdata;
     var isGM = false;
     window.onload = function() {
-      socket = io.connect('http://' + document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
+      socket = io.connect(document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
     
     // verify our websocket connection is established
     socket.on('connect', function() {
