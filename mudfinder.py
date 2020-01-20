@@ -281,7 +281,7 @@ def on_initiative(data):
     if room in ROOMS:
         ROOMS[room].playerList[data['charName']]["requestInit"] = False
         for x in ROOMS[room].unitList:
-            if x["controlledBy"] == data['charName'] and not x["inInit"]:
+            if x["controlledBy"] == data['charName'] and ("inInit" not in data or not x["inInit"]):
                 tmpInit = data["initiative"].pop(0)
                 if tmpInit != "":
                     x["initiative"] = tmpInit
@@ -728,7 +728,7 @@ def add_gp(room, player, inventory, description, increment, decrement):
         else:
             tmpTotal = tmpInventory[-1]["result"]
         tmpEntry = {}
-        tmpEntry["result"] = tmpTotal + increment - decrement
+        tmpEntry["result"] = round(tmpTotal + increment - decrement, 2)
         tmpEntry["description"] = description
         tmpEntry["increment"] = increment
         tmpEntry["decrement"] = decrement

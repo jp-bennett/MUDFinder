@@ -54,6 +54,7 @@
     var zoomSize = 20;
     var playerdata;
     var isGM = false;
+    var charName = "";
     window.onload = function() {
       socket = io.connect(document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
     

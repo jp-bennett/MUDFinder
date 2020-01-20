@@ -23,13 +23,13 @@ function updateMap(Data) {
         newMapText += '"';
         newMapText += `class='mapTile selectableTile `;
         if (Data.mapArray[x][y].tile == "doorOpen") {
-          if ((typeof Data.mapArray[x+1] !== "undefined" && Data.mapArray[x+1][y].tile =="floorTile") || (typeof Data.mapArray[x-1] !== "undefined" && Data.mapArray[x-1][y].tile =="floorTile")) {
+          if ((typeof Data.mapArray[x+1] !== "undefined" && Data.mapArray[x+1][y].walkable) || (typeof Data.mapArray[x-1] !== "undefined" && Data.mapArray[x-1][y].walkable)) {
             newMapText += "doorTileAOpen";
           } else {
             newMapText += "doorTileBOpen";
           }
         } else if (Data.mapArray[x][y].tile == "doorClosed") {
-          if (Data.mapArray[x+1][y].tile =="floorTile" || Data.mapArray[x-1][y].tile =="floorTile") {
+          if (Data.mapArray[x+1][y].walkable || Data.mapArray[x-1][y].walkable) {
             newMapText += "doorTileA";
           } else {
             newMapText += "doorTileB";
@@ -43,7 +43,7 @@ function updateMap(Data) {
               newMapText += "stairTileLeft";
           } else if (Data.mapArray[x][y-1].tile =="stairsUp") {
               newMapText += "stairTileLeft";
-          } else if (Data.mapArray[x+1][y].tile =="floorTile" || Data.mapArray[x-1][y].tile =="floorTile") {
+          } else if (Data.mapArray[x+1][y].walkable || Data.mapArray[x-1][y].walkable) {
               newMapText += "stairTileTop";
           } else {
               newMapText += "stairTileLeft";
@@ -81,7 +81,7 @@ function updateMap(Data) {
     document.getElementById("mapGraphic").style.display = "inline-block";
     document.getElementById("zoomControls").style.display = "block";
     for (var i = 0; i < Data.unitList.length; i++) {
-      if (typeof Data.unitList[i].x !== "undefined") {
+      if (typeof Data.unitList[i].x !== "undefined" && document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`) !== null) {
         if (typeof Data.unitList[i].charShortName === "undefined" || Data.unitList[i].charShortName == "") {
             Data.unitList[i].charShortName = Data.unitList[i].charName
         }
