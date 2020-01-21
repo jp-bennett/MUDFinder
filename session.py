@@ -131,11 +131,11 @@ class Session(object):
         for y in range(len(self.mapArray)):
             tmpMapLine = []
             for x in range(len(self.mapArray[y])):
-                tmpMapLine.append({"tile": self.mapArray[y][x]["tile"]})
+                tmpMapLine.append({"tile": self.mapArray[y][x]["tile"], "walkable": self.mapArray[y][x]["walkable"]})
                 if self.mapArray[y][x]["secret"]:
-                    tmpMapLine[x] = {"tile": "wallTile"}
+                    tmpMapLine[x] = {"tile": "wallTile", "walkable": False}
                 if not self.mapArray[y][x]["seen"]:
-                    tmpMapLine[x] = {"tile": "unseenTile"}
+                    tmpMapLine[x] = {"tile": "unseenTile", "walkable": False}
             tmpMapArray.append(tmpMapLine)
         playerObject["mapArray"] = tmpMapArray
         return playerObject
