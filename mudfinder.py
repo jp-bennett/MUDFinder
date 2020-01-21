@@ -107,10 +107,12 @@ def check_room(room):
         return True
     elif path.exists("saves/" + room + ".json"):
         with open("saves/" + room + ".json", "r") as infile:
+            print("reading")
             data = json.loads(infile.read())
             ROOMS[room] = Session(room, data["gmKey"], data["name"])
             ROOMS[room].from_json(data)
             ROOMS[room].number_units()
+            print("loaded")
             return True
     else:
         return False
@@ -842,6 +844,11 @@ def delete_player(room, gmKey, player_name):
         ROOMS[room].playerList.pop(player_name)
         emit('do_update', ROOMS[room].player_json(), room=room)
 
+
+@socketio.on('error_handle')
+def error_handle(room, error_message):
+    if check_room(room):
+        print("Error Message: " + error_message)
 
 with thread_lock:
     if thread is None:
