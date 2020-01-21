@@ -3,6 +3,9 @@ import json
 import time
 import io
 import base64
+from os import path
+from os import mkdir
+from threading import Lock
 from random import randint
 
 from flask import Flask, render_template, request, redirect
@@ -73,6 +76,44 @@ def roll_dice(input_roll_string):
 app = Flask(__name__)
 socketio = SocketIO(app)
 ROOMS = {}  # dict to track active rooms
+thread = None
+thread_lock = Lock()
+if not path.exists("saves"):
+    mkdir("saves")
+
+def savegame_thread():
+    global ROOMS
+    with app.app_context():
+        while True:
+            print("sleeping")
+            socketio.sleep(30)
+            print("trying to write")
+            for room in ROOMS.keys():
+                print("writing " + room + ".json")
+                with open("saves/" + room + ".json", "w") as outfile:
+                    json.dump(ROOMS[room].gen_save(), outfile)
+
+
+            #For each room
+
+#load the saved rooms? or load on demand?
+#https://stackoverflow.com/questions/14384739/how-can-i-add-a-background-thread-to-flask
+#https://github.com/miguelgrinberg/Flask-SocketIO/issues/651 https://github.com/miguelgrinberg/Flask-SocketIO/issues/651
+
+
+def check_room(room):
+    global ROOMS
+    if room in ROOMS:
+        return True
+    elif path.exists("saves/" + room + ".json"):
+        with open("saves/" + room + ".json", "r") as infile:
+            data = json.loads(infile.read())
+            ROOMS[room] = Session(room, data["gmKey"], data["name"])
+            ROOMS[room].from_json(data)
+            ROOMS[room].number_units()
+            return True
+    else:
+        return False
 
 
 @app.route('/')
@@ -122,7 +163,7 @@ def upload():
 @app.route('/download.html')
 def save_download():
     room = request.args['room']
-    if room in ROOMS and ROOMS[room].gmKey == request.args['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == request.args['gmKey']:
         response = app.response_class(
             response=json.dumps(ROOMS[room].gen_save()),
             status=200,
@@ -135,7 +176,7 @@ def save_download():
 
 @socketio.on('lore_upload')
 def on_lore_upload(room, lore_size, lore_name, lore_text, lore_owner):
-    if room in ROOMS:
+    if check_room(room):
         loreNum = len(ROOMS[room].lore)
         ROOMS[room].lore.append(
             {"loreSize": lore_size, "loreName": lore_name, "loreText": lore_text, "loreVisible": False, "loreOwner": lore_owner}
@@ -145,7 +186,7 @@ def on_lore_upload(room, lore_size, lore_name, lore_text, lore_owner):
 
 @socketio.on('write_chunk')
 def write_chunk(room, loreNum, offset, data):
-    if room in ROOMS:
+    if check_room(room):
         ROOMS[room].loreFiles[loreNum].seek(offset)
         ROOMS[room].loreFiles[loreNum].write(data)
         if offset + len(data) >= ROOMS[room].lore[loreNum]["loreSize"]:
@@ -154,13 +195,13 @@ def write_chunk(room, loreNum, offset, data):
 
 @socketio.on('get_lore_file')
 def get_lore_file(room, loreNum):
-    if room in ROOMS:
+    if check_room(room):
         return ROOMS[room].loreFiles[loreNum]
 
 
 @socketio.on('lore_url')
 def on_lore_url(room, lore_url, lore_name, lore_text, lore_owner):
-    if room in ROOMS:
+    if check_room(room):
         ROOMS[room].lore.append(
             {"loreURL": lore_url, "loreName": lore_name, "loreText": lore_text, "loreVisible": False, "loreSize": 0, "loreOwner": lore_owner})
         emit("showLore", {"lore": ROOMS[room].lore, "lore_num": None}, room=room)
@@ -169,7 +210,7 @@ def on_lore_url(room, lore_url, lore_name, lore_text, lore_owner):
 @socketio.on('lore_visible')
 def on_lore_visible(room, gmKey, lore_num):  # but player can choose. TODO:
     print(lore_num)
-    if room in ROOMS and (ROOMS[room].gmKey == gmKey or gmKey == ROOMS[room].lore[lore_num]["loreOwner"]):
+    if check_room(room) and (ROOMS[room].gmKey == gmKey or gmKey == ROOMS[room].lore[lore_num]["loreOwner"]):
         ROOMS[room].lore[lore_num]["loreVisible"] = not ROOMS[room].lore[lore_num]["loreVisible"]
         if not ROOMS[room].lore[lore_num]["loreVisible"]:
             lore_num = None
@@ -178,7 +219,7 @@ def on_lore_visible(room, gmKey, lore_num):  # but player can choose. TODO:
 
 @socketio.on('delete_lore')
 def on_delete_lore(room, gmKey, lore_num):
-    if room in ROOMS and (ROOMS[room].gmKey == gmKey or gmKey == ROOMS[room].lore[lore_num]["loreOwner"]):
+    if check_room(room) and (ROOMS[room].gmKey == gmKey or gmKey == ROOMS[room].lore[lore_num]["loreOwner"]):
         ROOMS[room].lore.pop(lore_num)
         tmp_keys = []
         for x in ROOMS[room].loreFiles:
@@ -191,7 +232,7 @@ def on_delete_lore(room, gmKey, lore_num):
 
 @socketio.on('get_lore')
 def on_get_lore(room):
-    if room in ROOMS:
+    if check_room(room):
         emit("showLore", {"lore": ROOMS[room].lore, "lore_num": None})
 
 
@@ -199,7 +240,7 @@ def on_get_lore(room):
 def on_player_join(data):
     """Join a game lobby"""
     room = data['room']
-    if room in ROOMS:
+    if check_room(room):
         print("new connect")
         join_room(room)
         if not any(d == data['charName'] for d in ROOMS[room].playerList):  # TODO: make this a class function
@@ -238,7 +279,7 @@ def on_player_join(data):
 def on_spectator_join(data):
     """Join a game lobby"""
     room = data['room']
-    if room in ROOMS:
+    if check_room(room):
         join_room(room)
         emit('do_update', ROOMS[room].player_json(), room=room)
     else:
@@ -249,7 +290,7 @@ def on_spectator_join(data):
 def on_gm_update(data):
     """gm session update"""
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         emit('gm_update', ROOMS[room].to_json())
 
 
@@ -257,7 +298,7 @@ def on_gm_update(data):
 def on_join_gm(data):
     """Join a game as GM"""
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         join_room(room)
         emit('gm_update', ROOMS[room].to_json())
     else:
@@ -268,7 +309,7 @@ def on_join_gm(data):
 def on_request_init(data):
     """request initiative"""
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         for d in ROOMS[room].playerList:
             ROOMS[room].playerList[d]["requestInit"] = True
         emit('do_update', ROOMS[room].player_json(), room=room)
@@ -278,7 +319,7 @@ def on_request_init(data):
 def on_initiative(data):
     """recieve initiative"""
     room = data['room']
-    if room in ROOMS:
+    if check_room(room):
         ROOMS[room].playerList[data['charName']]["requestInit"] = False
         for x in ROOMS[room].unitList:
             if x["controlledBy"] == data['charName'] and ("inInit" not in data or not x["inInit"]):
@@ -296,7 +337,7 @@ def on_initiative(data):
 def on_begin_init(data):
     """begin initiative"""
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         ROOMS[room].inInit = True
         ROOMS[room].initiativeCount = 0
         emit('do_update', ROOMS[room].player_json(), room=room)
@@ -305,7 +346,7 @@ def on_begin_init(data):
 @socketio.on('advance_init')
 def on_advance_init(data):
     room = data['room']
-    if room in ROOMS:
+    if check_room(room):
         if ("gmKey" in data and ROOMS[room].gmKey == data['gmKey']) or \
                 ROOMS[room].initiativeList[ROOMS[room].initiativeCount]["controlledBy"] == data["charName"]:
             ROOMS[room].initiativeCount += 1
@@ -319,7 +360,7 @@ def on_advance_init(data):
 @socketio.on('end_init')
 def on_end_init(data):
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         ROOMS[room].inInit = False
         for x in ROOMS[room].unitList:
             x["inInit"] = False
@@ -335,7 +376,7 @@ def on_end_init(data):
 @socketio.on('save_encounter')
 def on_save_encounter(data):
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         ROOMS[room].savedEncounters[data['encounterName']] = {}
         ROOMS[room].savedEncounters[data['encounterName']]["mapArray"] = copy.deepcopy(ROOMS[room].mapArray)
         ROOMS[room].savedEncounters[data['encounterName']]["unitList"] = []
@@ -348,7 +389,7 @@ def on_save_encounter(data):
 @socketio.on('remove_encounter')
 def on_remove_encounter(data):
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         ROOMS[room].savedEncounters.pop(data['encounterName'])
         emit('do_update', ROOMS[room].player_json(), room=room)
 
@@ -356,7 +397,7 @@ def on_remove_encounter(data):
 @socketio.on('load_encounter')
 def on_load_encounter(data):
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         ROOMS[room].mapArray = copy.deepcopy(ROOMS[room].savedEncounters[data['encounterName']]["mapArray"])
         for x in reversed(ROOMS[room].unitList):
             if x["controlledBy"] == "gm":
@@ -374,7 +415,7 @@ def on_load_encounter(data):
 @socketio.on('add_player_unit')
 def on_add_player_unit(data):
     room = data['room']
-    if room in ROOMS:
+    if check_room(room):
         unit = data['unit']
         unit["controlledBy"] = data["charName"]
         if ROOMS[room].inInit:
@@ -387,7 +428,7 @@ def on_add_player_unit(data):
 @socketio.on('clear_map')
 def on_clear_map(data):
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         ROOMS[room].mapArray = []
         ROOMS[room].inInit = False
         for x in reversed(ROOMS[room].unitList):  # since we're removing elements, have to walk it backwards
@@ -407,7 +448,7 @@ def on_clear_map(data):
 @socketio.on('add_unit')
 def on_add_unit(data):
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         data['unit']["movePath"] = []
         data['unit']["distance"] = 0
         ROOMS[room].unitList.append(data['unit'])
@@ -421,7 +462,7 @@ def on_add_unit(data):
 @socketio.on('update_unit')
 def on_update_unit(data):
     room = data['room']
-    if room in ROOMS:
+    if check_room(room):
         tmp_unit = ROOMS[room].unitList[int(data["unitNum"])]
         tmp_unit["charShortName"] = data["charShortName"]
         tmp_unit["color"] = data["color"]
@@ -443,7 +484,7 @@ def on_update_unit(data):
 @socketio.on('add_to_initiative')
 def on_add_to_initiative(data):
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         for x in data["selectedUnits"]:
             if ROOMS[room].unitList[x]["type"] == "player":
                 ROOMS[room].unitList[x]["requestInit"] = True
@@ -458,7 +499,7 @@ def on_add_to_initiative(data):
 @socketio.on('change_hp')
 def on_change_hp(data):
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         if "-" in data['changeHP'] or "+" in data['changeHP']:
             ROOMS[room].initiativeList[data['initCount']]["HP"] = str(
                 int(data['changeHP']) + int(ROOMS[room].initiativeList[data['initCount']]["HP"]))
@@ -470,7 +511,7 @@ def on_change_hp(data):
 @socketio.on('reset_movement')
 def on_reset_movement(data):
     room = data['room']
-    if room in ROOMS:
+    if check_room(room):
         tmpUnit = ROOMS[room].initiativeList[data['selectedInit']]
         if "gmKey" in data.keys():
             if ROOMS[room].gmKey == data['gmKey']:
@@ -493,7 +534,7 @@ def on_reset_movement(data):
 def on_locate_unit(data):
     startTime = time.time()
     room = data['room']
-    if room in ROOMS:  # and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room):  # and ROOMS[room].gmKey == data['gmKey']:
         if "selectedUnit" in data.keys():
             tmpUnit = ROOMS[room].unitList[data['selectedUnit']]  # can also be selectedInit
         elif "selectedInit" in data.keys():
@@ -540,7 +581,7 @@ def on_locate_unit(data):
 @socketio.on('remove_unit')
 def on_remove_unit(data):
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey'] and ROOMS[room].unitList[data['unitCount']][
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey'] and ROOMS[room].unitList[data['unitCount']][
         "inInit"] == False:
         ROOMS[room].unitList.pop(data['unitCount'])
         ROOMS[room].number_units()
@@ -550,7 +591,7 @@ def on_remove_unit(data):
 @socketio.on('remove_init')
 def on_remove_init(data):
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         if ROOMS[room].inInit and ROOMS[room].initiativeCount > data['initCount']:
             ROOMS[room].initiativeCount -= 1
         elif ROOMS[room].inInit and ROOMS[room].initiativeCount == data['initCount'] and data['initCount'] < len(
@@ -564,7 +605,7 @@ def on_remove_init(data):
 @socketio.on('del_init')
 def on_del_init(data):
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         if ROOMS[room].inInit and ROOMS[room].initiativeCount > data['initCount']:
             ROOMS[room].initiativeCount -= 1
         elif ROOMS[room].inInit and ROOMS[room].initiativeCount == data['initCount'] and data['initCount'] == len(
@@ -579,7 +620,7 @@ def on_del_init(data):
 @socketio.on('map_generate')
 def on_map_generate(data):
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         ROOMS[room].mapArray = []
         map_line_list = []
         for y in range(data["mapHeight"]):
@@ -594,7 +635,7 @@ def on_map_generate(data):
 @socketio.on('map_edit')
 def on_map_edit(data_pack):
     room = data_pack['room']
-    if room in ROOMS and ROOMS[room].gmKey == data_pack['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data_pack['gmKey']:
         for data in data_pack["tiles"]:
             if "Tile" in data["newTile"] or "door" in data["newTile"]:
                 ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["tile"] = data["newTile"]
@@ -623,7 +664,7 @@ def on_map_edit(data_pack):
 @socketio.on('map_upload')
 def on_map_upload(data):
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         ROOMS[room].mapArray = []
         mapText = data['mapText']
         mapLines = mapText.split("\n")
@@ -653,7 +694,7 @@ def on_map_upload(data):
 @socketio.on('earlier_initiative')
 def on_earlier_initiative(data):
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         if data['targetInitiativeCount'] == 0: return
         tmp_data = ROOMS[room].initiativeList.pop(data['targetInitiativeCount'])
         ROOMS[room].initiativeList.insert(data['targetInitiativeCount'] - 1, tmp_data)
@@ -663,7 +704,7 @@ def on_earlier_initiative(data):
 @socketio.on('later_initiative')
 def on_later_initiative(data):
     room = data['room']
-    if room in ROOMS and ROOMS[room].gmKey == data['gmKey']:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         tmpData = ROOMS[room].initiativeList.pop(data['targetInitiativeCount'])
         ROOMS[room].initiativeList.insert(data['targetInitiativeCount'] + 1, tmpData)
         emit('do_update', ROOMS[room].player_json(), room=room)
@@ -672,7 +713,7 @@ def on_later_initiative(data):
 @socketio.on('chat')
 def on_chat(data):
     room = data['room']
-    if room in ROOMS:
+    if check_room(room):
         if len(data['chat']) == 0:
             return
         if data['charName'] == "gm":
@@ -704,7 +745,7 @@ def on_game_upload(data):
 def on_player_disconnect(data):
     room = data['room']
     charName = data['charName']
-    if room in ROOMS and any(d == charName for d in ROOMS[room].playerList):
+    if check_room(room) and any(d == charName for d in ROOMS[room].playerList):
         ROOMS[room].playerList[charName]["connections"] -= 1
         if ROOMS[room].playerList[charName]["connections"] < 1:
             ROOMS[room].playerList[charName]["connected"] = False
@@ -715,13 +756,13 @@ def on_player_disconnect(data):
 @socketio.on('player_reconnect')
 def on_player_reconnect(room, charName):
     print("reconnect")
-    if room in ROOMS and any(d == charName for d in ROOMS[room].playerList):
+    if check_room(room) and any(d == charName for d in ROOMS[room].playerList):
         ROOMS[room].playerList[charName]["connections"] -= 1
 
 
 @socketio.on('add_gp')
 def add_gp(room, player, inventory, description, increment, decrement):
-    if room in ROOMS and player in ROOMS[room].playerList.keys():
+    if check_room(room) and player in ROOMS[room].playerList.keys():
         tmpInventory = ROOMS[room].playerList[player]["inventories"][inventory]["gp"]
         if len(tmpInventory) == 0:
             tmpTotal = 0
@@ -738,7 +779,7 @@ def add_gp(room, player, inventory, description, increment, decrement):
 
 @socketio.on('delete_gp_transaction')
 def delete_gp(room, player, inventory):
-    if room in ROOMS and player in ROOMS[room].playerList.keys():
+    if check_room(room) and player in ROOMS[room].playerList.keys():
         tmpInventory = ROOMS[room].playerList[player]["inventories"][inventory]["gp"]
         if len(tmpInventory) == 0:
             return
@@ -749,7 +790,7 @@ def delete_gp(room, player, inventory):
 
 @socketio.on('add_item')
 def add_item(room, player, inventory, data):
-    if room in ROOMS and player in ROOMS[room].playerList.keys():
+    if check_room(room) and player in ROOMS[room].playerList.keys():
         tmpInventory = ROOMS[room].playerList[player]["inventories"][inventory]["inventory"]
         tmpInventory.append(data)
         emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
@@ -757,7 +798,7 @@ def add_item(room, player, inventory, data):
 
 @socketio.on('update_item')
 def update_item(room, player, inventory, data):
-    if room in ROOMS and player in ROOMS[room].playerList.keys():
+    if check_room(room) and player in ROOMS[room].playerList.keys():
         tmpItem = ROOMS[room].playerList[player]["inventories"][inventory]["inventory"][data["invNum"]]
         tmpItem["isWorn"] = data["isWorn"]
         tmpItem["itemCount"] = data["itemCount"]
@@ -768,20 +809,20 @@ def update_item(room, player, inventory, data):
 
 @socketio.on('delete_item')
 def delete_item(room, player, inventory, invNum):
-    if room in ROOMS and player in ROOMS[room].playerList.keys():
+    if check_room(room) and player in ROOMS[room].playerList.keys():
         ROOMS[room].playerList[player]["inventories"][inventory]["inventory"].pop(invNum)
         emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
 
 
 @socketio.on('get_inventories')
 def get_inventories(room, player):
-    if room in ROOMS and player in ROOMS[room].playerList.keys():
+    if check_room(room) and player in ROOMS[room].playerList.keys():
         emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
 
 
 @socketio.on('add_inventory')
 def add_inventory(room, player, inventory_name):
-    if room in ROOMS and player in ROOMS[room].playerList.keys():
+    if check_room(room) and player in ROOMS[room].playerList.keys():
         ROOMS[room].playerList[player]["inventories"][inventory_name] = {}
         ROOMS[room].playerList[player]["inventories"][inventory_name]['gp'] = []
         ROOMS[room].playerList[player]["inventories"][inventory_name]['inventory'] = []
@@ -790,17 +831,21 @@ def add_inventory(room, player, inventory_name):
 
 @socketio.on('del_inventory')
 def del_inventory(room, player, inventory_name):
-    if room in ROOMS and player in ROOMS[room].playerList.keys():
+    if check_room(room) and player in ROOMS[room].playerList.keys():
         ROOMS[room].playerList[player]["inventories"].pop(inventory_name)
         emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
 
 @socketio.on('delete_player')
 def delete_player(room, gmKey, player_name):
-    if room in ROOMS and gmKey == ROOMS[room].gmKey:
+    if check_room(room) and gmKey == ROOMS[room].gmKey:
         ROOMS[room].unitList.pop(ROOMS[room].playerList[player_name]["unitNum"])
         ROOMS[room].playerList.pop(player_name)
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 
+with thread_lock:
+    if thread is None:
+        thread = socketio.start_background_task(savegame_thread)
+
 if __name__ == '__main__':
-    socketio.run(app, debug=True, host='0.0.0.0', port="5000")
+    socketio.run(app, debug=False, host='0.0.0.0', port="5000")
