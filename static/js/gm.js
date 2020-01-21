@@ -30,7 +30,6 @@ window.onload = function() {
                 ` Players can use <a href="player.html?room=${room}">this link!</a><br>` +
                 ` Spectators can use <a href="spectator.html?room=${room}">this link!</a>`;
                 socket.emit("get_lore", room);
-                throw "test error";
             }
         } catch (e) {
             socket.emit("error_handle", room, e);

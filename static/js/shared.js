@@ -1,5 +1,20 @@
 const chunk_size = 64 * 1024;
 var loreImages = new Array();
+if (!('toJSON' in Error.prototype))
+Object.defineProperty(Error.prototype, 'toJSON', {
+    value: function () {
+        var alt = {};
+
+        Object.getOwnPropertyNames(this).forEach(function (key) {
+            alt[key] = this[key];
+        }, this);
+
+        return alt;
+    },
+    configurable: true,
+    writable: true
+});
+
 function updateMap(Data) {
     try {
         if (typeof Data.mapArray[0] === "undefined" ) {
@@ -388,4 +403,9 @@ function changeItemCat(target) {
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
+}
+
+function handle_error(e) {
+
+    socket.emit("error_handle", room, e);
 }

@@ -85,18 +85,11 @@ def savegame_thread():
     global ROOMS
     with app.app_context():
         while True:
-            print("sleeping")
             socketio.sleep(30)
-            print("trying to write")
             for room in ROOMS.keys():
-                print("writing " + room + ".json")
                 with open("saves/" + room + ".json", "w") as outfile:
                     json.dump(ROOMS[room].gen_save(), outfile)
 
-
-            #For each room
-
-#load the saved rooms? or load on demand?
 #https://stackoverflow.com/questions/14384739/how-can-i-add-a-background-thread-to-flask
 #https://github.com/miguelgrinberg/Flask-SocketIO/issues/651 https://github.com/miguelgrinberg/Flask-SocketIO/issues/651
 
@@ -107,12 +100,10 @@ def check_room(room):
         return True
     elif path.exists("saves/" + room + ".json"):
         with open("saves/" + room + ".json", "r") as infile:
-            print("reading")
             data = json.loads(infile.read())
             ROOMS[room] = Session(room, data["gmKey"], data["name"])
             ROOMS[room].from_json(data)
             ROOMS[room].number_units()
-            print("loaded")
             return True
     else:
         return False
@@ -211,7 +202,6 @@ def on_lore_url(room, lore_url, lore_name, lore_text, lore_owner):
 
 @socketio.on('lore_visible')
 def on_lore_visible(room, gmKey, lore_num):  # but player can choose. TODO:
-    print(lore_num)
     if check_room(room) and (ROOMS[room].gmKey == gmKey or gmKey == ROOMS[room].lore[lore_num]["loreOwner"]):
         ROOMS[room].lore[lore_num]["loreVisible"] = not ROOMS[room].lore[lore_num]["loreVisible"]
         if not ROOMS[room].lore[lore_num]["loreVisible"]:
@@ -243,7 +233,6 @@ def on_player_join(data):
     """Join a game lobby"""
     room = data['room']
     if check_room(room):
-        print("new connect")
         join_room(room)
         if not any(d == data['charName'] for d in ROOMS[room].playerList):  # TODO: make this a class function
             ROOMS[room].playerList[
@@ -553,7 +542,6 @@ def on_locate_unit(data):
             if "revealsMap" in tmpUnit.keys() and tmpUnit["revealsMap"]:
                 ROOMS[room].reveal_map(tmpUnit["unitNum"])
             emit('do_update', ROOMS[room].player_json(), room=room)
-            print(time.time() - startTime)
             return
         if ROOMS[room].inInit:
             if ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["walkable"] \
@@ -757,7 +745,6 @@ def on_player_disconnect(data):
 
 @socketio.on('player_reconnect')
 def on_player_reconnect(room, charName):
-    print("reconnect")
     if check_room(room) and any(d == charName for d in ROOMS[room].playerList):
         ROOMS[room].playerList[charName]["connections"] -= 1
 
@@ -848,7 +835,8 @@ def delete_player(room, gmKey, player_name):
 @socketio.on('error_handle')
 def error_handle(room, error_message):
     if check_room(room):
-        print("Error Message: " + error_message)
+        print("Error Message: ")
+        print(error_message)
 
 with thread_lock:
     if thread is None:

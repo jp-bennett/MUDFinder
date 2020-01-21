@@ -74,8 +74,6 @@ class Session(object):
         else:
             self.lore = []
         if "loreFiles" in obj.keys():
-            print("found")
-            print(obj["loreFiles"].keys())
             for x in obj["loreFiles"]:
                 self.loreFiles[int(x)] = obj["loreFiles"][x]
         self.savedEncounters = obj["savedEncounters"]
@@ -163,7 +161,6 @@ class Session(object):
         maxMove -= tmpUnit["distance"]
         if maxMove < 0:
             maxMove = 0
-        # print((tmpUnit["x"], tmpUnit["y"]))
         path = astar(self.mapArray, (tmpUnit["x"], tmpUnit["y"]), end, maxMove)
         if "distance" not in tmpUnit:
             tmpUnit["distance"] = 0
@@ -236,9 +233,6 @@ def astar(maze, start, end, maxMove):
         def __eq__(self, other):
             return self.position == other.position
 
-    # print(start)
-    # print(end)
-    # print(len(maze))
     # Create start and end node
     start_node = Node(None, start)
     start_node.g = start_node.h = start_node.f = 0
