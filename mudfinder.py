@@ -523,49 +523,56 @@ def on_reset_movement(data):
 
 @socketio.on('locate_unit')
 def on_locate_unit(data):
-    startTime = time.time()
     room = data['room']
-    if check_room(room):  # and ROOMS[room].gmKey == data['gmKey']:
-        if "selectedUnit" in data.keys():
-            tmpUnit = ROOMS[room].unitList[data['selectedUnit']]  # can also be selectedInit
-        elif "selectedInit" in data.keys():
-            tmpUnit = ROOMS[room].initiativeList[data['selectedInit']]  # can also be selectedInit
+    if not check_room(room):
+        return
+
+    if "selectedUnit" in data.keys():
+        tmpUnit = ROOMS[room].unitList[data['selectedUnit']]
+    elif "selectedInit" in data.keys():
+        tmpUnit = ROOMS[room].initiativeList[data['selectedInit']]
+    else:
+        return
+
+    if "gmKey" in data.keys() and ROOMS[room].gmKey == data['gmKey']:
+        if ROOMS[room].inInit and tmpUnit["inInit"] and \
+                tmpUnit == ROOMS[room].initiativeList[ROOMS[room].initiativeCount] and \
+                "x" in tmpUnit.keys():
+            ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), data["moveType"])
         else:
-            return
-        if "gmKey" in data.keys() and ROOMS[room].gmKey == data['gmKey']:
-            if ROOMS[room].inInit and tmpUnit["inInit"] and \
-                    tmpUnit == ROOMS[room].initiativeList[ROOMS[room].initiativeCount] and \
-                    "x" in tmpUnit.keys():
+            ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), 5)
+        if "revealsMap" in tmpUnit.keys() and tmpUnit["revealsMap"]:
+            ROOMS[room].reveal_map(tmpUnit["unitNum"])
+        emit('do_update', ROOMS[room].player_json(), room=room)
+        return
+
+    # If a player controls, and the unit doesn't have a location, use the player's location as starting location.
+    if ROOMS[room].inInit:
+        if ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["walkable"] \
+                and ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["seen"] \
+                and ROOMS[room].unitList[data['selectedUnit']]["controlledBy"] == data["requestingPlayer"] \
+                and ROOMS[room].unitList[data['selectedUnit']]["initiative"] \
+                and ROOMS[room].unitList[data['selectedUnit']]["initiative"] == \
+                ROOMS[room].initiativeList[ROOMS[room].initiativeCount]["initiative"]:
+            if "x" in tmpUnit.keys():
                 ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), data["moveType"])
             else:
                 ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), 5)
-            if "revealsMap" in tmpUnit.keys() and tmpUnit["revealsMap"]:
-                ROOMS[room].reveal_map(tmpUnit["unitNum"])
-            emit('do_update', ROOMS[room].player_json(), room=room)
-            return
-        if ROOMS[room].inInit:
-            if ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["walkable"] \
-                    and ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["seen"] \
-                    and ROOMS[room].unitList[data['selectedUnit']]["controlledBy"] == data["requestingPlayer"] \
-                    and ROOMS[room].unitList[data['selectedUnit']]["initiative"] \
-                    and ROOMS[room].unitList[data['selectedUnit']]["initiative"] == \
-                    ROOMS[room].initiativeList[ROOMS[room].initiativeCount]["initiative"]:
-                if "x" in tmpUnit.keys():
-                    ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), data["moveType"])
-                else:
-                    ROOMS[room].unitList[data['selectedUnit']]['x'] = data["xCoord"]
-                    ROOMS[room].unitList[data['selectedUnit']]['y'] = data["yCoord"]
-                if "revealsMap" in tmpUnit.keys() and tmpUnit["revealsMap"]:
-                    ROOMS[room].reveal_map(data['selectedUnit'])  # only some controlled units should do this
-                emit('do_update', ROOMS[room].player_json(), room=room)
-        elif ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["walkable"] \
-                and ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["seen"] \
-                and ROOMS[room].unitList[data['selectedUnit']]["controlledBy"] == data["requestingPlayer"]:
-            ROOMS[room].unitList[data['selectedUnit']]['x'] = data["xCoord"]
-            ROOMS[room].unitList[data['selectedUnit']]['y'] = data["yCoord"]
+                #ROOMS[room].unitList[data['selectedUnit']]['x'] = data["xCoord"]
+                #ROOMS[room].unitList[data['selectedUnit']]['y'] = data["yCoord"]
             if "revealsMap" in tmpUnit.keys() and tmpUnit["revealsMap"]:
                 ROOMS[room].reveal_map(data['selectedUnit'])  # only some controlled units should do this
             emit('do_update', ROOMS[room].player_json(), room=room)
+
+    elif ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["walkable"] \
+            and ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["seen"] \
+            and ROOMS[room].unitList[data['selectedUnit']]["controlledBy"] == data["requestingPlayer"]:
+        ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), 5)
+        #ROOMS[room].unitList[data['selectedUnit']]['x'] = data["xCoord"]
+        #ROOMS[room].unitList[data['selectedUnit']]['y'] = data["yCoord"]
+        if "revealsMap" in tmpUnit.keys() and tmpUnit["revealsMap"]:
+            ROOMS[room].reveal_map(data['selectedUnit'])  # only some controlled units should do this
+        emit('do_update', ROOMS[room].player_json(), room=room)
 
 
 @socketio.on('remove_unit')

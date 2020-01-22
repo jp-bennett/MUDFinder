@@ -107,10 +107,21 @@ function updateMap(Data) {
                     } else {
                         tmpHTML += Data.unitList[i].charShortName;
                     }
-                tmpHTML += "</div>";
-                document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).innerHTML += tmpHTML;
-                document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).className += " selectableUnit"
-                document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).attributes.units.value += i + " ";
+                    tmpHTML += "</div>";
+                    document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).innerHTML += tmpHTML;
+                    document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).className += " selectableUnit"
+                    document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).attributes.units.value += i + " ";
+                    if (typeof Data.unitList[i].size !== "undefined" && Data.unitList[i].size == "large") {
+                        document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).innerHTML += tmpHTML;
+                        document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).className += " selectableUnit"
+                        document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).attributes.units.value += i + " ";
+                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).innerHTML += tmpHTML;
+                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).className += " selectableUnit"
+                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).attributes.units.value += i + " ";
+                        document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).innerHTML += tmpHTML;
+                        document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).className += " selectableUnit"
+                        document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).attributes.units.value += i + " ";
+                    }
                 }
             }
             if (Data.inInit /*&& Data.initiativeList[Data.initiativeCount].movePath.length > 0*/) {

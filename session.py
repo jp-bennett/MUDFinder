@@ -139,7 +139,15 @@ class Session(object):
         return playerObject
 
     def calc_path(self, tmpUnit, end, moveType):
-        maxMove = 6
+        if not self.mapArray[end[0]][end[1]]["walkable"]:
+            return
+        if "size" in tmpUnit.keys() and tmpUnit["size"] == "large":
+            if not self.mapArray[end[0]-1][end[1]]["walkable"]:
+                return
+            if not self.mapArray[end[0]][end[1]+1]["walkable"]:
+                return
+            if not self.mapArray[end[0]-1][end[1]+1]["walkable"]:
+                return
         if "movementSpeed" not in tmpUnit.keys():
             tmpUnit["movementSpeed"] = 30
         else:
