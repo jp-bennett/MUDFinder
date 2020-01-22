@@ -418,12 +418,14 @@ function delInit(e, initCount) {
 function mapClick(e, x, y) {
     try {
         console.log("Clicked!" + x + ", " + y);
+        relative_y = e.offsetX * 16 / zoomSize;
+        relative_x = e.offsetY * 16 / zoomSize;
         if (typeof selectedInitiative !== "undefined") {
-            socket.emit('locate_unit', {selectedInit: selectedInitiative, moveType: document.getElementById("movementSelector").selectedIndex, xCoord: x, yCoord: y, room: room, gmKey: gmKey});
+            socket.emit('locate_unit', {selectedInit: selectedInitiative, moveType: document.getElementById("movementSelector").selectedIndex, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room, gmKey: gmKey});
             return;
         } else if (typeof selectedUnits[0] !== "undefined" && !e.shiftKey) {
             console.log({selectedUnit: selectedUnits[0], xCoord: x, yCoord: y, room: room, gmKey: gmKey});
-            socket.emit('locate_unit', {selectedUnit: selectedUnits[0], moveType: document.getElementById("movementSelector").selectedIndex, xCoord: x, yCoord: y, room: room, gmKey: gmKey});
+            socket.emit('locate_unit', {selectedUnit: selectedUnits[0], moveType: document.getElementById("movementSelector").selectedIndex, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room, gmKey: gmKey});
             return;
         } else if (typeof selectedTool !== "undefined") {
             tiles = [{newTile: selectedTool.id, xCoord: x, yCoord: y}]
@@ -431,7 +433,7 @@ function mapClick(e, x, y) {
             return
         } else {
             if (gmData.inInit && gmData.initiativeList[gmData.initiativeCount].controlledBy == "gm") {
-                socket.emit('locate_unit', {selectedInit: gmData.initiativeCount, moveType: document.getElementById("movementSelector").selectedIndex, xCoord: x, yCoord: y, room: room, gmKey: gmKey});
+                socket.emit('locate_unit', {selectedInit: gmData.initiativeCount, moveType: document.getElementById("movementSelector").selectedIndex, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room, gmKey: gmKey});
                 return
             }
         }

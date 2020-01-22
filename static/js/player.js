@@ -261,15 +261,19 @@ function sendInit() {
 function mapClick(e, x, y) {
     try {
         console.log("Clicked!" + x + ", " + y);
+        relative_y = e.offsetX * 16 / zoomSize;
+        relative_x = e.offsetY * 16 / zoomSize;
+        console.log(relative_x + ", " + relative_y);
+
         if (playerData.inInit) {
-            socket.emit('locate_unit', {requestingPlayer: charName, moveType: document.getElementById("movementSelector").selectedIndex, selectedUnit: playerData.initiativeList[playerData.initiativeCount].unitNum, xCoord: x, yCoord: y, room: room});
+            socket.emit('locate_unit', {requestingPlayer: charName, moveType: document.getElementById("movementSelector").selectedIndex, selectedUnit: playerData.initiativeList[playerData.initiativeCount].unitNum, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room});
         } else {
             if (typeof selectedInitiative === "undefined" && typeof selectedUnit === "undefined") {
-                socket.emit('locate_unit', {requestingPlayer: charName, selectedUnit: playerData.playerList[charName].unitNum, xCoord: x, yCoord: y, room: room});
+                socket.emit('locate_unit', {requestingPlayer: charName, selectedUnit: playerData.playerList[charName].unitNum, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room});
             } else if (typeof selectedInitiative !== "undefined") {
-                socket.emit('locate_unit', {requestingPlayer: charName, selectedUnit: playerData.initiativeList[selectedInitiative].unitNum, xCoord: x, yCoord: y, room: room});
+                socket.emit('locate_unit', {requestingPlayer: charName, selectedUnit: playerData.initiativeList[selectedInitiative].unitNum, xCoord: x, relative_x: relative_x, relative_y: relative_y, yCoord: y, room: room});
             } else if (typeof selectedUnit !== "undefined") {
-                socket.emit('locate_unit', {requestingPlayer: charName, selectedUnit: selectedUnit, xCoord: x, yCoord: y, room: room});
+                socket.emit('locate_unit', {requestingPlayer: charName, selectedUnit: selectedUnit, xCoord: x, yCoord: y, relative_x: relative_x, relative_y, relative_y yCoord: y, room: room});
             }
         }
     } catch (error) {

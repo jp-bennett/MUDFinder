@@ -534,6 +534,12 @@ def on_locate_unit(data):
     else:
         return
 
+    if "size" in tmpUnit.keys() and tmpUnit["size"] == "large":
+        if data["relative_x"] > 8:
+            data["xCoord"] += 1
+        if data["relative_y"] < 8:
+            data["yCoord"] -= 1
+
     if "gmKey" in data.keys() and ROOMS[room].gmKey == data['gmKey']:
         if ROOMS[room].inInit and tmpUnit["inInit"] and \
                 tmpUnit == ROOMS[room].initiativeList[ROOMS[room].initiativeCount] and \
