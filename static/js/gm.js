@@ -289,6 +289,7 @@ function addUnit() {
     try {
         var unit = {};
         unit.charName = document.getElementById("unitName").value;
+        unit.token = document.getElementById("unitToken").value;
         unit.charShortName = document.getElementById("unitShortName").value;
         unit.initiative = document.getElementById("unitInit").value;
         unit.controlledBy = document.getElementById("unitControlledBy").value;
@@ -589,6 +590,7 @@ function updateChar () {
         player.room = room;
         player.gmKey = gmKey;
         player.unitNum = document.getElementById("editCharNum").innerText;
+        player.token = document.getElementById("charToken").value;
         player.charName = document.getElementById("charactername").innerText;
         player.charShortName = document.getElementById("charShortName").value;
         player.color = document.getElementById("playerColor").value;

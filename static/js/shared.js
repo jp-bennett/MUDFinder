@@ -98,29 +98,42 @@ function updateMap(Data) {
             document.getElementById("zoomControls").style.display = "block";
             for (var i = 0; i < Data.unitList.length; i++) {
                 if (typeof Data.unitList[i].x !== "undefined" && document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`) !== null) {
-                    if (typeof Data.unitList[i].charShortName === "undefined" || Data.unitList[i].charShortName == "") {
-                        Data.unitList[i].charShortName = Data.unitList[i].charName
-                    }
-                    tmpHTML = `<div style="color:${Data.unitList[i].color}">`;
-                    if (Data.unitList[i].charName.length * 10 <= zoomSize) {
-                        tmpHTML += Data.unitList[i].charName;
+                    if (typeof Data.unitList[i].token === "undefined" || Data.unitList[i].token == "") {
+                        if (typeof Data.unitList[i].charShortName === "undefined" || Data.unitList[i].charShortName == "") {
+                            Data.unitList[i].charShortName = Data.unitList[i].charName
+                        }
+                        tmpHTML = `<div style="color:${Data.unitList[i].color}">`;
+                        if (Data.unitList[i].charName.length * 10 <= zoomSize) {
+                            tmpHTML += Data.unitList[i].charName;
+                        } else {
+                            tmpHTML += Data.unitList[i].charShortName;
+                        }
+                        tmpHTML += "</div>";
+                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).innerHTML += tmpHTML;
+                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).className += " selectableUnit";
+                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).attributes.units.value += i + " ";
+                        if (typeof Data.unitList[i].size !== "undefined" && Data.unitList[i].size == "large") {
+                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).innerHTML += tmpHTML;
+                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).className += " selectableUnit"
+                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).attributes.units.value += i + " ";
+                            document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).innerHTML += tmpHTML;
+                            document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).className += " selectableUnit"
+                            document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).attributes.units.value += i + " ";
+                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).innerHTML += tmpHTML;
+                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).className += " selectableUnit"
+                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).attributes.units.value += i + " ";
+                        }
                     } else {
-                        tmpHTML += Data.unitList[i].charShortName;
-                    }
-                    tmpHTML += "</div>";
-                    document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).innerHTML += tmpHTML;
-                    document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).className += " selectableUnit"
-                    document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).attributes.units.value += i + " ";
-                    if (typeof Data.unitList[i].size !== "undefined" && Data.unitList[i].size == "large") {
-                        document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).innerHTML += tmpHTML;
-                        document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).className += " selectableUnit"
-                        document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).attributes.units.value += i + " ";
-                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).innerHTML += tmpHTML;
-                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).className += " selectableUnit"
-                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).attributes.units.value += i + " ";
-                        document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).innerHTML += tmpHTML;
-                        document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).className += " selectableUnit"
-                        document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).attributes.units.value += i + " ";
+                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).className += " selectableUnit";
+                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).attributes.units.value += i + " ";
+                        tokenDiv = '<img src="' + Data.unitList[i].token + '" ';
+                        if (Data.unitList[i].size == "large") {
+                            tokenDiv += `style="width:${zoomSize*2}px;height:${zoomSize*2}px;position:absolute;top:${Data.unitList[i].x*zoomSize-zoomSize}px;left:${Data.unitList[i].y*zoomSize}px;"`;
+                        } else {
+                            tokenDiv += `style="width:${zoomSize}px;height:${zoomSize}px;position:absolute;top:${Data.unitList[i].x*zoomSize}px;left:${Data.unitList[i].y*zoomSize}px;"`;
+                        }
+                        tokenDiv += '</img>'; //Add the image of the appropriate size/location
+                        document.getElementById("mapGraphic").innerHTML += tokenDiv;
                     }
                 }
             }
@@ -167,6 +180,7 @@ function populateEditChar (Data, unitNum) {
         }
         document.getElementById("editCharNum").innerText = playerUnitNum;
         document.getElementById("charactername").innerText = Data.unitList[playerUnitNum].charName;
+        document.getElementById("charToken").value = Data.unitList[playerUnitNum].token;
         document.getElementById("charShortName").value = Data.unitList[playerUnitNum].charShortName;
         document.getElementById("playerColor").value = Data.unitList[playerUnitNum].color;
         document.getElementById("customColor").value = Data.unitList[playerUnitNum].color;

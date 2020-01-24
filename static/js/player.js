@@ -324,6 +324,7 @@ function joinGame() {
         document.getElementById("screenDiv").style.display = "block";
         charName = document.getElementById("charName").value;
         charShortName = document.getElementById("charShortName").value;
+        charToken = document.getElementById("charToken").value;
         color = document.getElementById("playerColor").value;
         perception = document.getElementById("perception").value;
         movementSpeed = document.getElementById("movementSpeed").value;
@@ -334,7 +335,7 @@ function joinGame() {
         trapfinding = document.getElementById("trapfinding").checked;
         permanentAbilities = document.getElementById("permanentAbilities").value;
         window.history.replaceState(null, null, window.location.href + `&charName=${charName}`);
-        socket.emit('player_join', {room: room, charName: charName, charShortName: charShortName, color: color, perception: perception, movementSpeed: movementSpeed, dex: dex, size: size, darkvision: darkvision, lowLight: lowLight, trapfinding: trapfinding, permanentAbilities: permanentAbilities});
+        socket.emit('player_join', {room: room, charName: charName, charShortName: charShortName, token: charToken, color: color, perception: perception, movementSpeed: movementSpeed, dex: dex, size: size, darkvision: darkvision, lowLight: lowLight, trapfinding: trapfinding, permanentAbilities: permanentAbilities});
         socket.emit("get_lore", room);
         selectedInventory = charName;
         socket.emit("get_inventories", room, charName);
@@ -397,6 +398,7 @@ function updateChar () {
         player.unitNum = document.getElementById("editCharNum").innerText;
         player.charName = document.getElementById("charactername").innerText;
         player.charShortName = document.getElementById("charShortName").value;
+        player.token = document.getElementById("charToken").value;
         player.color = document.getElementById("playerColor").value;
         if (player.color == "custom") { player.color = document.getElementById("customColor").value;}
         player.perception = document.getElementById("perception").value;

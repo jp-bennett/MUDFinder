@@ -456,6 +456,7 @@ def on_update_unit(data):
     if check_room(room):
         tmp_unit = ROOMS[room].unitList[int(data["unitNum"])]
         tmp_unit["charShortName"] = data["charShortName"]
+        tmp_unit["token"] = data["token"]
         tmp_unit["color"] = data["color"]
         tmp_unit["perception"] = data["perception"]
         tmp_unit["movementSpeed"] = data["movementSpeed"]
