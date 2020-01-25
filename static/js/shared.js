@@ -128,9 +128,9 @@ function updateMap(Data) {
                         document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).attributes.units.value += i + " ";
                         tokenDiv = '<img src="' + Data.unitList[i].token + '" ';
                         if (Data.unitList[i].size == "large") {
-                            tokenDiv += `style="width:${zoomSize*2}px;height:${zoomSize*2}px;position:absolute;top:${Data.unitList[i].x*zoomSize-zoomSize}px;left:${Data.unitList[i].y*zoomSize}px;"`;
+                            tokenDiv += `style="pointer-events: none; width:${zoomSize*2}px;height:${zoomSize*2}px;position:absolute;top:${Data.unitList[i].x*zoomSize-zoomSize}px;left:${Data.unitList[i].y*zoomSize}px;"`;
                         } else {
-                            tokenDiv += `style="width:${zoomSize}px;height:${zoomSize}px;position:absolute;top:${Data.unitList[i].x*zoomSize}px;left:${Data.unitList[i].y*zoomSize}px;"`;
+                            tokenDiv += `style="pointer-events: none; width:${zoomSize}px;height:${zoomSize}px;position:absolute;top:${Data.unitList[i].x*zoomSize}px;left:${Data.unitList[i].y*zoomSize}px;"`;
                         }
                         tokenDiv += '</img>'; //Add the image of the appropriate size/location
                         document.getElementById("mapGraphic").innerHTML += tokenDiv;

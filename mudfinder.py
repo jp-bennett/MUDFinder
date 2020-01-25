@@ -88,7 +88,7 @@ def savegame_thread():
     global ROOMS
     with app.app_context():
         while True:
-            socketio.sleep(30)
+            socketio.sleep(300)
             for room in ROOMS.keys():
                 with open("saves/" + room + ".json", "w") as outfile:
                     json.dump(ROOMS[room].gen_save(), outfile)
