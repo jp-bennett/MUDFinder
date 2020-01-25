@@ -13,6 +13,9 @@ from flask_socketio import SocketIO, join_room, emit
 
 from session import Session
 
+from player import Player
+from unit import Unit
+
 
 def roll_dice(input_roll_string):
     roll_output = ""
@@ -230,36 +233,15 @@ def on_get_lore(room):
 
 @socketio.on('player_join')
 def on_player_join(data):
-    """Join a game lobby"""
     room = data['room']
     if check_room(room):
         join_room(room)
         if not any(d == data['charName'] for d in ROOMS[room].playerList):  # TODO: make this a class function
-            ROOMS[room].playerList[
-                data['charName']] = data  # ({"charName": data['charName'], "sid": request.sid, "requestInit": False})
-            ROOMS[room].playerList[data['charName']]["requestInit"] = False
-            ROOMS[room].playerList[data['charName']]["inventories"] = {}
-            ROOMS[room].playerList[data['charName']]["inventories"][data['charName']] = {}
-            ROOMS[room].playerList[data['charName']]["inventories"][data['charName']]["gp"] = []
-            ROOMS[room].playerList[data['charName']]["inventories"][data['charName']]["inventory"] = []
-
-            ROOMS[room].playerList[data['charName']]["connections"] = 0
-            ROOMS[room].playerList[data['charName']]["revealsMap"] = True
-            ROOMS[room].playerList[data['charName']]["controlledBy"] = ROOMS[room].playerList[data['charName']][
-                "charName"]
+            ROOMS[room].playerList[data['charName']] = Player(data)
             ROOMS[room].unitList.append(ROOMS[room].playerList[data['charName']])
-
-        if "connections" not in  ROOMS[room].playerList[data['charName']]:  # Can be removed once versioning is a thing
-            ROOMS[room].playerList[data['charName']]["connections"] = 0
-        if "inventories" not in  ROOMS[room].playerList[data['charName']]:
-            ROOMS[room].playerList[data['charName']]["inventories"] = {}
-            ROOMS[room].playerList[data['charName']]["inventories"][data['charName']] = {}
-            ROOMS[room].playerList[data['charName']]["inventories"][data['charName']]["gp"] = []
-            ROOMS[room].playerList[data['charName']]["inventories"][data['charName']]["inventory"] = []
-        ROOMS[room].playerList[data['charName']]["sid"] = request.sid
-        ROOMS[room].playerList[data['charName']]["type"] = "player"
-        ROOMS[room].playerList[data['charName']]["connections"] += 1
-        ROOMS[room].playerList[data['charName']]["connected"] = True
+        ROOMS[room].playerList[data['charName']].sid = request.sid
+        ROOMS[room].playerList[data['charName']].connections += 1
+        ROOMS[room].playerList[data['charName']].connected = True
         ROOMS[room].number_units()
         emit('do_update', ROOMS[room].player_json(), room=room)
     else:
@@ -302,7 +284,7 @@ def on_request_init(data):
     room = data['room']
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         for d in ROOMS[room].playerList:
-            ROOMS[room].playerList[d]["requestInit"] = True
+            ROOMS[room].playerList[d].requestInit = True
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 
@@ -311,15 +293,15 @@ def on_initiative(data):
     """recieve initiative"""
     room = data['room']
     if check_room(room):
-        ROOMS[room].playerList[data['charName']]["requestInit"] = False
+        ROOMS[room].playerList[data['charName']].requestInit = False
         for x in ROOMS[room].unitList:
-            if x["controlledBy"] == data['charName'] and ("inInit" not in data or not x["inInit"]):
+            if x.controlledBy == data['charName'] and ("inInit" not in data or not x.inInit):
                 tmpInit = data["initiative"].pop(0)
                 if tmpInit != "":
-                    x["initiative"] = tmpInit
-                    x["inInit"] = True
-                    x["movePath"] = []
-                    x["distance"] = 0
+                    x.initiative = tmpInit
+                    x.inInit = True
+                    x.movePath = []
+                    x.distance = 0
                     ROOMS[room].insert_initiative(x)
         emit('do_update', ROOMS[room].player_json(), room=room)
 
@@ -339,12 +321,12 @@ def on_advance_init(data):
     room = data['room']
     if check_room(room):
         if ("gmKey" in data and ROOMS[room].gmKey == data['gmKey']) or \
-                ROOMS[room].initiativeList[ROOMS[room].initiativeCount]["controlledBy"] == data["charName"]:
+                ROOMS[room].initiativeList[ROOMS[room].initiativeCount].controlledBy == data["charName"]:
             ROOMS[room].initiativeCount += 1
             if ROOMS[room].initiativeCount >= len(ROOMS[room].initiativeList):
                 ROOMS[room].initiativeCount = 0
-            ROOMS[room].initiativeList[ROOMS[room].initiativeCount]["movePath"] = []
-            ROOMS[room].initiativeList[ROOMS[room].initiativeCount]["distance"] = 0
+            ROOMS[room].initiativeList[ROOMS[room].initiativeCount].movePath = []
+            ROOMS[room].initiativeList[ROOMS[room].initiativeCount].distance = 0
             emit('do_update', ROOMS[room].player_json(), room=room)
 
 
@@ -354,11 +336,11 @@ def on_end_init(data):
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         ROOMS[room].inInit = False
         for x in ROOMS[room].unitList:
-            x["inInit"] = False
-            x["movePath"] = []
-            x["distance"] = 0
-            if x["type"] == "player":
-                x["initiative"] = ""
+            x.inInit = False
+            x.movePath = []
+            x.distance = 0
+            if x.type == "player":
+                x.initiative = ""
         ROOMS[room].initiativeCount = 0
         ROOMS[room].initiativeList = []
         emit('do_update', ROOMS[room].player_json(), room=room)
@@ -391,12 +373,13 @@ def on_load_encounter(data):
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         ROOMS[room].mapArray = copy.deepcopy(ROOMS[room].savedEncounters[data['encounterName']]["mapArray"])
         for x in reversed(ROOMS[room].unitList):
-            if x["controlledBy"] == "gm":
+            if x.controlledBy == "gm":
                 ROOMS[room].unitList.remove(x)
             else:
-                if data["clearLocations"] and "x" in x.keys():
-                    x.pop("x")
-                    x.pop("y")
+                if data["clearLocations"]:
+                    x.x = -1
+                    x.y = -1
+                    x.location = [-1, -1]
         for x in ROOMS[room].savedEncounters[data['encounterName']]["unitList"]:
             ROOMS[room].unitList.append(copy.deepcopy(x))
         ROOMS[room].number_units()
@@ -407,11 +390,11 @@ def on_load_encounter(data):
 def on_add_player_unit(data):
     room = data['room']
     if check_room(room):
-        unit = data['unit']
-        unit["controlledBy"] = data["charName"]
+        unit = Unit(data['unit'])
+        unit.controlledBy = data["charName"]
         if ROOMS[room].inInit:
-            unit["initiative"] = ROOMS[room].playerList[data["charName"]]["initiative"]
-        ROOMS[room].unitList.append(data['unit'])
+            unit.initiative = ROOMS[room].playerList[data["charName"]].initiative
+        ROOMS[room].unitList.append(unit)
         ROOMS[room].number_units()
         emit('do_update', ROOMS[room].player_json(), room=room)
 
@@ -426,10 +409,11 @@ def on_clear_map(data):
             if x["controlledBy"] == "gm":
                 ROOMS[room].unitList.remove(x)
             else:
-                x["inInit"] = False
-                if data["clearLocations"] and "x" in x.keys():
-                    x.pop("x")
-                    x.pop("y")
+                x.inInit = False
+                if data["clearLocations"]:
+                    x.x = -1
+                    x.y = -1
+                    x.location = [-1, -1]
         ROOMS[room].initiativeCount = 0
         ROOMS[room].initiativeList = []
         ROOMS[room].number_units()
@@ -440,12 +424,11 @@ def on_clear_map(data):
 def on_add_unit(data):
     room = data['room']
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
-        data['unit']["movePath"] = []
-        data['unit']["distance"] = 0
-        ROOMS[room].unitList.append(data['unit'])
+        unit = Unit(data)
+        ROOMS[room].unitList.append(unit)
         if data["addToInitiative"]:
             ROOMS[room].insert_initiative(ROOMS[room].unitList[-1])
-            ROOMS[room].unitList[-1]["inInit"] = True
+            ROOMS[room].unitList[-1].inInit = True
         ROOMS[room].number_units()
         emit('do_update', ROOMS[room].player_json(), room=room)
 
@@ -455,21 +438,21 @@ def on_update_unit(data):
     room = data['room']
     if check_room(room):
         tmp_unit = ROOMS[room].unitList[int(data["unitNum"])]
-        tmp_unit["charShortName"] = data["charShortName"]
-        tmp_unit["token"] = data["token"]
-        tmp_unit["color"] = data["color"]
-        tmp_unit["perception"] = data["perception"]
-        tmp_unit["movementSpeed"] = data["movementSpeed"]
-        tmp_unit["dex"] = data["dex"]
-        tmp_unit["size"] = data["size"]
-        tmp_unit["darkvision"] = data["darkvision"]
-        tmp_unit["lowLight"] = data["lowLight"]
-        tmp_unit["trapfinding"] = data["trapfinding"]
-        tmp_unit["hasted"] = data["hasted"]
-        tmp_unit["permanentAbilities"] = data["permanentAbilities"]
+        tmp_unit.charShortName = data["charShortName"]
+        tmp_unit.token = data["token"]
+        tmp_unit.color = data["color"]
+        tmp_unit.perception = data["perception"]
+        tmp_unit.movementSpeed = data["movementSpeed"]
+        tmp_unit.dex = data["dex"]
+        tmp_unit.size = data["size"]
+        tmp_unit.darkvision = data["darkvision"]
+        tmp_unit.lowLight = data["lowLight"]
+        tmp_unit.trapfinding = data["trapfinding"]
+        tmp_unit.hasted = data["hasted"]
+        tmp_unit.permanentAbilities = data["permanentAbilities"]
         if "gmKey" in data.keys() and ROOMS[room].gmKey == data['gmKey']:
-            tmp_unit["revealsMap"] = data["revealsMap"]
-            tmp_unit["initiative"] = data["initiative"]
+            tmp_unit.revealsMap = data["revealsMap"]
+            tmp_unit.initiative = data["initiative"]
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 
@@ -478,12 +461,12 @@ def on_add_to_initiative(data):
     room = data['room']
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         for x in data["selectedUnits"]:
-            if ROOMS[room].unitList[x]["type"] == "player":
-                ROOMS[room].unitList[x]["requestInit"] = True
-            elif ROOMS[room].unitList[x]["controlledBy"] == "gm":
-                ROOMS[room].unitList[x]["inInit"] = True
-                ROOMS[room].unitList[x]["movePath"] = []
-                ROOMS[room].unitList[x]["distance"] = 0
+            if ROOMS[room].unitList[x].type == "player":
+                ROOMS[room].unitList[x].requestInit = True
+            elif ROOMS[room].unitList[x].controlledBy == "gm":
+                ROOMS[room].unitList[x].inInit = True
+                ROOMS[room].unitList[x].movePath = []
+                ROOMS[room].unitList[x].distance = 0
                 ROOMS[room].insert_initiative(ROOMS[room].unitList[x])
         emit('do_update', ROOMS[room].player_json(), room=room)
 
@@ -493,10 +476,10 @@ def on_change_hp(data):
     room = data['room']
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         if "-" in data['changeHP'] or "+" in data['changeHP']:
-            ROOMS[room].initiativeList[data['initCount']]["HP"] = str(
-                int(data['changeHP']) + int(ROOMS[room].initiativeList[data['initCount']]["HP"]))
+            ROOMS[room].initiativeList[data['initCount']].HP = str(
+                int(data['changeHP']) + int(ROOMS[room].initiativeList[data['initCount']].HP))
         else:
-            ROOMS[room].initiativeList[data['initCount']]["HP"] = data['changeHP']
+            ROOMS[room].initiativeList[data['initCount']].HP = data['changeHP']
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 
@@ -507,18 +490,20 @@ def on_reset_movement(data):
         tmpUnit = ROOMS[room].initiativeList[data['selectedInit']]
         if "gmKey" in data.keys():
             if ROOMS[room].gmKey == data['gmKey']:
-                tmpUnit["x"] = tmpUnit["movePath"][0][0]
-                tmpUnit["y"] = tmpUnit["movePath"][0][1]
-                tmpUnit["movePath"] = []
-                tmpUnit["distance"] = 0
+                tmpUnit.x = tmpUnit.movePath[0][0]
+                tmpUnit.y = tmpUnit.movePath[0][1]
+                tmpUnit.location = [tmpUnit.movePath[0][0], tmpUnit.movePath[0][1]]
+                tmpUnit.movePath = []
+                tmpUnit.distance = 0
             else:
                 return
         else:
-            if tmpUnit["controlledBy"] != "gm":
-                tmpUnit["x"] = tmpUnit["movePath"][0][0]
-                tmpUnit["y"] = tmpUnit["movePath"][0][1]
-                tmpUnit["movePath"] = []
-                tmpUnit["distance"] = 0
+            if tmpUnit.controlledBy != "gm":
+                tmpUnit.x = tmpUnit.movePath[0][0]
+                tmpUnit.y = tmpUnit.movePath[0][1]
+                tmpUnit.location = [tmpUnit.movePath[0][0], tmpUnit.movePath[0][1]]
+                tmpUnit.movePath = []
+                tmpUnit.distance = 0
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 
@@ -535,7 +520,7 @@ def on_locate_unit(data):
     else:
         return
 
-    if "size" in tmpUnit.keys() and tmpUnit["size"] == "large":
+    if tmpUnit.size == "large":
         if data["relative_x"] > 8:
             data["xCoord"] += 1
         if data["relative_y"] < 8:
@@ -548,8 +533,8 @@ def on_locate_unit(data):
             ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), data["moveType"])
         else:
             ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), 5)
-        if "revealsMap" in tmpUnit.keys() and tmpUnit["revealsMap"]:
-            ROOMS[room].reveal_map(tmpUnit["unitNum"])
+        if tmpUnit.revealsMap:
+            ROOMS[room].reveal_map(tmpUnit.unitNum)
         emit('do_update', ROOMS[room].player_json(), room=room)
         return
 
@@ -565,19 +550,15 @@ def on_locate_unit(data):
                 ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), data["moveType"])
             else:
                 ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), 5)
-                #ROOMS[room].unitList[data['selectedUnit']]['x'] = data["xCoord"]
-                #ROOMS[room].unitList[data['selectedUnit']]['y'] = data["yCoord"]
             if "revealsMap" in tmpUnit.keys() and tmpUnit["revealsMap"]:
                 ROOMS[room].reveal_map(data['selectedUnit'])  # only some controlled units should do this
             emit('do_update', ROOMS[room].player_json(), room=room)
 
     elif ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["walkable"] \
             and ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["seen"] \
-            and ROOMS[room].unitList[data['selectedUnit']]["controlledBy"] == data["requestingPlayer"]:
+            and ROOMS[room].unitList[data['selectedUnit']].controlledBy == data["requestingPlayer"]:
         ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), 5)
-        #ROOMS[room].unitList[data['selectedUnit']]['x'] = data["xCoord"]
-        #ROOMS[room].unitList[data['selectedUnit']]['y'] = data["yCoord"]
-        if "revealsMap" in tmpUnit.keys() and tmpUnit["revealsMap"]:
+        if tmpUnit.revealsMap:
             ROOMS[room].reveal_map(data['selectedUnit'])  # only some controlled units should do this
         emit('do_update', ROOMS[room].player_json(), room=room)
 
@@ -585,8 +566,7 @@ def on_locate_unit(data):
 @socketio.on('remove_unit')
 def on_remove_unit(data):
     room = data['room']
-    if check_room(room) and ROOMS[room].gmKey == data['gmKey'] and ROOMS[room].unitList[data['unitCount']][
-        "inInit"] == False:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey'] and ROOMS[room].unitList[data['unitCount']].inInit == False:
         ROOMS[room].unitList.pop(data['unitCount'])
         ROOMS[room].number_units()
         emit('do_update', ROOMS[room].player_json(), room=room)
@@ -601,7 +581,7 @@ def on_remove_init(data):
         elif ROOMS[room].inInit and ROOMS[room].initiativeCount == data['initCount'] and data['initCount'] < len(
                 data["initList"]):
             ROOMS[room].initiativeCount = 0
-        ROOMS[room].initiativeList[data['initCount']]["inInit"] = False
+        ROOMS[room].initiativeList[data['initCount']].inInit = False
         ROOMS[room].initiativeList.pop(data['initCount'])
         emit('do_update', ROOMS[room].player_json(), room=room)
 
@@ -615,7 +595,7 @@ def on_del_init(data):
         elif ROOMS[room].inInit and ROOMS[room].initiativeCount == data['initCount'] and data['initCount'] == len(
                 ROOMS[room].initList) - 1:
             ROOMS[room].initiativeCount = 0
-        ROOMS[room].unitList.pop(ROOMS[room].initiativeList[data['initCount']]["unitNum"])
+        ROOMS[room].unitList.pop(ROOMS[room].initiativeList[data['initCount']].unitNum)
         ROOMS[room].number_units()
         ROOMS[room].initiativeList.pop(data['initCount'])
         emit('do_update', ROOMS[room].player_json(), room=room)
@@ -750,9 +730,9 @@ def on_player_disconnect(data):
     room = data['room']
     charName = data['charName']
     if check_room(room) and any(d == charName for d in ROOMS[room].playerList):
-        ROOMS[room].playerList[charName]["connections"] -= 1
-        if ROOMS[room].playerList[charName]["connections"] < 1:
-            ROOMS[room].playerList[charName]["connected"] = False
+        ROOMS[room].playerList[charName].connections -= 1
+        if ROOMS[room].playerList[charName].connections < 1:
+            ROOMS[room].playerList[charName].connected = False
             emit("chat", {'chat': charName + " has disconnected", 'charName': "System"}, room=data['room'])
         emit('do_update', ROOMS[room].player_json(), room=room)
 
@@ -760,13 +740,13 @@ def on_player_disconnect(data):
 @socketio.on('player_reconnect')
 def on_player_reconnect(room, charName):
     if check_room(room) and any(d == charName for d in ROOMS[room].playerList):
-        ROOMS[room].playerList[charName]["connections"] -= 1
+        ROOMS[room].playerList[charName].connections -= 1
 
 
 @socketio.on('add_gp')
 def add_gp(room, player, inventory, description, increment, decrement):
     if check_room(room) and player in ROOMS[room].playerList.keys():
-        tmpInventory = ROOMS[room].playerList[player]["inventories"][inventory]["gp"]
+        tmpInventory = ROOMS[room].playerList[player].inventories[inventory]["gp"]
         if len(tmpInventory) == 0:
             tmpTotal = 0
         else:
@@ -777,71 +757,71 @@ def add_gp(room, player, inventory, description, increment, decrement):
         tmpEntry["increment"] = increment
         tmpEntry["decrement"] = decrement
         tmpInventory.append(tmpEntry)
-        emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
+        emit('update_inventory', ROOMS[room].playerList[player].inventories)
 
 
 @socketio.on('delete_gp_transaction')
 def delete_gp(room, player, inventory):
     if check_room(room) and player in ROOMS[room].playerList.keys():
-        tmpInventory = ROOMS[room].playerList[player]["inventories"][inventory]["gp"]
+        tmpInventory = ROOMS[room].playerList[player].inventories[inventory]["gp"]
         if len(tmpInventory) == 0:
             return
         else:
             tmpInventory.pop()
-            emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
+            emit('update_inventory', ROOMS[room].playerList[player].inventories)
 
 
 @socketio.on('add_item')
 def add_item(room, player, inventory, data):
     if check_room(room) and player in ROOMS[room].playerList.keys():
-        tmpInventory = ROOMS[room].playerList[player]["inventories"][inventory]["inventory"]
+        tmpInventory = ROOMS[room].playerList[player].inventories[inventory]["inventory"]
         tmpInventory.append(data)
-        emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
+        emit('update_inventory', ROOMS[room].playerList[player].inventories)
 
 
 @socketio.on('update_item')
 def update_item(room, player, inventory, data):
     if check_room(room) and player in ROOMS[room].playerList.keys():
-        tmpItem = ROOMS[room].playerList[player]["inventories"][inventory]["inventory"][data["invNum"]]
+        tmpItem = ROOMS[room].playerList[player].inventories[inventory]["inventory"][data["invNum"]]
         tmpItem["isWorn"] = data["isWorn"]
         tmpItem["itemCount"] = data["itemCount"]
         tmpItem["itemWeight"] = data["itemWeight"]
         tmpItem["itemValue"] = data["itemValue"]
-        emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
+        emit('update_inventory', ROOMS[room].playerList[player].inventories)
 
 
 @socketio.on('delete_item')
 def delete_item(room, player, inventory, invNum):
     if check_room(room) and player in ROOMS[room].playerList.keys():
-        ROOMS[room].playerList[player]["inventories"][inventory]["inventory"].pop(invNum)
-        emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
+        ROOMS[room].playerList[player].inventories[inventory]["inventory"].pop(invNum)
+        emit('update_inventory', ROOMS[room].playerList[player].inventories)
 
 
 @socketio.on('get_inventories')
 def get_inventories(room, player):
     if check_room(room) and player in ROOMS[room].playerList.keys():
-        emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
+        emit('update_inventory', ROOMS[room].playerList[player].inventories)
 
 
 @socketio.on('add_inventory')
 def add_inventory(room, player, inventory_name):
     if check_room(room) and player in ROOMS[room].playerList.keys():
-        ROOMS[room].playerList[player]["inventories"][inventory_name] = {}
-        ROOMS[room].playerList[player]["inventories"][inventory_name]['gp'] = []
-        ROOMS[room].playerList[player]["inventories"][inventory_name]['inventory'] = []
-        emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
+        ROOMS[room].playerList[player].inventories[inventory_name] = {}
+        ROOMS[room].playerList[player].inventories[inventory_name]['gp'] = []
+        ROOMS[room].playerList[player].inventories[inventory_name]['inventory'] = []
+        emit('update_inventory', ROOMS[room].playerList[player].inventories)
 
 
 @socketio.on('del_inventory')
 def del_inventory(room, player, inventory_name):
     if check_room(room) and player in ROOMS[room].playerList.keys():
-        ROOMS[room].playerList[player]["inventories"].pop(inventory_name)
-        emit('update_inventory', ROOMS[room].playerList[player]["inventories"])
+        ROOMS[room].playerList[player].inventories.pop(inventory_name)
+        emit('update_inventory', ROOMS[room].playerList[player].inventories)
 
 @socketio.on('delete_player')
 def delete_player(room, gmKey, player_name):
     if check_room(room) and gmKey == ROOMS[room].gmKey:
-        ROOMS[room].unitList.pop(ROOMS[room].playerList[player_name]["unitNum"])
+        ROOMS[room].unitList.pop(ROOMS[room].playerList[player_name].unitNum)
         ROOMS[room].playerList.pop(player_name)
         emit('do_update', ROOMS[room].player_json(), room=room)
 

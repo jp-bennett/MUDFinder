@@ -1,3 +1,7 @@
+from unit import Unit
+from player import Player
+
+
 class Session(object):
 
     def __init__(self, room, gmKey, name):
@@ -21,6 +25,19 @@ class Session(object):
         keyNames = []
         for key in self.savedEncounters.keys():
             keyNames.append(key)
+
+        tmpplayerList = {}
+        for x in self.playerList:
+            tmpplayerList[x] = self.playerList[x].to_json()
+
+        tmpunitList = []
+        for x in self.unitList:
+            tmpunitList.append(x.to_json())
+
+        tmpinitiativeList = []
+        for x in self.initiativeList:
+            tmpinitiativeList.append(x.to_json())
+
         return {
             "room": self.room,
             "gmKey": self.gmKey,
@@ -28,16 +45,27 @@ class Session(object):
             "inInit": self.inInit,
             "initiativeCount": self.initiativeCount,
             "roundCount": self.roundCount,
-            "playerList": self.playerList,
-            "unitList": self.unitList,
-            "initiativeList": self.initiativeList,
+            "playerList": tmpplayerList,
+            "unitList": tmpunitList,
+            "initiativeList": tmpinitiativeList,
             "mapArray": self.mapArray,
             "movePath": self.movePath,
             "savedEncounters": keyNames
         }
 
-    def gen_save(self):  # need a full version for saves, and a partial version for updates
+    def gen_save(self):
         """Serialize object to JSON"""
+        tmpplayerList = {}
+        for x in self.playerList:
+            tmpplayerList[x] = self.playerList[x].to_json()
+
+        tmpunitList = []
+        for x in self.unitList:
+            tmpunitList.append(x.to_json())
+
+        tmpinitiativeList = []
+        for x in self.initiativeList:
+            tmpinitiativeList.append(x.to_json())
         return {
             "room": self.room,
             "gmKey": self.gmKey,
@@ -45,9 +73,9 @@ class Session(object):
             "inInit": self.inInit,
             "initiativeCount": self.initiativeCount,
             "roundCount": self.roundCount,
-            "playerList": self.playerList,
-            "unitList": self.unitList,
-            "initiativeList": self.initiativeList,
+            "playerList": tmpplayerList,
+            "unitList": tmpunitList,
+            "initiativeList": tmpinitiativeList,
             "mapArray": self.mapArray,
             "movePath": self.movePath,
             "savedEncounters": self.savedEncounters,
@@ -60,14 +88,14 @@ class Session(object):
         self.inInit = obj["inInit"]
         self.initiativeCount = obj["initiativeCount"]
         self.roundCount = obj["roundCount"]
-        self.unitList = obj["unitList"]
-        for x in self.unitList:
+        for x in obj["unitList"]:
             if x["type"] == "player":
-                self.playerList[x["charName"]] = x
-                x["connections"] = 0
-                x["connected"] = False
-            if "inInit" in x.keys() and x["inInit"]:
-                self.initiativeList.append(x)
+                self.unitList.append(Player(x))
+                self.playerList[x["charName"]] = self.unitList[-1]
+            else:
+                self.unitList.append(Unit(x))
+            if self.unitList[-1].inInit:
+                self.initiativeList.append(self.unitList[-1])
         self.mapArray = obj["mapArray"]
         if "lore" in obj:
             self.lore = obj["lore"]
@@ -83,28 +111,36 @@ class Session(object):
     def order_initiative_list(self):
         tmp = ""
         if self.inInit:
-            tmp = self.initiativeList[self.initiativeCount]["charName"]
-        self.initiativeList.sort(key=lambda i: int(i['initiative']), reverse=True)
+            tmp = self.initiativeList[self.initiativeCount].charName
+        self.initiativeList.sort(key=lambda i: int(i.initiative), reverse=True)
         if self.inInit:
-            if self.inInit and tmp != self.initiativeList[self.initiativeCount]["charName"]:
+            if self.inInit and tmp != self.initiativeList[self.initiativeCount].charName:
                 self.initiativeCount += 1
 
     def number_units(self):
         for x in range(len(self.unitList)):
-            self.unitList[x]["unitNum"] = x
+            self.unitList[x].unitNum = x
 
     def insert_initiative(self, creature):
-        if not creature["initiative"]: return
+        if not creature.initiative: return
         if len(self.initiativeList) == 0:
             self.initiativeList.insert(0, creature)
             return
         for x in range(len(self.initiativeList)):
-            if int(self.initiativeList[x]["initiative"]) <= int(creature["initiative"]):
+            if int(self.initiativeList[x].initiative) <= int(creature.initiative):
                 self.initiativeList.insert(x, creature)
                 return
         self.initiativeList.append(creature)
 
     def player_json(self):
+        tmpplayerList = {}
+        for x in self.playerList:
+            tmpplayerList[x] = self.playerList[x].to_json()
+
+            tmpinitiativeList = []
+            for x in self.initiativeList:
+                tmpinitiativeList.append(x.to_json())
+
         playerObject = {
             "unitList": [],
             "room": self.room,
@@ -112,20 +148,20 @@ class Session(object):
             "inInit": self.inInit,
             "initiativeCount": self.initiativeCount,
             "roundCount": self.roundCount,
-            "playerList": self.playerList,
+            "playerList": tmpplayerList,
             "mapArray": self.mapArray,
             "movePath": self.movePath
         }  # add visible units from unitlist
+
         if self.inInit:
-            playerObject["initiativeList"] = self.initiativeList
+            playerObject["initiativeList"] = tmpinitiativeList
         else:
             playerObject["initiativeList"] = []
         tmpMapArray = []
         for i in range(len(self.unitList)):
-            if self.unitList[i]["controlledBy"] != "gm" or (
-                    "x" in self.unitList[i].keys() and self.mapArray[self.unitList[i]["x"]][self.unitList[i]["y"]][
-                "seen"]):
-                playerObject["unitList"].append(self.unitList[i])
+            if self.unitList[i].controlledBy != "gm" or (
+                    self.unitList[i].location != [-1, -1] and self.mapArray[self.unitList[i].location[0]][self.unitList[i].location[1]]["seen"]):
+                playerObject["unitList"].append(self.unitList[i].to_json())
         for y in range(len(self.mapArray)):
             tmpMapLine = []
             for x in range(len(self.mapArray[y])):
@@ -141,48 +177,51 @@ class Session(object):
     def calc_path(self, tmpUnit, end, moveType):
         if not self.mapArray[end[0]][end[1]]["walkable"]:
             return
-        if "size" in tmpUnit.keys() and tmpUnit["size"] == "large":
+        if tmpUnit.size == "large":
             if not self.mapArray[end[0]-1][end[1]]["walkable"]:
                 return
             if not self.mapArray[end[0]][end[1]+1]["walkable"]:
                 return
             if not self.mapArray[end[0]-1][end[1]+1]["walkable"]:
                 return
-        if "movementSpeed" not in tmpUnit.keys():
-            tmpUnit["movementSpeed"] = 30
-        else:
-            tmpUnit["movementSpeed"] = int(tmpUnit["movementSpeed"])
+        for unit in self.unitList:
+            if unit == tmpUnit:
+                continue
+            if unit.location == [-1, -1]:
+                continue
+            if end == unit.location:
+                return
         if moveType == 0:
             maxMove = 1
         elif moveType == 1:
-            maxMove = tmpUnit["movementSpeed"] / 5
+            maxMove = tmpUnit.movementSpeed / 5
         elif moveType == 2:
-            maxMove = tmpUnit["movementSpeed"] * 2 / 5
+            maxMove = tmpUnit.movementSpeed * 2 / 5
         elif moveType == 3:
             maxMove = -1
         else:
-            tmpUnit["x"] = end[0]
-            tmpUnit["y"] = end[1]
+            tmpUnit.location = end
+            tmpUnit.y = end[1]
+            tmpUnit.x = end[0] #TODO: remove this
             return
-        if "hasted" in tmpUnit.keys() and tmpUnit["hasted"] and not moveType == 0:
+        if tmpUnit.hasted and not moveType == 0:
             maxMove = min(maxMove * 2, maxMove + 6)
-        maxMove -= tmpUnit["distance"]
+        maxMove -= tmpUnit.distance
         if maxMove < 0:
             maxMove = 0
-        path = astar(self.mapArray, (tmpUnit["x"], tmpUnit["y"]), end, maxMove)
-        if "distance" not in tmpUnit:
-            tmpUnit["distance"] = 0
-        tmpUnit["distance"] += path.pop(0)
+        path = astar(self.mapArray, (tmpUnit.x, tmpUnit.y), end, maxMove)
+        tmpUnit.distance += path.pop(0)
         for x in path:
-            tmpUnit["movePath"].append(x)
-        tmpUnit["x"] = path[-1][0]
-        tmpUnit["y"] = path[-1][1]
+            tmpUnit.movePath.append(x)
+        tmpUnit.location = path[-1]
+        tmpUnit.x = path[-1][0] #TODO: remove
+        tmpUnit.y = path[-1][1]
         return
 
     def reveal_map(self, selectedPlayer):
-        if not "x" in self.unitList[selectedPlayer].keys(): return
-        x = self.unitList[selectedPlayer]["x"]
-        y = self.unitList[selectedPlayer]["y"]
+        if self.unitList[selectedPlayer].location == [-1, -1]: return
+        x = self.unitList[selectedPlayer].location[0]
+        y = self.unitList[selectedPlayer].location[1]
         for xBox in range(-10, 11):
             for yBox in range(-10, 11):
                 cells = raytrace(x, y, max(0, x + xBox), max(0, y + yBox))
