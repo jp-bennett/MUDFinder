@@ -10,6 +10,9 @@ button {
 img {
     max-width:100%;
 }
+input {
+    text-align: CENTER;
+}
 #register {
     height:calc(50% - 40px);
     overflow:auto;
@@ -364,4 +367,99 @@ width:100%;
       background-image: linear-gradient(45deg, #808080 25%, transparent 25%), linear-gradient(-45deg, #808080 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #808080 75%), linear-gradient(-45deg, transparent 75%, #808080 75%);
   background-size: 5px 5px;
   background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+}
+
+.modal {
+  position: fixed; /* Stay in place */
+  z-index: 1; /* Sit on top */
+  left: 0;
+  top: 0;
+  width: 100%; /* Full width */
+  height: 100%; /* Full height */
+  overflow: auto; /* Enable scroll if needed */
+  background-color: rgb(0,0,0); /* Fallback color */
+  background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+}
+
+span.ft {
+    font-size: .9em;
+    margin-left:-12px;
+    margin-right: 4px;
+}
+input.ft {
+    padding-right:12px;
+}
+
+span.sq {
+    font-size: .9em;
+    margin-left:-16px;
+    margin-right: 4px;
+}
+input.sq {
+    padding-right:16px;
+}
+
+span.hp {
+    font-size: .9em;
+    margin-left:-18px;
+    margin-right: 4px;
+}
+input.hp {
+    padding-right:18px;
+}
+
+.skillName {
+    float:left;
+    width:160px;
+    font-size:.8em;
+    margin-top:4px;
+}
+
+.skillTotal {
+    float:left;
+    width:36px;
+    margin:1px;
+    height:20px;
+}
+
+.skillAbility {
+    float:left;
+    width:55px;
+    text-align:center;
+}
+
+.skillInput {
+    float:left;
+    width:36px;
+    margin:1px;
+    height:20px;
+    /*margin-right:5px;*/
+}
+
+.skillMod {
+    float:left;
+    width:36px;
+    margin:1px;
+    height:20px;
+    /*margin-right:5px;*/
+}
+
+.skillPlus {
+    float:left;
+    width:22px;
+    text-align:center;
+}
+
+.skillRanks {
+    float:left;
+    width:36px;
+    margin:1px;
+    height:20px;
+    /*margin-right:5px;*/
+}
+
+.skillCheckbox {
+    float:left;
+    margin:6px;
+    /*margin-right:5px;*/
 }

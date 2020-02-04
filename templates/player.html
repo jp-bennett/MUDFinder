@@ -9,16 +9,14 @@
 <body>
   <div id="charDiv">
     <div id="joinDiv">Your session awaits! <br>
-      Fill in some information to get started:<br>
-      Character Name: <br>
+      Display Name: <br>
       <input type="text" id="charName"><br>
     </div>
     <div id="editCharDiv">Need to make changes to <span id="charactername"></span>?</div>
     <span style="display:none;" id="editCharNum"></span>
     Map Icon (1-3 character abbreviation used when map is zoomed out):<br>
     <input type="text" id="charShortName"><br>
-    Link to token:<br>
-    <input type="text" id="charToken"><br>
+
     DisplayColor:<br>
     <select id="playerColor">
       <option value="blueviolet" style="color:blueviolet;">blueviolet</option>
@@ -41,22 +39,22 @@
     <input type="text" id="customColor"><br>
     </div>
     Passive Perception: <br>
-    <input type="text" id="perception"><br>
+    <input type="text" id="passivePerception"><br>
     Movement Speed <br>
     <input type="text" id="movementSpeed"><br>
     Dex Score: <br>
     <input type="text" id="dex"><br>
     Character Size: <br>
     <select id="size">
-    <option value="colossal">colossal</option>
-    <option value="gargantuan">gargantuan</option>
-    <option value="huge">huge</option>
-    <option value="large">large</option>
-    <option value="medium" selected="selected">medium</option>
-    <option value="small">small</option>
-    <option value="tiny">tiny</option>
-    <option value="diminutive">diminutive</option>
-    <option value="fine">fine</option>
+      <option value="colossal">colossal</option>
+      <option value="gargantuan">gargantuan</option>
+      <option value="huge">huge</option>
+      <option value="large">large</option>
+      <option value="medium" selected="selected">medium</option>
+      <option value="small">small</option>
+      <option value="tiny">tiny</option>
+      <option value="diminutive">diminutive</option>
+      <option value="fine">fine</option>
     </select>
     <br>
     Has Darkvision: 
@@ -65,12 +63,8 @@
     <input type="checkbox" id="lowLight"><br>
     Has Trapfinding: 
     <input type="checkbox" id="trapfinding"><br>
-    Hasted: 
-    <input type="checkbox" id="hasted"><br>
     Permanent abilities: <br>
     <textarea id="permanentAbilities"></textarea><br>
-
-    </p>
     <button id="joinGameButton" onclick="joinGame()">Join Game</button>
     <button id="updateCharButton" onclick="updateChar()">Update</button>
 
@@ -80,18 +74,19 @@
     <div id="tabsDiv" class="tabsDiv">
       <div class="tab" onClick="enableTab('mapWrapper')">Map</div>
       <div class="tab" onClick="enableTab('charWrapper')">Character</div>
+
       <div class="tab" onClick="enableTab('inventory')">Inventory</div>
       <div class="tab" onClick="enableTab('lore')">Lore</div>
     </div>
     <div id="centerDiv" class="centerDiv">
       <div class="leftDivContainer">
         <div id="initiativeDivContainer">
-          <div style="text-align:center;">Initiative</br></div>
+          <div style="text-align:center;">Initiative<br></div>
           <div class="leftDiv" id="initiativeDiv"></div>
           <button class="centeredButton" id="advanceInit" onclick="advanceInit()">Advance Inititiative</button>
         </div>
         <div id="unitDivContainer" style="display:none;">
-          <div style="text-align:center;">Select</br></div>
+          <div style="text-align:center;">Select<br></div>
           <div class="leftDiv" id="unitDiv"></div>
         </div>
       </div>
@@ -117,8 +112,874 @@
           </div>
           </div>
         </div>
-        <div id="charWrapper">
-          <div id="addDiv">
+        <div id="charWrapper" style="line-height: 1.7; overflow:auto;">
+          <div style="width:100%; overflow:auto">
+            <img style="float:left;max-width:200px;max-height:200px;" id="charImageView" src="static/images/profile.svg" onclick="imageUpload(this, 'charImage')">
+
+            <div style="float:right; text-align:center">
+              Token:<br>
+            <img id="charTokenView" src="static/images/profile.svg" width="100px" onclick="imageUpload(this, 'charToken')">
+            </div>
+            <div style="overflow:auto;">
+              <div style="float:left; padding:5px;">
+                Name:<br>
+                Level:<br>
+                Race:
+              </div>
+              <div style="float:left; padding:1px;">
+                <input id="sheetCharName" readonly><br>
+                <input id="sheetLevel" value="Commoner (1)"><br>
+                <input id="sheetRace" value="Human" size="5">
+              </div>
+              <div style="padding:5px; float:left;">
+                Alignment:
+                <select id="sheetAlignment">
+                  <option value="LG">LG</option>
+                  <option value="NG">NG</option>
+                  <option value="CG">CG</option>
+                  <option value="LN">LN</option>
+                  <option value="N" selected="selected">N</option>
+                  <option value="CN">CN</option>
+                  <option value="LE">LE</option>
+                  <option value="NE">NE</option>
+                  <option value="CE">CE</option>
+                </select>
+                <br>
+                Age:  <input id="sheetAge" size="3" value=""><br>
+                Gender: <input id="sheetGender" size="4">
+              </div>
+              <div style="padding:5px; float:left;">
+                Size:
+                <select id="sheetSize" onchange = "sizeUpdate()">
+                  <option value="huge">huge</option>
+                  <option value="large">large</option>
+                  <option value="medium" selected="selected">medium</option>
+                  <option value="small">small</option>
+                  <option value="tiny">tiny</option>
+                </select><br>
+                Deity: <input id="sheetDeity" size="6"><br>
+                Homeland: <input id="sheetHomeland" size="6">
+              </div>
+              <div style="padding:5px; float:left;">
+                Height: <input size="4" id="sheetHeight"> Weight: <input size="4" id="sheetWeight"><br>
+                Hair: <input size="4" id="sheetHair"> Eyes: <input size="4" id="sheetEyes"><br>
+              </div>
+            </div>
+            <div style="overflow:auto;">
+              <div style="padding:5px; float:left;">
+                Speed (land): <input size="2" class="ft" id="sheetMovementSpeed" onchange="setSpeeds()"><span class="ft">ft</span> <input size="2" class="sq" id="sheetMovementSpeedSQ"><span class="sq">sq</span><br>
+                With Armor: <input size="2" class="ft" id="sheetArmorSpeed" onchange="setSpeeds()"><span class="ft">ft</span> <input size="2" class="sq" id="sheetArmorSpeedSQ"><span class="sq">sq</span>
+              </div>
+              <div style="padding:5px; float:left;">
+                Fly: <input size="2" class="ft" id="sheetFlySpeed"><span class="ft">ft</span> <input size="4" id="sheetFlyManeuverability"> maneuverability <br>
+                Swim: <input size="2" class="ft" id="sheetSwimSpeed"><span class="ft">ft</span>
+                Climb: <input size="2" class="ft" id="sheetClimbSpeed"><span class="ft">ft</span>
+                Burrow: <input size="2" class="ft" id="sheetBurrowSpeed"><span class="ft">ft</span>
+              </div>
+              <div style="padding:5px; float:left;">
+                <button style="width:80px;height:40px;float:left; text-align:center;" onclick="updatePlayer()">Save Changes</button>
+                <button style="width:80px;height:40px; text-align:center;">Rest</button>
+                <button style="width:80px;height:40px; text-align:center;">LevelUp</button>
+
+
+              </div>
+            </div>
+            <div>Is Spellcaster: <input type="checkbox"></div>
+          </div>
+          <div style="overflow:auto; width:495px; float:left;">
+            <div style="text-align:center; float:left;     margin-right: 20px;">
+              <div style="float:left;color:white;background:white;width:40px;height:28px;margin:1px;clear:both;"></div>
+              <div style="float:left;background:white;width:40px;height:28px;margin:1px;font-size: .6em;">Ability<br>Score</div>
+              <div style="float:left;background:white;width:40px;height:28px;margin:1px;font-size: .6em;">Ability<br>Modifier</div>
+              <div style="float:left;background:white;width:40px;height:28px;margin:1px;font-size: .6em;">Temp<br>Score</div>
+              <div style="float:left;background:white;width:40px;height:28px;margin:1px;font-size: .6em;">Temp<br>Modifier</div>
+              <br>
+              <div style="float:left;color:white;background:black;width:40px;height:28px;margin:1px;clear:both;">STR</div>
+              <input style="float:left;width:36px;margin:1px;height:22px;" id="sheetSTRScore" onchange="setSTRScore(this.value)">
+              <input style="float:left;width:36px;margin:1px;height:22px;" id="sheetSTRMod">
+              <input style="float:left;width:36px;margin:1px;height:22px;">
+              <input style="float:left;width:36px;margin:1px;height:22px;">
+              <br>
+              <div style="float:left;color:white;background:black;width:40px;height:28px;margin:1px;clear:both;">DEX</div>
+              <input style="float:left;width:36px;margin:1px;height:22px;" id="sheetDEXScore" onchange="setDEXScore(this.value)">
+              <input style="float:left;width:36px;margin:1px;height:22px;" id="sheetDEXMod">
+              <input style="float:left;width:36px;margin:1px;height:22px;">
+              <input style="float:left;width:36px;margin:1px;height:22px;">
+              <br>
+              <div style="float:left;color:white;background:black;width:40px;height:28px;margin:1px;clear:both;">CON</div>
+              <input style="float:left;width:36px;margin:1px;height:22px;" id="sheetCONScore" onchange="setCONScore(this.value)">
+              <input style="float:left;width:36px;margin:1px;height:22px;" id="sheetCONMod">
+              <input style="float:left;width:36px;margin:1px;height:22px;">
+              <input style="float:left;width:36px;margin:1px;height:22px;">
+              <br>
+              <div style="float:left;color:white;background:black;width:40px;height:28px;margin:1px;clear:both;">INT</div>
+              <input style="float:left;width:36px;margin:1px;height:22px;" id="sheetINTScore" onchange="setINTScore(this.value)">
+              <input style="float:left;width:36px;margin:1px;height:22px;" id="sheetINTMod">
+              <input style="float:left;width:36px;margin:1px;height:22px;">
+              <input style="float:left;width:36px;margin:1px;height:22px;">
+              <br>
+              <div style="float:left;color:white;background:black;width:40px;height:28px;margin:1px;clear:both;">WIS</div>
+              <input style="float:left;width:36px;margin:1px;height:22px;" id="sheetWISScore" onchange="setWISScore(this.value)">
+              <input style="float:left;width:36px;margin:1px;height:22px;" id="sheetWISMod">
+              <input style="float:left;width:36px;margin:1px;height:22px;">
+              <input style="float:left;width:36px;margin:1px;height:22px;">
+              <br>
+              <div style="float:left;color:white;background:black;width:40px;height:28px;margin:1px;clear:both;">CHA</div>
+              <input style="float:left;width:36px;margin:1px;height:22px;" id="sheetCHAScore" onchange="setCHAScore(this.value)">
+              <input style="float:left;width:36px;margin:1px;height:22px;"  id="sheetCHAMod">
+              <input style="float:left;width:36px;margin:1px;height:22px;">
+              <input style="float:left;width:36px;margin:1px;height:22px;">
+              <br>
+            </div>
+            <div style="text-align:center; overflow:auto; margin:5px;">
+              <div style="overflow:auto;margin-top: 25px;">
+                <div style="float:left;color:white;background:black;width:80px;height:28px;margin:1px;margin-right:0px;">Max HP</div>
+                <input class="hp" style="float:left;width:36px;margin:1px; margin-left:0px;height:22px;" id="sheetMaxHP"><span style="float:left;" class="hp">hp</span><br>
+              </div><div style="overflow:auto;">
+                <div style="float:left;color:white;background:black;width:80px;height:28px;margin:1px;margin-right:0px;">Current HP</div>
+                <input class="hp" style="float:left;width:36px;margin:1px; margin-left:0px;height:22px;" id="sheetHP"><span style="float:left;" class="hp">hp</span><br>
+              </div><div style="overflow:auto;">
+                <div style="float:left;color:white;background:black;width:80px;height:23px;margin:1px;margin-right:0px;padding-top:5px;font-size: .6em;line-height:1;">Damage<br>Reduction</div>
+                <input class="hp" style="float:left;width:36px;margin:1px; margin-left:0px;height:22px;" id="sheetDR"><span style="float:left;" class="hp"></span><br>
+              </div><div style="overflow:auto;">
+                <div style="float:left;color:white;background:black;width:80px;height:28px;margin:1px;margin-right:0px;">Wounds</div>
+                <input class="hp" style="float:left;width:36px;margin:1px; margin-left:0px;height:22px;" id="sheetWounds"><span style="float:left;" class="hp"></span><br>
+              </div><div style="overflow:auto;">
+                <div style="float:left;color:white;background:black;width:80px;height:28px;margin:1px;margin-right:0px;">Non-lethal</div>
+                <input class="hp" style="float:left;width:36px;margin:1px; margin-left:0px;height:22px;" id="sheetNonLethal"><span style="float:left;" class="hp">hp</span>
+              </div><div style="overflow:auto;">
+                <div style="float:left;color:white;background:black;width:80px;height:28px;margin:1px;margin-right:0px;">Init</div>
+                <input style="float:left;width:36px;margin:1px; margin-left:0px;height:22px;" id="sheetInitBonus"> <span style="float:left;">=</span>
+                <input style="float:left;width:36px;margin:1px; height:22px;" class="usesDEXMod" id="sheetDEXToInit" onchange="setInitBonus()">
+                <span style="float:left;">+</span>
+                <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetMiscToInit" onchange="setInitBonus()">
+              </div><div style="overflow:auto;">
+                <div style="width:80px;margin:1px;margin-right:0px;float:left;"></div>
+                <div style="float:left; font-size:0.6em; width:40px;">Total</div>
+                <div style="float:left; font-size:0.6em; width:40px;     margin-left: 11px;">DEX</div>
+                <div style="float:left; font-size:0.6em; width:40px;     margin-left: 11px;">Misc</div>
+              </div>
+            </div>
+
+            <div style="overflow:auto;text-align:center;">
+              <div style="float:left;color:white;background:black;width:40px;height:28px;margin:1px;margin-right:0px;">AC</div>
+              <input style="float:left;width:36px;margin:1px; margin-left:0px;height:22px;" id="sheetACTotal">
+              <div style="float:left;width:36px;margin:1px;height:28px;"> =10+</div>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetACArmor" onchange="setAC()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetACShield" onchange="setAC()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" class="usesDEXMod" id="sheetACDEX" onchange="setAC()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetACSize" onchange="setAC()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetACNatural" onchange="setAC()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetACDeflection" onchange="setAC()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetACMisc" onchange="setAC()">
+            </div><div style="overflow:auto;text-align:center;">
+              <div style="width:120px;margin:1px;margin-right:0px;float:left;"></div>
+              <div style="float:left; font-size:0.6em; width:40px;">Armor</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left:11px;">Shield</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left:11px;">DEX</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left: 11px;">Size</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left: 11px;">Natural</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left: 11px;">Deflection</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left: 11px;">Misc</div>
+            </div>
+            <div style="overflow:auto;text-align:center;">
+              <div style="float:left;color:white;background:black;width:70px;height:28px;margin:1px;margin-right:0px;">Touch</div>
+              <input style="float:left;width:36px;margin:1px; margin-left:0px;height:22px;" id="sheetTouchAC">
+              <div style="float:left;color:white;background:black;width:90px;height:28px;margin:1px;margin-right:0px;margin-left:5px">Flat-Footed</div>
+              <input style="float:left;width:36px;margin:1px; margin-left:0px;height:22px;" id="sheetFFAC">
+            </div>
+            <div style="overflow:auto;text-align:center;margin-top:10px;">
+              <div style="float:left; font-size:0.6em; width:90px;"><br>Saving Throws</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left:90px;">Ability<br>Modifier</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left: 11px;">Base<br>Save</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left: 11px;">Magic<br>Modifier</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left: 11px;">Misc<br>Modifier</div>
+            </div>
+            <div style="overflow:auto;text-align:center;">
+              <div style="float:left;color:white;background:black;width:90px;height:28px;margin:1px;margin-right:0px;">Fortitude</div>
+              <input style="float:left;width:36px;margin:1px; margin-left:0px;height:22px;" id="sheetFortTotal"><div style="float:left;width:47px;">= CON</div>
+              <input style="float:left;width:36px;margin:1px; height:22px;" class="usesCONMod" id="sheetFortMod" onchange="setSaves()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetFortBase" onchange="setSaves()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetFortMagic" onchange="setSaves()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetFortMisc" onchange="setSaves()">
+            </div>
+            <div style="overflow:auto;text-align:center;">
+              <div style="float:left;color:white;background:black;width:90px;height:28px;margin:1px;margin-right:0px;">Reflex</div>
+              <input style="float:left;width:36px;margin:1px; margin-left:0px;height:22px;" id="sheetReflexTotal"><div style="float:left;width:47px;">= DEX</div>
+              <input style="float:left;width:36px;margin:1px; height:22px;" class="usesDEXMod" id="sheetReflexMod" onchange="setSaves()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetReflexBase" onchange="setSaves()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetReflexMagic" onchange="setSaves()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetReflexMisc" onchange="setSaves()">
+            </div>
+            <div style="overflow:auto;text-align:center;">
+              <div style="float:left;color:white;background:black;width:90px;height:28px;margin:1px;margin-right:0px;">Will</div>
+              <input style="float:left;width:36px;margin:1px; margin-left:0px;height:22px;" id="sheetWillTotal"><div style="float:left;width:47px;">= WIS</div>
+              <input style="float:left;width:36px;margin:1px; height:22px;" class="usesWISMod" id="sheetWillMod" onchange="setSaves()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetWillBase" onchange="setSaves()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetWillMagic" onchange="setSaves()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetWillMisc" onchange="setSaves()">
+            </div>
+            <div style="overflow:auto;text-align:center;margin-top:5px;">
+              <div style="float:left;color:white;background:black;width:90px;height:28px;margin:1px;margin-right:0px;">B.A.B.</div>
+              <input style="float:left;width:36px;margin:1px; margin-left:0px;height:22px;margin-right:5px;" id="sheetBAB" onchange="setBAB()">
+              <div style="float:left;color:white;background:black;width:90px;height:28px;margin:1px;margin-right:0px;margin-right:5px;">SR</div>
+              <input style="float:left;width:36px;margin:1px; margin-left:0px;height:22px;" id="sheetSR">
+              <div style="float:left;color:white;background:black;width:90px;height:28px;margin:1px;margin-right:0px;margin-right:5px;">ER</div>
+              <input style="float:left;width:36px;margin:1px; margin-left:0px;height:22px;" id="sheetER">
+            </div>
+            <div style="overflow:auto;text-align:center;">
+              <div style="float:left;color:white;background:black;width:90px;height:28px;margin:1px;margin-right:0px;">C.M.B.</div>
+              <input style="float:left;width:36px;margin:1px; margin-left:0px;height:22px;margin-right:5px;" id="sheetCMBTotal">
+              <div style="float:left;width:20px;">=</div>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetCMBBAB" onchange="setCMX()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetCMBSTR" class="usesSTRMod" onchange="setCMX()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetCMBSize" onchange="setCMX()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetCMBMisc" onchange="setCMX()">
+
+            </div><div style="overflow:auto;text-align:center;">
+              <div style="width:90px;margin:1px;margin-right:0px;float:left;"></div>
+              <div style="float:left; font-size:0.6em; width:40px;">Total</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left:26px;">BAB</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left:11px;">STR</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left: 11px;">Size Mod</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left: 11px;">Misc Mod</div>
+            </div>
+            <div style="overflow:auto;text-align:center;">
+              <div style="float:left;color:white;background:black;width:90px;height:28px;margin:1px;margin-right:0px;">C.M.D.</div>
+              <input style="float:left;width:36px;margin:1px; margin-left:0px;height:22px;margin-right:5px;" id="sheetCMDTotal">
+              <div style="float:left;width:40px;">=10+</div>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetCMDBAB" onchange="setCMX()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetCMDSTR" class="usesSTRMod" onchange="setCMX()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetCMDDEX" class="usesDEXMod" onchange="setCMX()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetCMDSize" onchange="setCMX()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetCMDDeflection" onchange="setCMX()"> <span style="float:left;">+</span>
+              <input style="float:left;width:36px;margin:1px; height:22px;" id="sheetCMDMisc" onchange="setCMX()">
+            </div><div style="overflow:auto;text-align:center;">
+              <div style="width:90px;margin:1px;margin-right:0px;float:left;"></div>
+              <div style="float:left; font-size:0.6em; width:40px;">Total</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left:46px;">BAB</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left:11px;">STR</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left: 11px;">DEX</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left: 11px;">Size</div>
+            <div style="float:left; font-size:0.6em; width:40px;margin-left: 11px;">Deflection</div>
+              <div style="float:left; font-size:0.6em; width:40px;margin-left: 11px;">Misc</div>
+            </div>
+            <div style="overflow:auto;text-align:center; margin-top:5px;float:left;">
+              <!--<div style="float:left;color:white;background:black;transform:rotate(-90deg);transform-origin:top left;margin-left:1px;margin-top:96px;margin-bottom: 0px;width: 96px;">Weapon</div>-->
+              <div style="float:left;/*width:190px;height:92px;margin-left:-69px;*/margin-right:0px;border-style:solid;border-width: 2px;">
+                <div style="overflow:auto;">
+                  <input style="float:left;width:130px;margin:1px;height:22px;margin-right:5px;" class="sheetWeaponName">
+                  <input style="float:left;width:60px;margin:1px;height:22px;margin-right:5px;" class="sheetWeaponAttack">
+                  <input style="float:left;width:60px;margin:1px;height:22px;" class="sheetWeaponDamage">
+                </div><div style="overflow:auto;">
+                  <div style="float:left; font-size:0.6em; width:134px;margin-right:5px;margin-left:1px;">Weapon</div>
+                  <div style="float:left; font-size:0.6em; width:64px;margin-right:5px;margin-left:1px;">Attack</div>
+                  <div style="float:left; font-size:0.6em; width:64px;margin-left:1px;">Damage</div>
+                </div><div style="overflow:auto;">
+                  <input style="float:left;width:60px;margin:1px;height:22px;margin-right:5px;" class="sheetWeaponCrit">
+                  <input style="float:left;width:60px;margin:1px;height:22px;margin-right:5px;" class="sheetWeaponType">
+                  <input style="float:left;width:60px;margin:1px;height:22px;margin-right:5px;" class="sheetWeaponRange">
+                  <input style="float:left;width:60px;margin:1px;height:22px;" class="sheetWeaponAmmo">
+                </div><div style="overflow:auto;">
+                  <div style="float:left; font-size:0.6em; width:64px;margin-right:5px;margin-left:1px;">Critical</div>
+                  <div style="float:left; font-size:0.6em; width:64px;margin-right:5px;margin-left:1px;">Type</div>
+                  <div style="float:left; font-size:0.6em; width:64px;margin-right:5px;margin-left:1px;">Range</div>
+                  <div style="float:left; font-size:0.6em; width:64px;">Ammo</div>
+                </div>
+              </div>
+            </div>
+
+
+          </div><!-- Left Column -->
+
+
+          <div style="width:625px; overflow:auto;" id="skillsDiv">
+            <div style="background:black;color:white; width:100%;text-align:center">Skills:</div>
+            <div style="overflow:auto;text-align:center">
+              <div style="float:left; font-size:0.6em; width:160px;text-align:left;">Skill Name (Trained Only)</div>
+              <div style="float:left; font-size:0.6em; width:42px;">Total</div>
+              <div style="float:left; font-size:0.6em; width:55px;">Ability</div>
+              <div style="float:left; font-size:0.6em; width:42px;">Modifier</div>
+              <div style="float:left; font-size:0.6em; width:42px;margin-left: 22px;">Ranks</div>
+              <div style="float:left; font-size:0.6em; width:28px;">Class</div>
+              <div style="float:left; font-size:0.6em; width:42px;">Feat</div>
+              <div style="float:left; font-size:0.6em; width:42px;margin-left: 22px;">Racial</div>
+              <div style="float:left; font-size:0.6em; width:42px;margin-left: 22px;">Misc</div>
+              <div style="float:left; font-size:0.6em; width:42px;margin-left: 22px;">Armor Check</div>
+            </div>
+            <div style="float:left;width:100%;" id="Acrobatics">
+              <div class="skillName">Acrobatics*</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= DEX </div>
+              <input class="skillMod usesDEXMod" onchange="calcSkill('Acrobatics')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Acrobatics')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Acrobatics')">
+              <input class="skillInput" onchange="calcSkill('Acrobatics')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Acrobatics')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Acrobatics')">
+              <div class="skillPlus"> - </div>
+              <input class="skillInput" onchange="calcSkill('Acrobatics')">
+            </div>
+            <div style="float:left;width:100%;" id="Appraise">
+              <div class="skillName">Appraise</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= INT </div>
+              <input class="skillMod usesINTMod" onchange="calcSkill('Appraise')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Appraise')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Appraise')">
+              <input class="skillInput" onchange="calcSkill('Appraise')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Appraise')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Appraise')">
+            </div>
+            <div style="float:left;width:100%;" id="Autohypnosis">
+              <div class="skillName">Autohypnosis</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= WIS </div>
+              <input class="skillMod usesWISMod" onchange="calcSkill('Autohypnosis')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Autohypnosis')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Autohypnosis')">
+              <input class="skillInput" onchange="calcSkill('Autohypnosis')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Autohypnosis')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Autohypnosis')">
+            </div>
+            <div style="float:left;width:100%;" id="Bluff">
+              <div class="skillName">Bluff</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= CHA </div>
+              <input class="skillMod usesCHAMod" onchange="calcSkill('Bluff')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Bluff')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Bluff')">
+              <input class="skillInput" onchange="calcSkill('Bluff')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Bluff')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Bluff')">
+            </div>
+            <div style="float:left;width:100%;" id="Climb">
+              <div class="skillName">Climb</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= STR </div>
+              <input class="skillMod usesSTRMod" onchange="calcSkill('Climb')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Climb')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Climb')">
+              <input class="skillInput" onchange="calcSkill('Climb')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Climb')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Climb')">
+              <div class="skillPlus"> - </div>
+              <input class="skillInput" onchange="calcSkill('Climb')">
+            </div>
+            <div style="float:left;width:100%;" id="Craft1">
+              <div class="skillName">Craft</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= INT </div>
+              <input class="skillMod usesINTMod" onchange="calcSkill('Craft1')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Craft1')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Craft1')">
+              <input class="skillInput" onchange="calcSkill('Craft1')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Craft1')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Craft1')">
+            </div>
+            <div style="float:left;width:100%;" id="Craft2">
+              <div class="skillName">Craft</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= INT </div>
+              <input class="skillMod usesINTMod" onchange="calcSkill('Craft2')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Craft2')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Craft2')">
+              <input class="skillInput" onchange="calcSkill('Craft2')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Craft2')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Craft2')">
+            </div>
+            <div style="float:left;width:100%;" id="Craft3">
+              <div class="skillName">Craft</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= INT </div>
+              <input class="skillMod usesINTMod" onchange="calcSkill('Craft3')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Craft3')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Craft3')">
+              <input class="skillInput" onchange="calcSkill('Craft3')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Craft3')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Craft3')">
+            </div>
+            <div style="float:left;width:100%;" id="Diplomacy">
+              <div class="skillName">Diplomacy</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= CHA </div>
+              <input class="skillMod usesCHAMod" onchange="calcSkill('Diplomacy')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Diplomacy')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Diplomacy')">
+              <input class="skillInput" onchange="calcSkill('Diplomacy')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Diplomacy')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Diplomacy')">
+            </div>
+            <div style="float:left;width:100%;" id="DisableDevice">
+              <div class="skillName">Disable Device*</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= DEX </div>
+              <input class="skillMod usesDEXMod" onchange="calcSkill('DisableDevice')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('DisableDevice')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('DisableDevice')">
+              <input class="skillInput" onchange="calcSkill('DisableDevice')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('DisableDevice')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('DisableDevice')">
+              <div class="skillPlus"> - </div>
+              <input class="skillInput" onchange="calcSkill('DisableDevice')">
+            </div>
+            <div style="float:left;width:100%;" id="Disguise">
+              <div class="skillName">Disguise</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= CHA </div>
+              <input class="skillMod usesCHAMod" onchange="calcSkill('Disguise')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Disguise')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Disguise')">
+              <input class="skillInput" onchange="calcSkill('Disguise')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Disguise')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Disguise')">
+            </div>
+            <div style="float:left;width:100%;" id="EscapeArtist">
+              <div class="skillName">Escape Artist</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= DEX </div>
+              <input class="skillMod usesDEXMod" onchange="calcSkill('EscapeArtist')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('EscapeArtist')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('EscapeArtist')">
+              <input class="skillInput" onchange="calcSkill('EscapeArtist')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('EscapeArtist')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('EscapeArtist')">
+              <div class="skillPlus"> - </div>
+              <input class="skillInput" onchange="calcSkill('EscapeArtist')">
+            </div>
+            <div style="float:left;width:100%;" id="Fly">
+              <div class="skillName">Fly</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= DEX </div>
+              <input class="skillMod usesDEXMod" onchange="calcSkill('Fly')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Fly')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Fly')">
+              <input class="skillInput" onchange="calcSkill('Fly')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Fly')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Fly')">
+              <div class="skillPlus"> - </div>
+              <input class="skillInput" onchange="calcSkill('Fly')">
+            </div>
+            <div style="float:left;width:100%;" id="HandleAnimal">
+              <div class="skillName">Handle Animal*</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= CHA </div>
+              <input class="skillMod usesCHAMod" onchange="calcSkill('HandleAnimal')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('HandleAnimal')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('HandleAnimal')">
+              <input class="skillInput" onchange="calcSkill('HandleAnimal')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('HandleAnimal')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('HandleAnimal')">
+            </div>
+            <div style="float:left;width:100%;" id="Heal">
+              <div class="skillName">Heal</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= WIS </div>
+              <input class="skillMod usesWISMod" onchange="calcSkill('Heal')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Heal')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Heal')">
+              <input class="skillInput" onchange="calcSkill('Heal')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Heal')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Heal')">
+            </div>
+            <div style="float:left;width:100%;" id="Intimidate">
+              <div class="skillName">Intimidate</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= CHA </div>
+              <input class="skillMod usesCHAMod" onchange="calcSkill('Intimidate')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Intimidate')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Intimidate')">
+              <input class="skillInput" onchange="calcSkill('Intimidate')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Intimidate')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Intimidate')">
+            </div>
+            <div style="float:left;width:100%;" id="KnowledgeArcana">
+              <div class="skillName">Knowledge (Arcana)*</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= INT </div>
+              <input class="skillMod usesINTMod" onchange="calcSkill('KnowledgeArcana')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('KnowledgeArcana')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('KnowledgeArcana')">
+              <input class="skillInput" onchange="calcSkill('KnowledgeArcana')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgeArcana')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgeArcana')">
+            </div>
+            <div style="float:left;width:100%;" id="KnowledgeDungeoneering">
+              <div class="skillName">Knowledge (Dungeoneering)*</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= INT </div>
+              <input class="skillMod usesINTMod" onchange="calcSkill('KnowledgeDungeoneering')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('KnowledgeDungeoneering')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('KnowledgeDungeoneering')">
+              <input class="skillInput" onchange="calcSkill('KnowledgeDungeoneering')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgeDungeoneering')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgeDungeoneering')">
+            </div>
+            <div style="float:left;width:100%;" id="KnowledgeEngineering">
+              <div class="skillName">Knowledge (Engineering)*</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= INT </div>
+              <input class="skillMod usesINTMod" onchange="calcSkill('KnowledgeEngineering')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('KnowledgeEngineering')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('KnowledgeEngineering')">
+              <input class="skillInput" onchange="calcSkill('KnowledgeEngineering')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgeEngineering')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgeEngineering')">
+            </div>
+            <div style="float:left;width:100%;" id="KnowledgeGeography">
+              <div class="skillName">Knowledge (Geography)*</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= INT </div>
+              <input class="skillMod usesINTMod" onchange="calcSkill('KnowledgeGeography')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('KnowledgeGeography')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('KnowledgeGeography')">
+              <input class="skillInput" onchange="calcSkill('KnowledgeGeography')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgeGeography')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgeGeography')">
+            </div>
+            <div style="float:left;width:100%;" id="KnowledgeHistory">
+              <div class="skillName">Knowledge (History)*</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= INT </div>
+              <input class="skillMod usesINTMod" onchange="calcSkill('KnowledgeHistory')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('KnowledgeHistory')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('KnowledgeHistory')">
+              <input class="skillInput" onchange="calcSkill('KnowledgeHistory')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgeHistory')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgeHistory')">
+            </div>
+            <div style="float:left;width:100%;" id="KnowledgeLocal">
+              <div class="skillName">Knowledge (Local)*</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= INT </div>
+              <input class="skillMod usesINTMod" onchange="calcSkill('KnowledgeLocal')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('KnowledgeLocal')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('KnowledgeLocal')">
+              <input class="skillInput" onchange="calcSkill('KnowledgeLocal')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgeLocal')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgeLocal')">
+            </div>
+            <div style="float:left;width:100%;" id="KnowledgeNature">
+              <div class="skillName">Knowledge (Nature)*</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= INT </div>
+              <input class="skillMod usesINTMod" onchange="calcSkill('KnowledgeNature')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('KnowledgeNature')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('KnowledgeNature')">
+              <input class="skillInput" onchange="calcSkill('KnowledgeNature')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgeNature')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgeNature')">
+            </div>
+            <div style="float:left;width:100%;" id="KnowledgeNobility">
+              <div class="skillName">Knowledge (Nobility)*</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= INT </div>
+              <input class="skillMod usesINTMod" onchange="calcSkill('KnowledgeNobility')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('KnowledgeNobility')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('KnowledgeNobility')">
+              <input class="skillInput" onchange="calcSkill('KnowledgeNobility')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgeNobility')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgeNobility')">
+            </div>
+            <div style="float:left;width:100%;" id="KnowledgePlanes">
+              <div class="skillName">Knowledge (Planes)*</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= INT </div>
+              <input class="skillMod usesINTMod" onchange="calcSkill('KnowledgePlanes')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('KnowledgePlanes')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('KnowledgePlanes')">
+              <input class="skillInput" onchange="calcSkill('KnowledgePlanes')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgePlanes')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgePlanes')">
+            </div>
+            <div style="float:left;width:100%;" id="KnowledgePsionics">
+              <div class="skillName">Knowledge (Psionics)*</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= INT </div>
+              <input class="skillMod usesINTMod" onchange="calcSkill('KnowledgePsionics')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('KnowledgePsionics')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('KnowledgePsionics')">
+              <input class="skillInput" onchange="calcSkill('KnowledgePsionics')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgePsionics')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgePsionics')">
+            </div>
+            <div style="float:left;width:100%;" id="KnowledgeReligion">
+              <div class="skillName">Knowledge (Religion)*</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= INT </div>
+              <input class="skillMod usesINTMod" onchange="calcSkill('KnowledgeReligion')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('KnowledgeReligion')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('KnowledgeReligion')">
+              <input class="skillInput" onchange="calcSkill('KnowledgeReligion')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgeReligion')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('KnowledgeReligion')">
+            </div>
+            <div style="float:left;width:100%;" id="Linguistics">
+              <div class="skillName">Linguistics</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= INT </div>
+              <input class="skillMod usesINTMod" onchange="calcSkill('Linguistics')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Linguistics')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Linguistics')">
+              <input class="skillInput" onchange="calcSkill('Linguistics')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Linguistics')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Linguistics')">
+            </div>
+            <div style="float:left;width:100%;" id="Perception">
+              <div class="skillName">Perception</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= WIS </div>
+              <input class="skillMod usesWISMod" onchange="calcSkill('Perception')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Perception')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Perception')">
+              <input class="skillInput" onchange="calcSkill('Perception')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Perception')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Perception')">
+            </div>
+            <div style="float:left;width:100%;" id="Perform">
+              <div class="skillName">Perform</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= CHA </div>
+              <input class="skillMod usesCHAMod" onchange="calcSkill('Perform')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Perform')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Perform')">
+              <input class="skillInput" onchange="calcSkill('Perform')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Perform')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Perform')">
+            </div>
+            <div style="float:left;width:100%;" id="Profession">
+              <div class="skillName">Profession</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= WIS </div>
+              <input class="skillMod usesWISMod" onchange="calcSkill('Profession')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Profession')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Profession')">
+              <input class="skillInput" onchange="calcSkill('Profession')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Profession')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Profession')">
+            </div>
+            <div style="float:left;width:100%;" id="Ride">
+              <div class="skillName">Ride</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= DEX </div>
+              <input class="skillMod usesDEXMod" onchange="calcSkill('Ride')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Ride')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Ride')">
+              <input class="skillInput" onchange="calcSkill('Ride')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Ride')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Ride')">
+              <div class="skillPlus"> - </div>
+              <input class="skillInput" onchange="calcSkill('Ride')">
+            </div>
+            <div style="float:left;width:100%;" id="SenseMotive">
+              <div class="skillName">Sense Motive</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= WIS </div>
+              <input class="skillMod usesWISMod" onchange="calcSkill('SenseMotive')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('SenseMotive')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('SenseMotive')">
+              <input class="skillInput" onchange="calcSkill('SenseMotive')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('SenseMotive')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('SenseMotive')">
+            </div>
+            <div style="float:left;width:100%;" id="SleightOfHand">
+              <div class="skillName">Sleight of Hand*</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= DEX </div>
+              <input class="skillMod usesDEXMod" onchange="calcSkill('SleightOfHand')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('SleightOfHand')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('SleightOfHand')">
+              <input class="skillInput" onchange="calcSkill('SleightOfHand')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('SleightOfHand')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('SleightOfHand')">
+              <div class="skillPlus"> - </div>
+              <input class="skillInput" onchange="calcSkill('SleightOfHand')">
+            </div>
+            <div style="float:left;width:100%;" id="Spellcraft">
+              <div class="skillName">Spellcraft</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= INT </div>
+              <input class="skillMod usesINTMod" onchange="calcSkill('Spellcraft')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Spellcraft')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Spellcraft')">
+              <input class="skillInput" onchange="calcSkill('Spellcraft')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Spellcraft')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Spellcraft')">
+            </div>
+            <div style="float:left;width:100%;" id="Stealth">
+              <div class="skillName">Stealth</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= DEX </div>
+              <input class="skillMod usesDEXMod" onchange="calcSkill('Stealth')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Stealth')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Stealth')">
+              <input class="skillInput" onchange="calcSkill('Stealth')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Stealth')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Stealth')">
+              <div class="skillPlus"> - </div>
+              <input class="skillInput" onchange="calcSkill('Stealth')">
+            </div>
+            <div style="float:left;width:100%;" id="Survival">
+              <div class="skillName">Survival</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= WIS </div>
+              <input class="skillMod usesWISMod" onchange="calcSkill('Survival')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Survival')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Survival')">
+              <input class="skillInput" onchange="calcSkill('Survival')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Survival')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Survival')">
+            </div>
+            <div style="float:left;width:100%;" id="Swim">
+              <div class="skillName">Swim</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= STR </div>
+              <input class="skillMod usesSTRMod" onchange="calcSkill('Swim')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('Swim')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('Swim')">
+              <input class="skillInput" onchange="calcSkill('Swim')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Swim')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('Swim')">
+              <div class="skillPlus"> - </div>
+              <input class="skillInput" onchange="calcSkill('Swim')">
+            </div>
+            <div style="float:left;width:100%;" id="UseMagicDevice">
+              <div class="skillName">Use Magic Device</div>
+              <input class="skillTotal">
+              <div class="skillAbility">= CHA </div>
+              <input class="skillMod usesCHAMod" onchange="calcSkill('UseMagicDevice')">
+              <div class="skillPlus"> + </div>
+              <input class="skillRanks" onchange="calcSkill('UseMagicDevice')">
+              <input type="checkbox" class="skillCheckbox" onchange="calcSkill('UseMagicDevice')">
+              <input class="skillInput" onchange="calcSkill('UseMagicDevice')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('UseMagicDevice')">
+              <div class="skillPlus"> + </div>
+              <input class="skillInput" onchange="calcSkill('UseMagicDevice')">
+            </div>
+
+
+
+          </div><!-- Right Column -->
+
+
+
+
+          <div id="addDiv" style="display:none;">
             ---Add a Unit---<br>
             Creature Name:<br />
             <input type="text" id="unitName"><br>
@@ -144,6 +1005,7 @@
           </div>
         </div><!-- CharWrapper -->
 
+
         <div id="inventory" style="display:none; height:100%;">
 
           <div id="register">
@@ -156,7 +1018,7 @@
                 <th>Total</th>
               </tr>
               <tr>
-                <td><textarea type="textarea" id="gpDescription"></textarea></td>
+                <td><textarea id="gpDescription"></textarea></td>
                 <td><input type="text" id="gpDecrement"></td>
                 <td><input type="text" id="gpIncrement"></td>
                 <td><button onclick="recordGP()">Record</button></td>
@@ -214,7 +1076,7 @@
           <div id="inventoryTabs"></div>
 
         </div> <!-- Inventory -->
-        <div id="lore" display="style:none;">
+        <div id="lore" style="display:none;">
           <div id="lorePage" class="lorePage"></div>
           <div id="loreTabs"></div>
         </div>
@@ -224,12 +1086,12 @@
           <div id="chatText" class="chatText"></div>
           <div id="chatInput" class="chatInput">
             <form action="javascript:sendChat()">
-            <input type="textarea" id="newChat" style="width:100%;height:50%;">
+            <input id="newChat" style="width:100%;height:50%;text-align:left;">
             </form>
           </div>
         </div>
         <div class="connectedPlayersContainer">Connected Players
-          <div id="connectedPlayers" class="connectedPlayers"></br></div>
+          <div id="connectedPlayers" class="connectedPlayers"><br></div>
         </div>
       </div>
     <div id="bottomDiv" class="bottomDiv">
@@ -239,11 +1101,12 @@
       </div>-->
     </div>
   </div>
-<!--<script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js" integrity="sha256-yr4fRk/GU1ehYJPAs8P4JlTgu0Hdsp4ZKrx8bDEDC3I=" crossorigin="anonymous"></script>
+<!--<script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js" integrity="sha256-yr4fRk/GU1ehYJPAs8P4JlTgu0Hdsp4ZKrx8bDEDC3I=" crossorigin="anonymous"></script> -->
  <!-- <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/socket.io/1.3.6/socket.io.min.js"></script>-->
  <!-- <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/socket.io/1.3.6/socket.io.min.js"></script>-->
   <script type="text/javascript" src="static/js/socket.io.js"></script>
   <script type="text/javascript" src="static/js/shared.js?time={{ current_time }}"></script>
   <script type="text/javascript" src="static/js/player.js?time={{ current_time }}"></script>
+  </div>
 </body>
 </html>

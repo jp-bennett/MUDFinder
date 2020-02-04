@@ -19,16 +19,15 @@ from unit import Unit
 
 def roll_dice(input_roll_string):
     roll_output = ""
-    roll_total: int = 0
     roll_type = ""
     show_totals: bool = False
-    totals = ""
     first_time: bool = True
     if '"' in input_roll_string:
         partial_roll_string = input_roll_string[input_roll_string.find('"') + 1:]
         roll_type = partial_roll_string[:partial_roll_string.find('"')]
         input_roll_string = input_roll_string.replace('"' + roll_type + '"', "")
-    if '!' in input_roll_string: show_totals = True
+    if '!' in input_roll_string:
+        show_totals = True
     for subRollString in input_roll_string.split(","):
         roll_total = 0
         totals = ""
@@ -66,7 +65,8 @@ def roll_dice(input_roll_string):
                 roll_total /= int(partial_roll_string[1:])
             if partial_roll_string[:1] in "*×xX":
                 roll_total *= int(partial_roll_string[1:])
-        if not first_time: roll_output += ", "
+        if not first_time:
+            roll_output += ", "
         first_time = False
         if show_totals:
             roll_output += totals + "=" + str(roll_total)
@@ -84,6 +84,7 @@ thread_lock = Lock()
 if not path.exists("saves"):
     mkdir("saves")
 
+
 def savegame_thread():
     global ROOMS
     with app.app_context():
@@ -93,8 +94,9 @@ def savegame_thread():
                 with open("saves/" + room + ".json", "w") as outfile:
                     json.dump(ROOMS[room].gen_save(), outfile)
 
-#https://stackoverflow.com/questions/14384739/how-can-i-add-a-background-thread-to-flask
-#https://github.com/miguelgrinberg/Flask-SocketIO/issues/651 https://github.com/miguelgrinberg/Flask-SocketIO/issues/651
+
+# https://stackoverflow.com/questions/14384739/how-can-i-add-a-background-thread-to-flask
+# https://github.com/miguelgrinberg/Flask-SocketIO/issues/651 https://github.com/miguelgrinberg/Flask-SocketIO/issues/651
 
 
 def check_room(room):
@@ -164,7 +166,7 @@ def save_download():
             response=json.dumps(ROOMS[room].gen_save()),
             status=200,
             headers={"Content-disposition":
-                         "attachment; filename=" + ROOMS[room].name + ".json"},
+                     "attachment; filename=" + ROOMS[room].name + ".json"},
             mimetype='application/json'
         )
         return response
@@ -175,10 +177,12 @@ def on_lore_upload(room, lore_size, lore_name, lore_text, lore_owner):
     if check_room(room):
         loreNum = len(ROOMS[room].lore)
         ROOMS[room].lore.append(
-            {"loreSize": lore_size, "loreName": lore_name, "loreText": lore_text, "loreVisible": False, "loreOwner": lore_owner}
+            {"loreSize": lore_size, "loreName": lore_name, "loreText": lore_text, "loreVisible": False,
+             "loreOwner": lore_owner}
         )
         ROOMS[room].loreFiles[loreNum] = io.BytesIO()
         return loreNum
+
 
 @socketio.on('write_chunk')
 def write_chunk(room, loreNum, offset, data):
@@ -199,8 +203,19 @@ def get_lore_file(room, loreNum):
 def on_lore_url(room, lore_url, lore_name, lore_text, lore_owner):
     if check_room(room):
         ROOMS[room].lore.append(
-            {"loreURL": lore_url, "loreName": lore_name, "loreText": lore_text, "loreVisible": False, "loreSize": 0, "loreOwner": lore_owner})
+            {"loreURL": lore_url, "loreName": lore_name, "loreText": lore_text, "loreVisible": False, "loreSize": 0,
+             "loreOwner": lore_owner})
         emit("showLore", {"lore": ROOMS[room].lore, "lore_num": None}, room=room)
+
+
+@socketio.on('image_upload')
+def on_image_upload(room, image, title, owner):
+    if check_room(room):
+        if title == "charImage":
+            ROOMS[room].playerList[owner].image = image
+        if title == "charToken":
+            ROOMS[room].playerList[owner].token = image
+        emit('do_update', ROOMS[room].player_json(), room=room)
 
 
 @socketio.on('lore_visible')
@@ -221,7 +236,7 @@ def on_delete_lore(room, gmKey, lore_num):
             tmp_keys.append(x)
         for x in tmp_keys:
             if x > lore_num:
-                ROOMS[room].loreFiles[x-1] = ROOMS[room].loreFiles[x]
+                ROOMS[room].loreFiles[x - 1] = ROOMS[room].loreFiles[x]
         emit("showLore", {"lore": ROOMS[room].lore, "lore_num": None}, room=room)
 
 
@@ -406,7 +421,7 @@ def on_clear_map(data):
         ROOMS[room].mapArray = []
         ROOMS[room].inInit = False
         for x in reversed(ROOMS[room].unitList):  # since we're removing elements, have to walk it backwards
-            if x["controlledBy"] == "gm":
+            if x.controlledBy == "gm":
                 ROOMS[room].unitList.remove(x)
             else:
                 x.inInit = False
@@ -424,7 +439,7 @@ def on_clear_map(data):
 def on_add_unit(data):
     room = data['room']
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
-        unit = Unit(data)
+        unit = Unit(data['unit'])
         ROOMS[room].unitList.append(unit)
         if data["addToInitiative"]:
             ROOMS[room].insert_initiative(ROOMS[room].unitList[-1])
@@ -443,18 +458,77 @@ def on_update_unit(data):
         tmp_unit.color = data["color"]
         tmp_unit.perception = data["perception"]
         tmp_unit.movementSpeed = data["movementSpeed"]
-        tmp_unit.dex = data["dex"]
+        tmp_unit.DEX = data["DEX"]
         tmp_unit.size = data["size"]
         tmp_unit.darkvision = data["darkvision"]
         tmp_unit.lowLight = data["lowLight"]
         tmp_unit.trapfinding = data["trapfinding"]
-        tmp_unit.hasted = data["hasted"]
+        # tmp_unit.hasted = data["hasted"]
         tmp_unit.permanentAbilities = data["permanentAbilities"]
         if "gmKey" in data.keys() and ROOMS[room].gmKey == data['gmKey']:
             tmp_unit.revealsMap = data["revealsMap"]
             tmp_unit.initiative = data["initiative"]
         emit('do_update', ROOMS[room].player_json(), room=room)
 
+@socketio.on('update_player')
+def on_update_player(data):
+    room = data['room']
+    if check_room(room):
+        tmp_unit = ROOMS[room].playerList[data["charName"]]
+        tmp_unit.alignment = data["alignment"]
+        tmp_unit.size = data["size"]
+        tmp_unit.height = data["height"]
+        tmp_unit.weight = data["weight"]
+        tmp_unit.level = data["level"]
+        tmp_unit.age = data["age"]
+        tmp_unit.deity = data["deity"]
+        tmp_unit.hair = data["hair"]
+        tmp_unit.eyes = data["eyes"]
+        tmp_unit.race = data["race"]
+        tmp_unit.gender = data["gender"]
+        tmp_unit.homeland = data["homeland"]
+        tmp_unit.movementSpeed = data["movementSpeed"]
+        tmp_unit.armorSpeed = data["armorSpeed"]
+        tmp_unit.flySpeed = data["flySpeed"]
+        tmp_unit.flyManeuverability = data["flyManeuverability"]
+        tmp_unit.swimSpeed = data["swimSpeed"]
+        tmp_unit.climbSpeed = data["climbSpeed"]
+        tmp_unit.burrowSpeed = data["burrowSpeed"]
+
+        tmp_unit.STR = data["STR"]
+        tmp_unit.DEX = data["DEX"]
+        tmp_unit.CON = data["CON"]
+        tmp_unit.INT = data["INT"]
+        tmp_unit.WIS = data["WIS"]
+        tmp_unit.CHA = data["CHA"]
+        tmp_unit.HP = data["HP"]
+        tmp_unit.maxHP = data["maxHP"]
+        tmp_unit.DR = data["DR"]
+        tmp_unit.wounds = data["wounds"]
+        tmp_unit.nonLethal = data["nonLethal"]
+        tmp_unit.miscToInit = data["miscToInit"]
+        tmp_unit.ACArmor = data["ACArmor"]
+        tmp_unit.ACShield = data["ACShield"]
+        tmp_unit.ACNatural = data["ACNatural"]
+        tmp_unit.ACMisc = data["ACMisc"]
+        tmp_unit.deflection = data["deflection"]
+
+        tmp_unit.BAB = data["BAB"]
+
+        tmp_unit.fortBase = data["fortBase"]
+        tmp_unit.fortMagic = data["fortMagic"]
+        tmp_unit.fortMisc = data["fortMisc"]
+        tmp_unit.reflexBase = data["reflexBase"]
+        tmp_unit.reflexMagic = data["reflexMagic"]
+        tmp_unit.reflexMisc = data["reflexMisc"]
+        tmp_unit.willBase = data["willBase"]
+        tmp_unit.willMagic = data["willMagic"]
+        tmp_unit.willMisc = data["willMisc"]
+        tmp_unit.SR = data["SR"]
+        tmp_unit.ER = data["ER"]
+        tmp_unit.weapons = data["weapons"]
+        tmp_unit.skills = data["skills"]
+        emit('do_update', ROOMS[room].player_json(), room=room)
 
 @socketio.on('add_to_initiative')
 def on_add_to_initiative(data):
@@ -566,7 +640,8 @@ def on_locate_unit(data):
 @socketio.on('remove_unit')
 def on_remove_unit(data):
     room = data['room']
-    if check_room(room) and ROOMS[room].gmKey == data['gmKey'] and ROOMS[room].unitList[data['unitCount']].inInit == False:
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey'] and ROOMS[room].unitList[
+        data['unitCount']].inInit == False:
         ROOMS[room].unitList.pop(data['unitCount'])
         ROOMS[room].number_units()
         emit('do_update', ROOMS[room].player_json(), room=room)
@@ -620,6 +695,7 @@ def on_map_generate(data):
 def on_map_edit(data_pack):
     room = data_pack['room']
     if check_room(room) and ROOMS[room].gmKey == data_pack['gmKey']:
+        print(data_pack)
         for data in data_pack["tiles"]:
             if "Tile" in data["newTile"] or "door" in data["newTile"]:
                 ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["tile"] = data["newTile"]
@@ -641,7 +717,7 @@ def on_map_edit(data_pack):
                     ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["seen"]
             if data["newTile"] in ["doorOpen", "doorTileAOpen", "doorTileBOpen"]:
                 for players in ROOMS[room].playerList.keys():
-                    ROOMS[room].reveal_map(ROOMS[room].playerList[players]["unitNum"])
+                    ROOMS[room].reveal_map(ROOMS[room].playerList[players].unitNum)
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 
@@ -818,6 +894,7 @@ def del_inventory(room, player, inventory_name):
         ROOMS[room].playerList[player].inventories.pop(inventory_name)
         emit('update_inventory', ROOMS[room].playerList[player].inventories)
 
+
 @socketio.on('delete_player')
 def delete_player(room, gmKey, player_name):
     if check_room(room) and gmKey == ROOMS[room].gmKey:
@@ -831,6 +908,7 @@ def error_handle(room, error_message):
     if check_room(room):
         print("Error Message: ")
         print(error_message)
+
 
 with thread_lock:
     if thread is None:

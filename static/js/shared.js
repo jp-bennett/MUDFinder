@@ -180,7 +180,13 @@ function populateEditChar (Data, unitNum) {
         }
         document.getElementById("editCharNum").innerText = playerUnitNum;
         document.getElementById("charactername").innerText = Data.unitList[playerUnitNum].charName;
-        document.getElementById("charToken").value = Data.unitList[playerUnitNum].token;
+        //document.getElementById("charToken").value = Data.unitList[playerUnitNum].token;
+        if (Data.unitList[playerUnitNum].token != "" && document.getElementById("charTokenView") != null) {
+            document.getElementById("charTokenView").src = Data.unitList[playerUnitNum].token;
+        }
+        if (Data.unitList[playerUnitNum].image != "" && document.getElementById("charImageView") != null) {
+            document.getElementById("charImageView").src = Data.unitList[playerUnitNum].image;
+        }
         document.getElementById("charShortName").value = Data.unitList[playerUnitNum].charShortName;
         document.getElementById("playerColor").value = Data.unitList[playerUnitNum].color;
         document.getElementById("customColor").value = Data.unitList[playerUnitNum].color;
@@ -190,18 +196,33 @@ function populateEditChar (Data, unitNum) {
         } else {
             document.getElementById("customColorDiv").style.display = "none";
         }
-        document.getElementById("perception").value = Data.unitList[playerUnitNum].perception;
+        document.getElementById("passivePerception").value = Data.unitList[playerUnitNum].perception;
         document.getElementById("movementSpeed").value = Data.unitList[playerUnitNum].movementSpeed;
-        document.getElementById("dex").value = Data.unitList[playerUnitNum].dex;
+        document.getElementById("dex").value = Data.unitList[playerUnitNum].DEX;
         document.getElementById("size").value = Data.unitList[playerUnitNum].size;
         document.getElementById("darkvision").checked = Data.unitList[playerUnitNum].darkvision;
         document.getElementById("lowLight").checked = Data.unitList[playerUnitNum].lowLight;
         document.getElementById("trapfinding").checked = Data.unitList[playerUnitNum].trapfinding;
-        document.getElementById("hasted").checked = Data.unitList[playerUnitNum].hasted;
+        //document.getElementById("hasted").checked = Data.unitList[playerUnitNum].hasted;
         document.getElementById("permanentAbilities").value = Data.unitList[playerUnitNum].permanentAbilities;
         if (isGM) {
             document.getElementById("init").value = Data.unitList[playerUnitNum].initiative;
             document.getElementById("revealsMap").checked = Data.unitList[playerUnitNum].revealsMap;
+        } else {
+        document.getElementById("sheetCharName").value = Data.unitList[playerUnitNum].charName;
+        }
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
+function updateImages (unitInfo) {
+    try {
+        if (unitInfo.token != "" && document.getElementById("charTokenView") != null) {
+            document.getElementById("charTokenView").src = unitInfo.token;
+        }
+        if (unitInfo.image != "" && document.getElementById("charImageView") != null) {
+            document.getElementById("charImageView").src = unitInfo.image;
         }
     } catch (e) {
         socket.emit("error_handle", room, e);
@@ -433,4 +454,78 @@ function changeItemCat(target) {
 function handle_error(e) {
 
     socket.emit("error_handle", room, e);
+}
+
+function imageUpload(element, title) {
+    console.log("imageUpload");
+    var modalBackground = document.createElement("div");
+    modalBackground.id = "modalBackground";
+    modalBackground.className = "modal";
+    modalBackground.onclick = function () {document.getElementById('modalBackground').remove()}
+
+    var div = document.createElement("div");
+    div.style.minWidth = "50%";
+    div.style.minHeight = "50%";
+    div.style.position = "absolute";
+    div.style.right = "25%";
+    div.style.top = "10%";
+    div.style.background = "white";
+    div.style.border = "black";
+    div.style.borderStyle = "solid";
+    div.style.borderRadius = "25px";
+    div.style.textAlign = "center";
+    div.onclick = function () {event.stopPropagation()}
+    div.innerHTML = `Image Link:<input type="text" id="imageURL" onchange="previewImageURL(this.value)">
+    <button>Preview</button>
+    <br>
+    Or upload a file: <input type="file" id="imageFileUpload" onchange="previewImageFile(this)"><br>
+    <img id="imagePreview" src="" style = "padding:20px;"><br>
+    <button onClick = "selectImage('${title}')">Select</button>
+    `;
+
+    document.body.appendChild(modalBackground);
+    document.getElementById("modalBackground").appendChild(div);
+}
+
+function previewImageURL(value) {
+    try {
+        document.getElementById("imageFileUpload").value = "";
+        document.getElementById("imagePreview").src = value;
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
+function previewImageFile (callingElement) {
+    try {
+        document.getElementById("imageURL").value = "";
+        document.getElementById("imagePreview").src = URL.createObjectURL(callingElement.files[0])
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
+function selectImage (title) {
+    try {
+        if (document.getElementById("imageFileUpload").value == "") {
+            console.log(document.getElementById("imageURL").value)
+            socket.emit("image_upload", room, document.getElementById("imageURL").value, title, charName);
+            document.getElementById('modalBackground').remove()
+        } else {
+            if (typeof document.getElementById("imageFileUpload").files[0] == "undefined") {
+                return;
+            }
+            //FReader = new FileReader();
+            Name = document.getElementById('imageFileUpload').value;
+            file = document.getElementById('imageFileUpload').files[0];
+            var r = new FileReader();
+            r.onload = function() {
+                socket.emit("image_upload", room, "data:image;base64, " + btoa(r.result), title, charName);
+                document.getElementById('modalBackground').remove();
+            }
+            r.readAsBinaryString(file);
+        }
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
 }

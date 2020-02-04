@@ -595,9 +595,9 @@ function updateChar () {
         player.charShortName = document.getElementById("charShortName").value;
         player.color = document.getElementById("playerColor").value;
         if (player.color == "custom") { player.color = document.getElementById("customColor").value;}
-        player.perception = document.getElementById("perception").value;
+        player.perception = document.getElementById("passivePerception").value;
         player.movementSpeed = document.getElementById("movementSpeed").value;
-        player.dex = document.getElementById("dex").value;
+        player.DEX = document.getElementById("dex").value;
         player.size = document.getElementById("size").value;
         player.darkvision = document.getElementById("darkvision").checked;
         player.lowLight = document.getElementById("lowLight").checked;
@@ -616,7 +616,7 @@ function handleDrag (elements) {
     try {
         console.log(elements)
         selectionSize = ds.getCursorPositionDifference();
-        if (selectionSize.x < 10 && selectionSize.y < 10){
+        if (Math.abs(selectionSize.x) < 10 && Math.abs(selectionSize.y) < 10){
             ds.clearSelection();
             return;
         }

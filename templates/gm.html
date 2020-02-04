@@ -23,14 +23,14 @@
     <div id="centerDiv" class="centerDiv">
       <div class="leftDivContainer">
         <div id="initiativeDivContainer">
-          <div style="text-align:center;">Initiative</br></div>
+          <div style="text-align:center;">Initiative<br></div>
           <div id="initiativeDiv" class="leftDiv"></div>
           <button class="centeredButton" id="beginInit" onclick="beginInit()">Begin Inititiative</button>
           <button class="centeredButton" id="advanceInit" onclick="advanceInit()">Advance Inititiative</button>
           <button class="centeredButton" id="endInit" onclick="endInit()">End Inititiative</button>
         </div>
         <div id="creatureDivContainer"><br>
-          <div style="text-align:center;">All Creatures</br></div>
+          <div style="text-align:center;">All Creatures<br></div>
           <div id="unitsDiv" class="leftDiv"></div>
           <button class="centeredButton" id="addInit" onclick="addInit()">Add to Inititiative</button>
         </div>
@@ -50,7 +50,7 @@
               <input type="text" id="encounterName"><br>
             </form>
             <button class="centeredButton" id="saveEncounter" onclick="saveEncounter()"> Save Encounter </button>
-            <div style="text-align:center;">Saved Encounters</br></div>
+            <div style="text-align:center;">Saved Encounters<br></div>
             <div id="encountersDiv" class="encountersDiv"> </div>
             <button class="centeredButton" id="loadEncounter" onclick="loadEncounter()"> Load Encounter </button>
             <button class="centeredButton" id="clearMap" onclick="clearMap()"> Clear Map </button>
@@ -58,15 +58,15 @@
           </div>
           <div id="addDiv">
             Creature Name:<br />
-            <input type="text" id="unitName"></input><br>
+            <input type="text" id="unitName"><br>
             token link:<br />
-            <input type="text" id="unitToken"></input><br>
+            <input type="text" id="unitToken"><br>
             Initiative Count:<br />
-            <input type="text" id="unitInit"></input><br>
+            <input type="text" id="unitInit"><br>
             Short Name:<br />
-            <input type="text" id="unitShortName"></input><br>
+            <input type="text" id="unitShortName"><br>
             HP:<br />
-            <input type="text" id="unitHP"></input><br>
+            <input type="text" id="unitHP"><br>
             Controlled By: 
             <select id="unitControlledBy">
               <option value="gm" selected="selected">gm</option>
@@ -99,9 +99,9 @@
               <button onclick="mapInput()">Upload Map</button><br>
               Map fully visable: <input type="checkbox" id="mapIsDiscovered"><br>
               Width:<br>
-              <input type="text" id="mapWidth"></input><br>
+              <input type="text" id="mapWidth"><br>
               Height:<br>
-              <input type="text" id="mapHeight"></input><br>
+              <input type="text" id="mapHeight"><br>
               <button onclick="mapGenerate()">Generate Map</button><br>
             </div>
             <div style="display:none;" id='mapGraphic'></div>
@@ -109,16 +109,16 @@
           <div id="zoomControls" style="text-align:center; float:right; font-size: 5em;"> <div id="zoomIn" onclick="zoomIn()"> + </div> <div id="zoomOut" onclick="zoomOut()">-</div></div>
           <div id="mapTools">
           <div class="nonSelected" style="float:left;">
-            <div id="floorTile"onclick="mapTool(event, 'floor')" style="margin:5px;" class="mapTile floorTile tooltip"><span class="tooltiptext">Floor Tile</span></div>
+            <div id="floorTile" onclick="mapTool(event, 'floor')" style="margin:5px;" class="mapTile floorTile tooltip"><span class="tooltiptext">Floor Tile</span></div>
           </div>
           <div class="nonSelected" style="float:left;">
-            <div id="floorTileA"onclick="mapTool(event, 'floor')" style="margin:5px;" class="mapTile floorTileA tooltip"><span class="tooltiptext">Floor Tile</span></div>
+            <div id="floorTileA" onclick="mapTool(event, 'floor')" style="margin:5px;" class="mapTile floorTileA tooltip"><span class="tooltiptext">Floor Tile</span></div>
           </div>
           <div class="nonSelected" style="float:left;">
-            <div id="floorTileB"onclick="mapTool(event, 'floor')" style="margin:5px;" class="mapTile floorTileB tooltip"><span class="tooltiptext">Floor Tile</span></div>
+            <div id="floorTileB" onclick="mapTool(event, 'floor')" style="margin:5px;" class="mapTile floorTileB tooltip"><span class="tooltiptext">Floor Tile</span></div>
           </div>
           <div class="nonSelected" style="float:left;">
-            <div id="floorTileC"onclick="mapTool(event, 'floor')" style="margin:5px;" class="mapTile floorTileC tooltip"><span class="tooltiptext">Floor Tile</span></div>
+            <div id="floorTileC" onclick="mapTool(event, 'floor')" style="margin:5px;" class="mapTile floorTileC tooltip"><span class="tooltiptext">Floor Tile</span></div>
           </div>
           <div class="nonSelected" style="float:left;">
             <div id="wallTile" onclick="mapTool(event, 'wall')" style="margin:5px;" class="mapTile wallTile tooltip"><span class="tooltiptext">Wall Tile</span></div>
@@ -191,7 +191,7 @@
     <input type="text" id="customColor"><br>
     </div>
     Passive Perception: <br>
-    <input type="text" id="perception"><br>
+    <input type="text" id="passivePerception"><br>
     Movement Speed <br>
     <input type="text" id="movementSpeed"><br>
     Initiative: <br>
@@ -218,7 +218,7 @@
     Permanent abilities: <br>
     <textarea id="permanentAbilities"></textarea><br>
 
-    </p>
+    <p>
     <button id="updateCharButton" onclick="updateChar()">Update</button>
 
 
@@ -226,7 +226,7 @@
         <div id="lore" style="display:none;">
           <div class="lorePage" id="lorePage">
 
-            <div id="loreTab0" style="display:none;"><img id="loreFilePreview"></img><br>
+            <div id="loreTab0" style="display:none;"><img id="loreFilePreview" src=""><br>
             Image Link:<input type="text" id="loreURL" onchange="previewLoreURL(this.value)"><br>
             Or upload a file: <input type="file" id="loreFileUpload" onchange="previewLoreFile()"><br>
             <div style="background:blue; height: 40px; width:0px;" id="uploadProgress"></div>
@@ -245,7 +245,16 @@
             <option value="level">Recover 1 HP per level</option>
             <option value="level-con" selected="selected">Recover 1 HP per level + Con</option>
             <option value="full">Recover All HP</option>
-          </select><br>
+          </select><p>
+          Ability Score Generation:<br>
+          <select id="rule-ability-method">
+            <option value="roll" selected="selected">Player rolls scores</option>
+            <option value="10">10 point buy</option>
+            <option value="15">15 point buy</option>
+            <option value="20">20 point buy</option>
+            <option value="25">25 point buy</option>
+
+          </select><p>
           Allow units to share spaces:
           <input type="checkbox" id="rule-allow-sharespace">
 
@@ -259,12 +268,12 @@
           <div id="chatText" class="chatText"></div>
           <div id="chatInput" class="chatInput">
             <form action="javascript:sendChat()">
-            <input type="textarea" id="newChat" style="width:100%;height:50%;">
+            <input id="newChat" style="width:100%;height:50%;">
             </form>
           </div>
         </div>
         <div class="connectedPlayersContainer">Connected Players
-          <div id="connectedPlayers" class="connectedPlayers"></br></div>
+          <div id="connectedPlayers" class="connectedPlayers"><br></div>
           <div>
             <button onclick="requestInit()">Request initiative</button>
           </div>
