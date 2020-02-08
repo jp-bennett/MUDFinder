@@ -824,7 +824,7 @@ function getSkills() {
 }
 function populateSkills(skillsData) {
     try{
-        if (skillsData.length > 0) {
+        if (skillsData.Acrobatics) {
             skillsDiv = document.getElementById("skillsDiv");
             skillsElements = skillsDiv.children;
             for (i=2, len=skillsElements.length; i<len; i=i+1) {
@@ -972,7 +972,7 @@ function populateSheet (data) {
                 displaySpellSlots();
             }
         }
-    populateSkills(data.skills);
+        populateSkills(data.skills);
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
