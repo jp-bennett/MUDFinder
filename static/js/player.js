@@ -848,7 +848,7 @@ function populateSkills(skillsData) {
 }
 function populateSheet (data) {
     try {
-        populateSkills(data.skills);
+
         updateImages(data);
         document.getElementById("sheetCharName").value = data.charName;
         document.getElementById("sheetAlignment").value = data.alignment;
@@ -971,9 +971,8 @@ function populateSheet (data) {
                 document.getElementById("spellSlotsPerDayLVL9").value = data.spellcasting[0].spellSlotsDaily9;
                 displaySpellSlots();
             }
-        spellcasting = data.spellcasting;
         }
-
+    populateSkills(data.skills);
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
