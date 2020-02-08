@@ -1075,7 +1075,7 @@ function getSpellcasting() {
     if (spellcasting.length > 0) {
         if (spellcasting[0].hasPoints) {
             spellcasting[0].currentPoints = parseInt(document.getElementById("currentPoints").innerHTML) | 0;
-            spellcasting[0].dailyPoints = parseInt(document.getElementById("currentPoints").innerHTML) | 0;
+            spellcasting[0].dailyPoints = parseInt(document.getElementById("dailyPoints").value) | 0;
         }
         if (spellcasting[0].hasSpellSlots) {
             spellcasting[0].spellSlotsDaily1 = parseInt(document.getElementById("spellSlotsPerDayLVL1").value) | 0;
