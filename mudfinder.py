@@ -215,6 +215,8 @@ def on_image_upload(room, image, title, owner):
             ROOMS[room].playerList[owner].image = image
         if title == "charToken":
             ROOMS[room].playerList[owner].token = image
+        if title == "unitToken":
+            ROOMS[room].unitList[int(owner)].token = image
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 

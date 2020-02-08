@@ -260,7 +260,12 @@ function populateEditChar (Data, unitNum) {
         }
         document.getElementById("editCharNum").innerText = playerUnitNum;
         document.getElementById("charactername").innerText = Data.unitList[playerUnitNum].charName;
-        document.getElementById("charToken").value = Data.unitList[playerUnitNum].token;
+
+        if (Data.unitList[playerUnitNum].token == "") {
+            document.getElementById("unitTokenView").src = "static/images/profile.svg";
+        } else {
+            document.getElementById("unitTokenView").src = Data.unitList[playerUnitNum].token;
+        }
         if (Data.unitList[playerUnitNum].token != "" && document.getElementById("charTokenView") != null) {
             document.getElementById("charTokenView").src = Data.unitList[playerUnitNum].token;
         }
@@ -519,7 +524,7 @@ function handle_error(e) {
 
     socket.emit("error_handle", room, e);
 }
-function imageUpload(element, title) {
+function imageUpload(element, title, character) {
     console.log("imageUpload");
     var modalBackground = document.createElement("div");
     modalBackground.id = "modalBackground";
@@ -543,7 +548,7 @@ function imageUpload(element, title) {
     <br>
     Or upload a file: <input type="file" id="imageFileUpload" onchange="previewImageFile(this)"><br>
     <img id="imagePreview" src="" style = "padding:20px;"><br>
-    <button onClick = "selectImage('${title}')">Select</button>
+    <button onClick = "selectImage('${title}', '${character}')">Select</button>
     `;
 
     document.body.appendChild(modalBackground);
@@ -565,11 +570,11 @@ function previewImageFile (callingElement) {
         socket.emit("error_handle", room, e);
     }
 }
-function selectImage (title) {
+function selectImage (title, character) {
     try {
         if (document.getElementById("imageFileUpload").value == "") {
             console.log(document.getElementById("imageURL").value)
-            socket.emit("image_upload", room, document.getElementById("imageURL").value, title, charName);
+            socket.emit("image_upload", room, document.getElementById("imageURL").value, title, character);
             document.getElementById('modalBackground').remove()
         } else {
             if (typeof document.getElementById("imageFileUpload").files[0] == "undefined") {
@@ -580,7 +585,7 @@ function selectImage (title) {
             file = document.getElementById('imageFileUpload').files[0];
             var r = new FileReader();
             r.onload = function() {
-                socket.emit("image_upload", room, "data:image;base64, " + btoa(r.result), title, charName);
+                socket.emit("image_upload", room, "data:image;base64, " + btoa(r.result), title, character);
                 document.getElementById('modalBackground').remove();
             }
             r.readAsBinaryString(file);

@@ -1051,7 +1051,6 @@ function modifySpellPoints(change) {
     document.getElementById("currentPoints").innerHTML = parseInt(document.getElementById("currentPoints").innerHTML) + change;
     updatePlayer();
 }
-
 function doRest() {
     currentHP = parseInt(document.getElementById("sheetHP").value) | 0;
     maxHP = parseInt(document.getElementById("sheetMaxHP").value) | 0;
@@ -1070,7 +1069,6 @@ function doRest() {
     }
     updatePlayer();
 }
-
 function getSpellcasting() {
     if (spellcasting.length > 0) {
         if (spellcasting[0].hasPoints) {
