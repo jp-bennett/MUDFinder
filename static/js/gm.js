@@ -561,6 +561,7 @@ function addInit() {
     try {
         if (selectedUnits.length == 0) {return;}
         socket.emit('add_to_initiative', {selectedUnits: selectedUnits, room: room, gmKey: gmKey});
+        deselectAll();
     } catch (e) {
         socket.emit("error_handle", room, e);
     }

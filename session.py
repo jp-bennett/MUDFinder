@@ -209,7 +209,11 @@ class Session(object):
         maxMove -= tmpUnit.distance
         if maxMove < 0:
             maxMove = 0
-        path = astar(self.mapArray, (tmpUnit.x, tmpUnit.y), end, maxMove)
+        if tmpUnit.controlledBy == "gm":
+            ignoreSeen = True
+        else:
+            ignoreSeen = False
+        path = astar(self.mapArray, (tmpUnit.x, tmpUnit.y), end, maxMove, ignoreSeen)
         if path is None:
             return
         tmpUnit.distance += path.pop(0)
@@ -265,7 +269,7 @@ def raytrace(x0, y0, x1, y1):  # https://playtechs.blogspot.com/2007/03/raytraci
     return cells
 
 
-def astar(maze, start, end, maxMove):
+def astar(maze, start, end, maxMove, ignoreSeen):
     """Returns a list of tuples as a path from the given start to the given end in the given maze"""
 
     class Node:
@@ -346,7 +350,7 @@ def astar(maze, start, end, maxMove):
 
             # Make sure walkable terrain
             if not maze[node_position[0]][node_position[1]]["walkable"] \
-                    or not maze[node_position[0]][node_position[1]]["seen"]:
+                    or (not maze[node_position[0]][node_position[1]]["seen"] and not ignoreSeen):
                 continue
 
             # Create new node
