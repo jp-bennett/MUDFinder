@@ -23,7 +23,7 @@ class Unit(object):
         self.initiative = default(unitdict, "initiative", 0)
         self.revealsMap = default(unitdict, "revealsMap", False)
         self.perception = default(unitdict, "perception", 0)
-        self.movementSpeed = default(unitdict, "movementSpeed", "30")
+        self.movementSpeed = default(unitdict, "movementSpeed", 30)
         self.flySpeed = default(unitdict, "flySpeed", "")
         self.flyManeuverability = default(unitdict, "flyManeuverability", "")
         self.swimSpeed = default(unitdict, "swimSpeed", "")
@@ -52,6 +52,7 @@ class Unit(object):
         self.SR = default(unitdict, "SR", "")
         self.ER = default(unitdict, "ER", "")
         self.weapons = default(unitdict, "weapons", [])
+        self.spellcasting = default(unitdict, "spellcasting", [])
 
         if self.location != [-1, -1] and self.occupied_tiles == []:
             self.occupied_tiles.append(self.location)
@@ -109,7 +110,8 @@ class Unit(object):
             "BAB": self.BAB,
             "SR": self.SR,
             "ER": self.ER,
-            "weapons": self.weapons
+            "weapons": self.weapons,
+            "spellcasting": self.spellcasting
         }
 
 

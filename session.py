@@ -210,6 +210,8 @@ class Session(object):
         if maxMove < 0:
             maxMove = 0
         path = astar(self.mapArray, (tmpUnit.x, tmpUnit.y), end, maxMove)
+        if path is None:
+            return
         tmpUnit.distance += path.pop(0)
         for x in path:
             tmpUnit.movePath.append(x)

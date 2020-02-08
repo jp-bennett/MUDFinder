@@ -15,13 +15,14 @@ var gpTableSavedHTML;
 var inventoryTableSavedHTML;
 var selectedInventory;
 var savedInventories;
+var spellcasting;
 const isGM = false;
 window.onload = function() {
     try {
         gpTableSavedHTML = document.getElementById("gpTable").innerHTML;
         inventoryTableSavedHTML = document.getElementById("itemTable").innerHTML;
         enableTab("mapWrapper")
-        document.getElementById("updateCharButton").style.display = "none";
+
     } catch (error) {
         alert ("Page initialization failed: " + error);
     }
@@ -36,10 +37,7 @@ window.onload = function() {
             console.log('Websocket connected!');
             if (url_ob.searchParams.get("charName")) {
                 //document.getElementById("charWrapper").appendChild( document.getElementById("charDiv"));
-                document.getElementById("charDiv").style.display = "none";
                 document.getElementById("joinDiv").style.display = "none";
-                document.getElementById("joinGameButton").style.display = "none";
-                //document.getElementById("updateCharButton").style.display = "block";
                 document.getElementById("screenDiv").style.display = "block";
                 console.log('sending join');
                 charName=url_ob.searchParams.get("charName")
@@ -74,7 +72,7 @@ window.onload = function() {
             } else {
                 selectedInitiative = undefined;
             }
-            if (document.getElementById("charWrapper").style.display == "none") {
+            if ((document.getElementById("charWrapper").style.display == "none") | requestedUpdate) { //tracking requestedUpdate may be all that's needed
                 populateSheet(playerData.playerList[charName]);
                 /*if (typeof selectedUnit !== "undefined" && playerData.unitList[selectedUnit].controlledBy == charName) {
                     populateEditChar(playerData, playerData.unitList[selectedUnit].unitNum)
@@ -217,19 +215,18 @@ function updateInv(element, invNum) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function deleteItem(invNum) {
+
     socket.emit('delete_item', room, charName, selectedInventory, invNum);
 }
-
 function advanceInit() {
+
     socket.emit('advance_init', {room: room, charName: charName});
 }
-
-function zoomIn() {
+function zoomIn(lookingAtX, lookingAtY) {
     try {
-        lookingAtX = (document.getElementById("mapContainer").clientWidth/2 + document.getElementById("mapContainer").scrollLeft)/zoomSize
-        lookingAtY = (document.getElementById("mapContainer").clientHeight/2 + document.getElementById("mapContainer").scrollTop)/zoomSize
+        lookingAtX = lookingAtX || (document.getElementById("mapContainer").clientWidth/2 + document.getElementById("mapContainer").scrollLeft)/zoomSize
+        lookingAtY = lookingAtY || (document.getElementById("mapContainer").clientHeight/2 + document.getElementById("mapContainer").scrollTop)/zoomSize
         zoomSize *= 1.5;
         updateMap(playerData);
         document.getElementById("mapContainer").scrollLeft = lookingAtX*zoomSize - document.getElementById("mapContainer").clientWidth/2
@@ -238,11 +235,10 @@ function zoomIn() {
         socket.emit("error_handle", room, e);
     }
 }
-
-function zoomOut() {
+function zoomOut(lookingAtX, lookingAtY) {
     try {
-        lookingAtX = (document.getElementById("mapContainer").clientWidth/2 + document.getElementById("mapContainer").scrollLeft)/zoomSize
-        lookingAtY = (document.getElementById("mapContainer").clientHeight/2 + document.getElementById("mapContainer").scrollTop)/zoomSize
+        lookingAtX = lookingAtX || (document.getElementById("mapContainer").clientWidth/2 + document.getElementById("mapContainer").scrollLeft)/zoomSize
+        lookingAtY = lookingAtY || (document.getElementById("mapContainer").clientHeight/2 + document.getElementById("mapContainer").scrollTop)/zoomSize
         zoomSize /= 1.5;
         updateMap(playerData);
         document.getElementById("mapContainer").scrollLeft = lookingAtX*zoomSize - document.getElementById("mapContainer").clientWidth/2
@@ -318,38 +314,25 @@ function selectInitiative(initiativeNum) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function activeInitiative(initiativeNum) {
+
     document.getElementById("initiativeDiv").children[initiativeNum].children[1].style.display = "block";
 }
-
 function sendChat() {
     socket.emit('chat', {chat: document.getElementById('newChat').value, charName: charName, room: room});
     document.getElementById('newChat').value = "";
 }
-
 function joinGame() {
     try {
-        document.getElementById("charWrapper").appendChild( document.getElementById("charDiv"));
-        document.getElementById("joinGameButton").style.display = "none";
-        document.getElementById("updateCharButton").style.display = "block";
-        console.log({room: room, charName: charName});
+        //document.getElementById("charWrapper").appendChild( document.getElementById("charDiv"));
+        //document.getElementById("joinGameButton").style.display = "none";
         document.getElementById("joinDiv").style.display = "none";
         document.getElementById("screenDiv").style.display = "block";
         charName = document.getElementById("charName").value;
         charShortName = document.getElementById("charShortName").value;
-        //charToken = document.getElementById("charToken").value;
         color = document.getElementById("playerColor").value;
-        perception = document.getElementById("passivePerception").value;
-        movementSpeed = document.getElementById("movementSpeed").value;
-        dex = document.getElementById("dex").value;
-        size = document.getElementById("size").value;
-        darkvision = document.getElementById("darkvision").checked;
-        lowLight = document.getElementById("lowLight").checked;
-        trapfinding = document.getElementById("trapfinding").checked;
-        permanentAbilities = document.getElementById("permanentAbilities").value;
         window.history.replaceState(null, null, window.location.href + `&charName=${charName}`);
-        socket.emit('player_join', {room: room, charName: charName, charShortName: charShortName, color: color, perception: perception, movementSpeed: movementSpeed, dex: dex, size: size, darkvision: darkvision, lowLight: lowLight, trapfinding: trapfinding, permanentAbilities: permanentAbilities});
+        socket.emit('player_join', {room: room, charName: charName, charShortName: charShortName, color: color});
         socket.emit("get_lore", room);
         selectedInventory = charName;
         socket.emit("get_inventories", room, charName);
@@ -357,8 +340,6 @@ function joinGame() {
         socket.emit("error_handle", room, e);
     }
 }
-
-
 function selectUnit(e, selectedUnitNum) {
     try {
         if (typeof selectedUnit == "undefined") {
@@ -403,33 +384,9 @@ function addUnit() {
 
 }
 function resetMovement() {
+
     socket.emit('reset_movement', {selectedInit: playerData.initiativeCount, room: room});
 }
-function updateChar () {
-    try {
-        player = {};
-        player.room = room;
-        player.unitNum = document.getElementById("editCharNum").innerText;
-        player.charName = document.getElementById("charactername").innerText;
-        //player.charShortName = document.getElementById("charShortName").value;
-        //player.token = document.getElementById("charToken").value;
-        player.color = document.getElementById("playerColor").value;
-        if (player.color == "custom") { player.color = document.getElementById("customColor").value;}
-        player.perception = document.getElementById("perception").value;
-        player.movementSpeed = document.getElementById("movementSpeed").value;
-        player.dex = document.getElementById("dex").value;
-        player.size = document.getElementById("size").value;
-        player.darkvision = document.getElementById("darkvision").checked;
-        //player.hasted = document.getElementById("hasted").checked;
-        player.lowLight = document.getElementById("lowLight").checked;
-        player.trapfinding = document.getElementById("trapfinding").checked;
-        player.permanentAbilities = document.getElementById("permanentAbilities").value;
-        socket.emit('update_unit', player);
-    } catch (e) {
-        socket.emit("error_handle", room, e);
-    }
-}
-
 function updatePlayer () {
     try {
         player = {};
@@ -447,8 +404,8 @@ function updatePlayer () {
         player.race = document.getElementById("sheetRace").value;
         player.gender = document.getElementById("sheetGender").value;
         player.homeland = document.getElementById("sheetHomeland").value;
-        player.movementSpeed = document.getElementById("sheetMovementSpeed").value;
-        player.armorSpeed = document.getElementById("sheetArmorSpeed").value;
+        player.movementSpeed = parseInt(document.getElementById("sheetMovementSpeed").value) | 0;
+        player.armorSpeed = parseInt(document.getElementById("sheetArmorSpeed").value) | 0;
         player.flySpeed = document.getElementById("sheetFlySpeed").value;
         player.flyManeuverability = document.getElementById("sheetFlyManeuverability").value;
         player.swimSpeed = document.getElementById("sheetSwimSpeed").value;
@@ -489,22 +446,30 @@ function updatePlayer () {
         player.SR = document.getElementById("sheetSR").value;
         player.ER = document.getElementById("sheetER").value;
         player.weapons = [];
-        player.weapons[0] = []
-        player.weapons[0].push(document.getElementsByClassName("sheetWeaponName")[0].value);
-        player.weapons[0].push(document.getElementsByClassName("sheetWeaponAttack")[0].value);
-        player.weapons[0].push(document.getElementsByClassName("sheetWeaponDamage")[0].value);
-        player.weapons[0].push(document.getElementsByClassName("sheetWeaponCrit")[0].value);
-        player.weapons[0].push(document.getElementsByClassName("sheetWeaponType")[0].value);
-        player.weapons[0].push(document.getElementsByClassName("sheetWeaponRange")[0].value);
-        player.weapons[0].push(document.getElementsByClassName("sheetWeaponAmmo")[0].value);
+        for (var i = 0; i < document.getElementsByClassName("sheetWeaponName").length; i++) {
+            if (document.getElementsByClassName("sheetWeaponName")[i].value == "") {
+                continue;
+            }
+
+            tmpWeapon = []
+            tmpWeapon.push(document.getElementsByClassName("sheetWeaponName")[i].value);
+            tmpWeapon.push(document.getElementsByClassName("sheetWeaponAttack")[i].value);
+            tmpWeapon.push(document.getElementsByClassName("sheetWeaponDamage")[i].value);
+            tmpWeapon.push(document.getElementsByClassName("sheetWeaponCrit")[i].value);
+            tmpWeapon.push(document.getElementsByClassName("sheetWeaponType")[i].value);
+            tmpWeapon.push(document.getElementsByClassName("sheetWeaponRange")[i].value);
+            tmpWeapon.push(document.getElementsByClassName("sheetWeaponAmmo")[i].value);
+            player.weapons.push(tmpWeapon);
+        }
 
         player.skills = getSkills();
+        player.spellcasting = getSpellcasting();
+
         socket.emit('update_player', player);
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function recordGP() {
     try {
         description = document.getElementById("gpDescription").value;
@@ -515,11 +480,10 @@ function recordGP() {
         socket.emit("error_handle", room, e);
     }
 }
-
 function deleteLastGPTransaction() {
-socket.emit("delete_gp_transaction", room, charName, selectedInventory);
-}
 
+    socket.emit("delete_gp_transaction", room, charName, selectedInventory);
+}
 function recordItem() {
     try {
         itemObj = {}
@@ -534,7 +498,6 @@ function recordItem() {
         socket.emit("error_handle", room, e);
     }
 }
-
 function changeInventory(newInventory) {
     try {
         selectedInventory = newInventory;
@@ -549,7 +512,6 @@ function changeInventory(newInventory) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function populateInventory(inventories) {
     try {
         document.getElementById("addInv").style.display="none";
@@ -608,7 +570,6 @@ function populateInventory(inventories) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function newInventory() {
     try {
         tmpSelectedInventory = document.getElementById("newInventoryName").value;
@@ -620,7 +581,6 @@ function newInventory() {
         socket.emit("error_handle", room, e);
     }
 }
-
 function deleteInventory(invToDel) {
     try {
         if (invToDel !== Object.keys(savedInventories)[0]) {
@@ -631,12 +591,10 @@ function deleteInventory(invToDel) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function setSpeeds() {
     document.getElementById("sheetMovementSpeedSQ").value = document.getElementById("sheetMovementSpeed").value / 5 ;
     document.getElementById("sheetArmorSpeedSQ").value = document.getElementById("sheetArmorSpeed").value / 5 ;
 }
-
 function setSTRScore(score) {
     try {
         STRMod = Math.floor((score - 10) / 2);
@@ -652,7 +610,6 @@ function setSTRScore(score) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function setDEXScore(score) {
     try {
         DEXMod = Math.floor((score - 10) / 2);
@@ -668,7 +625,6 @@ function setDEXScore(score) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function setCONScore(score) {
     try {
         CONMod = Math.floor((score - 10) / 2);
@@ -684,7 +640,6 @@ function setCONScore(score) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function setINTScore(score) {
     try {
         INTMod = Math.floor((score - 10) / 2);
@@ -701,7 +656,6 @@ function setINTScore(score) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function setWISScore(score) {
     try {
         WISMod = Math.floor((score - 10) / 2);
@@ -717,7 +671,6 @@ function setWISScore(score) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function setCHAScore(score) {
     try {
         CHAMod = Math.floor((score - 10) / 2);
@@ -733,8 +686,6 @@ function setCHAScore(score) {
         socket.emit("error_handle", room, e);
     }
 }
-
-
 function setInitBonus() {
     try {
         InitBonus = (parseInt(document.getElementById("sheetDEXToInit").value) || 0) + (parseInt(document.getElementById("sheetMiscToInit").value) || 0);
@@ -743,7 +694,6 @@ function setInitBonus() {
         socket.emit("error_handle", room, e);
     }
 }
-
 function setAC() {
     try {
         AC = 10 + (parseInt(document.getElementById("sheetACArmor").value) || 0) +
@@ -773,7 +723,6 @@ function setAC() {
         socket.emit("error_handle", room, e);
     }
 }
-
 function setSaves() {
     try {
         fortSave = (parseInt(document.getElementById("sheetFortMod").value) || 0) +
@@ -797,7 +746,6 @@ function setSaves() {
         socket.emit("error_handle", room, e);
     }
 }
-
 function setBAB() {
     try {
         BAB = (parseInt(document.getElementById("sheetBAB").value) || 0);
@@ -813,7 +761,6 @@ function setBAB() {
         socket.emit("error_handle", room, e);
     }
 }
-
 function setCMX() {
     try {
         CMB = (parseInt(document.getElementById("sheetCMBBAB").value) || 0) +
@@ -833,12 +780,10 @@ function setCMX() {
         socket.emit("error_handle", room, e);
     }
 }
-
 function convertSkill(skillName, newMod){
     //A feat/trait can call this with window["convertSkill"]
     //Should be the basis for giving feats the ability to do stuff without terribly hard-coding everything.
 }
-
 function calcSkill(skillName) {
     try {
         ourDiv = document.getElementById(skillName);
@@ -858,7 +803,6 @@ function calcSkill(skillName) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function getSkills() {
     try{
         var skillsData = {};
@@ -878,21 +822,22 @@ function getSkills() {
     }
 
 }
-
 function populateSkills(skillsData) {
     try{
-        skillsDiv = document.getElementById("skillsDiv");
-        skillsElements = skillsDiv.children;
-        for (i=2, len=skillsElements.length; i<len; i=i+1) {
-            skillsElements[i].children[1].value = skillsData[skillsElements[i].id][0];
-            skillsElements[i].children[3].value = skillsData[skillsElements[i].id][1];
-            skillsElements[i].children[5].value = skillsData[skillsElements[i].id][2];
-            skillsElements[i].children[6].checked = skillsData[skillsElements[i].id][3];
-            skillsElements[i].children[7].value = skillsData[skillsElements[i].id][4];
-            skillsElements[i].children[9].value = skillsData[skillsElements[i].id][5];
-            skillsElements[i].children[11].value = skillsData[skillsElements[i].id][6];
-            if (skillsElements[i].children[13]) {
-                skillsElements[i].children[13].value = skillsData[skillsElements[i].id][7];
+        if (skillsData.length > 0) {
+            skillsDiv = document.getElementById("skillsDiv");
+            skillsElements = skillsDiv.children;
+            for (i=2, len=skillsElements.length; i<len; i=i+1) {
+                skillsElements[i].children[1].value = skillsData[skillsElements[i].id][0];
+                skillsElements[i].children[3].value = skillsData[skillsElements[i].id][1];
+                skillsElements[i].children[5].value = skillsData[skillsElements[i].id][2];
+                skillsElements[i].children[6].checked = skillsData[skillsElements[i].id][3];
+                skillsElements[i].children[7].value = skillsData[skillsElements[i].id][4];
+                skillsElements[i].children[9].value = skillsData[skillsElements[i].id][5];
+                skillsElements[i].children[11].value = skillsData[skillsElements[i].id][6];
+                if (skillsElements[i].children[13]) {
+                    skillsElements[i].children[13].value = skillsData[skillsElements[i].id][7];
+                }
             }
         }
         return;
@@ -901,7 +846,6 @@ function populateSkills(skillsData) {
     }
 
 }
-
 function populateSheet (data) {
     try {
         populateSkills(data.skills);
@@ -993,21 +937,47 @@ function populateSheet (data) {
 
         document.getElementById("sheetBAB").value = data.BAB;
         document.getElementById("sheetBAB").onchange();
-        if (typeof data.weapons[0] !== "undefined") {
-            document.getElementsByClassName("sheetWeaponName")[0].value = data.weapons[0][0]
-            document.getElementsByClassName("sheetWeaponAttack")[0].value = data.weapons[0][1]
-            document.getElementsByClassName("sheetWeaponDamage")[0].value = data.weapons[0][2]
-            document.getElementsByClassName("sheetWeaponCrit")[0].value = data.weapons[0][3]
-            document.getElementsByClassName("sheetWeaponType")[0].value = data.weapons[0][4]
-            document.getElementsByClassName("sheetWeaponRange")[0].value = data.weapons[0][5]
-            document.getElementsByClassName("sheetWeaponAmmo")[0].value = data.weapons[0][6]
+        for (var i = 0; i < data.weapons.length; i++) {
+            document.getElementsByClassName("sheetWeaponName")[i].value = data.weapons[i][0];
+            document.getElementsByClassName("sheetWeaponAttack")[i].value = data.weapons[i][1];
+            document.getElementsByClassName("sheetWeaponDamage")[i].value = data.weapons[i][2];
+            document.getElementsByClassName("sheetWeaponCrit")[i].value = data.weapons[i][3];
+            document.getElementsByClassName("sheetWeaponType")[i].value = data.weapons[i][4];
+            document.getElementsByClassName("sheetWeaponRange")[i].value = data.weapons[i][5];
+            document.getElementsByClassName("sheetWeaponAmmo")[i].value = data.weapons[i][6];
+            addWeaponForm();
+        }
+        spellcasting = data.spellcasting;
+        if (data.spellcasting.length > 0) {
+            document.getElementById("selectCaster").innerHTML = `Hey, you're an ${data.spellcasting[0].class}`;
+            if (data.spellcasting[0].hasSpellbook) {
+                document.getElementById("spellbookButton").style.display = "inline-block";
+            }
+            if (data.spellcasting[0].hasPoints) {
+                document.getElementById("spellPoints").style = "block";
+                document.getElementById("currentPoints").innerHTML = data.spellcasting[0].currentPoints;
+                document.getElementById("dailyPoints").value = data.spellcasting[0].dailyPoints;
+            }
+            if (data.spellcasting[0].hasSpellSlots) {
+                document.getElementById("spellSlots").style = "block";
+                document.getElementById("spellSlotsPerDayLVL1").value = data.spellcasting[0].spellSlotsDaily1;
+                document.getElementById("spellSlotsPerDayLVL2").value = data.spellcasting[0].spellSlotsDaily2;
+                document.getElementById("spellSlotsPerDayLVL3").value = data.spellcasting[0].spellSlotsDaily3;
+                document.getElementById("spellSlotsPerDayLVL4").value = data.spellcasting[0].spellSlotsDaily4;
+                document.getElementById("spellSlotsPerDayLVL5").value = data.spellcasting[0].spellSlotsDaily5;
+                document.getElementById("spellSlotsPerDayLVL6").value = data.spellcasting[0].spellSlotsDaily6;
+                document.getElementById("spellSlotsPerDayLVL7").value = data.spellcasting[0].spellSlotsDaily7;
+                document.getElementById("spellSlotsPerDayLVL8").value = data.spellcasting[0].spellSlotsDaily8;
+                document.getElementById("spellSlotsPerDayLVL9").value = data.spellcasting[0].spellSlotsDaily9;
+                displaySpellSlots();
+            }
+        spellcasting = data.spellcasting;
         }
 
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function sizeUpdate() {
     size = document.getElementById("sheetSize").value;
     switch(size) {
@@ -1037,6 +1007,110 @@ function sizeUpdate() {
             document.getElementById("sheetCMDSize").value = "2";
             break;
     }
+}
+function addWeaponForm() {
+    box = document.getElementById("weaponsBox");
+    newDiv = document.createElement("div");
+    newDiv.style.borderStyle = "solid";
+    newDiv.style.borderWidth = "2px";
+    newDiv.style.marginRight = "0px";
+    newDiv.style.float = "left";
+    newDiv.style.marginTop = "2px";
+    newDiv.innerHTML = `
+
+                <div style="overflow:auto;">
+                  <input style="float:left;width:130px;margin:1px;height:22px;margin-right:5px;" class="sheetWeaponName">
+                  <input style="float:left;width:60px;margin:1px;height:22px;margin-right:5px;" class="sheetWeaponAttack">
+                  <input style="float:left;width:60px;margin:1px;height:22px;" class="sheetWeaponDamage">
+                </div><div style="overflow:auto;">
+                  <div style="float:left; font-size:0.6em; width:134px;margin-right:5px;margin-left:1px;">Weapon</div>
+                  <div style="float:left; font-size:0.6em; width:64px;margin-right:5px;margin-left:1px;">Attack</div>
+                  <div style="float:left; font-size:0.6em; width:64px;margin-left:1px;">Damage</div>
+                </div><div style="overflow:auto;">
+                  <input style="float:left;width:60px;margin:1px;height:22px;margin-right:5px;" class="sheetWeaponCrit">
+                  <input style="float:left;width:60px;margin:1px;height:22px;margin-right:5px;" class="sheetWeaponType">
+                  <input style="float:left;width:60px;margin:1px;height:22px;margin-right:5px;" class="sheetWeaponRange">
+                  <input style="float:left;width:60px;margin:1px;height:22px;" class="sheetWeaponAmmo">
+                </div><div style="overflow:auto;">
+                  <div style="float:left; font-size:0.6em; width:64px;margin-right:5px;margin-left:1px;">Critical</div>
+                  <div style="float:left; font-size:0.6em; width:64px;margin-right:5px;margin-left:1px;">Type</div>
+                  <div style="float:left; font-size:0.6em; width:64px;margin-right:5px;margin-left:1px;">Range</div>
+                  <div style="float:left; font-size:0.6em; width:64px;">Ammo</div>
+                </div>
 
 
+    `;
+    box.append(newDiv);
+
+}
+function addSpellcasting() { //function to add an unmanaged spellcasting class
+    //we grab the class and level, and send it back to the server
+    socket.emit('add_player_spellcasting', {charName: charName, room: room, class: document.getElementById("casterClass").value, level: document.getElementById("casterLevel").value});
+    requestedUpdate = true;
+}
+function modifySpellPoints(change) {
+    document.getElementById("currentPoints").innerHTML = parseInt(document.getElementById("currentPoints").innerHTML) + change;
+    updatePlayer();
+}
+
+function doRest() {
+    currentHP = parseInt(document.getElementById("sheetHP").value) | 0;
+    maxHP = parseInt(document.getElementById("sheetMaxHP").value) | 0;
+    level = parseInt(document.getElementById("sheetLevel").value) | 0;
+    CON = parseInt(document.getElementById("sheetCONMod").value) | 0;
+    currentHP = currentHP + CON + level;
+    if (currentHP > maxHP) {
+        currentHP = maxHP;
+    }
+    document.getElementById("sheetHP").value = currentHP;
+    if (document.getElementById("spellPoints").style.display != "none") {
+        document.getElementById("currentPoints").innerHTML = document.getElementById("dailyPoints").value;
+    }
+    if (spellcasting[0].hasSpellSlots) {
+        displaySpellSlots();
+    }
+    updatePlayer();
+}
+
+function getSpellcasting() {
+    if (spellcasting.length > 0) {
+        if (spellcasting[0].hasPoints) {
+            spellcasting[0].currentPoints = parseInt(document.getElementById("currentPoints").innerHTML) | 0;
+            spellcasting[0].dailyPoints = parseInt(document.getElementById("currentPoints").innerHTML) | 0;
+        }
+        if (spellcasting[0].hasSpellSlots) {
+            spellcasting[0].spellSlotsDaily1 = parseInt(document.getElementById("spellSlotsPerDayLVL1").value) | 0;
+            spellcasting[0].spellSlotsDaily2 = parseInt(document.getElementById("spellSlotsPerDayLVL2").value) | 0;
+            spellcasting[0].spellSlotsDaily3 = parseInt(document.getElementById("spellSlotsPerDayLVL3").value) | 0;
+            spellcasting[0].spellSlotsDaily4 = parseInt(document.getElementById("spellSlotsPerDayLVL4").value) | 0;
+            spellcasting[0].spellSlotsDaily5 = parseInt(document.getElementById("spellSlotsPerDayLVL5").value) | 0;
+            spellcasting[0].spellSlotsDaily6 = parseInt(document.getElementById("spellSlotsPerDayLVL6").value) | 0;
+            spellcasting[0].spellSlotsDaily7 = parseInt(document.getElementById("spellSlotsPerDayLVL7").value) | 0;
+            spellcasting[0].spellSlotsDaily8 = parseInt(document.getElementById("spellSlotsPerDayLVL8").value) | 0;
+            spellcasting[0].spellSlotsDaily9 = parseInt(document.getElementById("spellSlotsPerDayLVL9").value) | 0;
+        }
+    }
+    return spellcasting;
+}
+function castSpellSlot(spllvl) {
+    spellcasting[0]["spellSlots" + spllvl] -= 1;
+    ourdiv = document.getElementById("spellSlotsLVL" + spllvl);
+    ourdiv.removeChild(ourdiv.lastChild);
+    updatePlayer();
+}
+function displaySpellSlots() {
+    for (l = 1; l<=9; l++){
+            elements = document.getElementById("spellSlotsLVL" + l).getElementsByClassName("spellButton")
+            while (elements.length > 0) {
+                elements[0].parentNode.removeChild(elements[0]);
+            }
+            spellcasting[0]['spellSlots' + l] = parseInt(spellcasting[0]['spellSlotsDaily' + l]);
+
+            for (var i = 0; i < spellcasting[0]['spellSlots' + l]; i++) {
+                document.getElementById("spellSlotsLVL" + l).append(document.createElement("button"));
+                document.getElementById("spellSlotsLVL" + l).lastChild.innerText = "Cast";
+                document.getElementById("spellSlotsLVL" + l).lastChild.className = "spellButton";
+                document.getElementById("spellSlotsLVL" + l).lastChild.onclick = (function(l) { return function() { castSpellSlot(l) } })(l);
+                }
+        }
 }

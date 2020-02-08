@@ -332,10 +332,11 @@ function css_getclass(name) {
     }
 }
 
-function zoomIn() {
+function zoomIn(lookingAtX, lookingAtY) {
     try {
-        lookingAtX = (document.getElementById("mapContainer").clientWidth/2 + document.getElementById("mapContainer").scrollLeft)/zoomSize
-        lookingAtY = (document.getElementById("mapContainer").clientHeight/2 + document.getElementById("mapContainer").scrollTop)/zoomSize
+        lookingAtX = lookingAtX || (document.getElementById("mapContainer").clientWidth/2 + document.getElementById("mapContainer").scrollLeft)/zoomSize
+        lookingAtY = lookingAtY || (document.getElementById("mapContainer").clientHeight/2 + document.getElementById("mapContainer").scrollTop)/zoomSize
+        console.log("x:" + lookingAtX + " Y:" + lookingAtY);
         zoomSize *= 1.5;
         updateMap(gmData);
         document.getElementById("mapContainer").scrollLeft = lookingAtX*zoomSize - document.getElementById("mapContainer").clientWidth/2
@@ -345,10 +346,10 @@ function zoomIn() {
     }
 }
 
-function zoomOut() {
+function zoomOut(lookingAtX, lookingAtY) {
     try {
-        lookingAtX = (document.getElementById("mapContainer").clientWidth/2 + document.getElementById("mapContainer").scrollLeft)/zoomSize
-        lookingAtY = (document.getElementById("mapContainer").clientHeight/2 + document.getElementById("mapContainer").scrollTop)/zoomSize
+        lookingAtX = lookingAtX || (document.getElementById("mapContainer").clientWidth/2 + document.getElementById("mapContainer").scrollLeft)/zoomSize
+        lookingAtY = lookingAtY || (document.getElementById("mapContainer").clientHeight/2 + document.getElementById("mapContainer").scrollTop)/zoomSize
         zoomSize /= 1.5;
         updateMap(gmData);
         document.getElementById("mapContainer").scrollLeft = lookingAtX*zoomSize - document.getElementById("mapContainer").clientWidth/2
@@ -607,6 +608,14 @@ function updateChar () {
         player.permanentAbilities = document.getElementById("permanentAbilities").value;
         player.initiative = document.getElementById("init").value
         socket.emit('update_unit', player);
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
+function removeCharFromMap () {
+    try {
+        socket.emit('remove_unit_location', room, gmKey, document.getElementById("editCharNum").innerText);
     } catch (e) {
         socket.emit("error_handle", room, e);
     }

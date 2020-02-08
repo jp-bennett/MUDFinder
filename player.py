@@ -34,14 +34,14 @@ class Player(Unit):
         self.willMisc = default(unitdict, "willMisc", "")
 
         self.image = default(unitdict, "image", "")
-        self.inventories = {}
+        #self.inventories = {}
         if "inventories" in unitdict:
             self.inventories = unitdict["inventories"]
         else:
             self.inventories = {}
             self.inventories[self.charName] = {}
             self.inventories[self.charName]["gp"] = []
-            self.inventories[self.charName]["Inventory"] = []
+            self.inventories[self.charName]["inventory"] = []
 
     def to_json(self):
         tmp_json = super(Player, self).to_json()

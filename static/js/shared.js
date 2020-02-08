@@ -1,5 +1,11 @@
 const chunk_size = 64 * 1024;
 var loreImages = new Array();
+var scaling = false;
+var prevDiff = 0;
+var touchX = 0;
+var touchY = 0;
+var zoom = 1;
+
 if (!('toJSON' in Error.prototype))
 Object.defineProperty(Error.prototype, 'toJSON', {
     value: function () {
@@ -14,7 +20,80 @@ Object.defineProperty(Error.prototype, 'toJSON', {
     configurable: true,
     writable: true
 });
+document.getElementById("mapContainer").onwheel = function(e){
+    try {
+        if (e.ctrlKey){
+            e.preventDefault()
+            mouseX = (e.clientX - e.currentTarget.getBoundingClientRect().x + e.currentTarget.scrollLeft) / zoomSize;
+            mouseY = (e.clientY - e.currentTarget.getBoundingClientRect().y + e.currentTarget.scrollTop) / zoomSize;
+            if (e.deltaY < 0) {
+                zoomIn(mouseX, mouseY);
+            } else if (e.deltaY > 0) {
+                zoomOut(mouseX, mouseY);
+            }
+        }
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+document.getElementById("mapContainer").ontouchstart = function(e){
+    try {
+        if (e.touches.length > 1) {
+            e.preventDefault();
+            e.stopPropagation();
+            scaling = true;
+            diff = Math.abs(Math.hypot(e.touches[0].clientX, e.touches[0].clientY) - Math.hypot(e.touches[1].clientX, e.touches[1].clientY));
+            touchX = (e.touches[0].clientX + e.touches[1].clientX) /2;
+            touchX -= document.getElementById("mapContainer").getBoundingClientRect().x
+            touchX += document.getElementById("mapContainer").scrollLeft;
+            touchX /= zoom;
+            touchY = (e.touches[0].clientY + e.touches[1].clientY) /2;
+            touchY -= document.getElementById("mapContainer").getBoundingClientRect().y
+            touchY += document.getElementById("mapContainer").scrollTop;
+            touchY /= zoom;
+            prevDiff = diff;
+        }
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+document.getElementById("mapContainer").ontouchmove = function(e){
+    try {
+        if (scaling & e.touches.length > 1) {
+            e.preventDefault();
+            e.stopPropagation();
+            diff = Math.abs(Math.hypot(e.touches[0].clientX, e.touches[0].clientY) - Math.hypot(e.touches[1].clientX, e.touches[1].clientY));
+            if (Math.abs( diff - prevDiff) > 10) {
+                if (diff > prevDiff ) {
+                    //zoomIn();
+                    zoom *= 1.1; //add max zoom
+                } else {
+                    //zoomOut()
+                    zoom /= 1.1 //add min zoom
+                }
+                    document.getElementById("mapGraphic").style.transform = `scale(${zoom})`;
+                    document.getElementById("mapContainer").scrollLeft = touchX*zoom - document.getElementById("mapContainer").clientWidth/2
+                    document.getElementById("mapContainer").scrollTop = touchY*zoom - document.getElementById("mapContainer").clientHeight/2
+                prevDiff = diff
+            }
+            //
+        }
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+document.getElementById("mapContainer").ontouchend = function(e){
+    try {
+        if (scaling) {
+            scaling = false;
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
 
+}
 function updateMap(Data) {
     try {
         if (typeof Data.mapArray[0] === "undefined" ) {
@@ -139,10 +218,12 @@ function updateMap(Data) {
             }
             if (Data.inInit /*&& Data.initiativeList[Data.initiativeCount].movePath.length > 0*/) {
                 tmpHTML = ""
-                for (i = 0; i<Data.initiativeList[Data.initiativeCount].movePath.length;i++) {
+                for (i = 0; i<Data.initiativeList[Data.initiativeCount].movePath.length - 1;i++) {
                     moveLoc = Data.initiativeList[Data.initiativeCount].movePath[i];
                     tmpHTML += `<div style="width:${zoomSize/10}px;height:${zoomSize/10}px;position:absolute;top:${moveLoc[0]*zoomSize+zoomSize/2.2}px;left:${moveLoc[1]*zoomSize+zoomSize/2.2}px;background:${Data.initiativeList[Data.initiativeCount].color};"></div>`;
                 }
+                if (Data.initiativeList[Data.initiativeCount].x != -1)
+                document.getElementById("tile" + Data.initiativeList[Data.initiativeCount].x + "," + Data.initiativeList[Data.initiativeCount].y).style.background = "cornflowerblue";
                 document.getElementById("mapGraphic").innerHTML += tmpHTML
                 document.getElementById("movement").innerText = Math.floor(Data.initiativeList[Data.initiativeCount].distance) * 5
             }
@@ -168,7 +249,6 @@ function enableTab(tabName) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function populateEditChar (Data, unitNum) {
     try {
         if (Data.unitList.length == 0) {return}
@@ -180,7 +260,7 @@ function populateEditChar (Data, unitNum) {
         }
         document.getElementById("editCharNum").innerText = playerUnitNum;
         document.getElementById("charactername").innerText = Data.unitList[playerUnitNum].charName;
-        //document.getElementById("charToken").value = Data.unitList[playerUnitNum].token;
+        document.getElementById("charToken").value = Data.unitList[playerUnitNum].token;
         if (Data.unitList[playerUnitNum].token != "" && document.getElementById("charTokenView") != null) {
             document.getElementById("charTokenView").src = Data.unitList[playerUnitNum].token;
         }
@@ -215,7 +295,6 @@ function populateEditChar (Data, unitNum) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function updateImages (unitInfo) {
     try {
         if (unitInfo.token != "" && document.getElementById("charTokenView") != null) {
@@ -228,7 +307,6 @@ function updateImages (unitInfo) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function previewLoreFile () {
     try {
         document.getElementById("loreFilePreview").src = URL.createObjectURL(document.getElementById("loreFileUpload").files[0])
@@ -236,9 +314,6 @@ function previewLoreFile () {
         socket.emit("error_handle", room, e);
     }
 }
-
-
-
 function uploadLore () { //https://github.com/miguelgrinberg/socketio-examples
     try {
         if (typeof document.getElementById("loreFileUpload").files[0] == "undefined") {
@@ -274,7 +349,6 @@ function readFileChunk(file, offset, length, success, error) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function onReadSuccess(file, offset, length, data) {
     try {
         if (this.done)
@@ -302,7 +376,6 @@ function onReadSuccess(file, offset, length, data) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function updateLore(msg, num) {
     try {
         document.getElementById("lorePage").innerHTML = "";
@@ -357,7 +430,6 @@ function updateLore(msg, num) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function enableLoreTab(tabName) {
     try {
         console.log(tabName);
@@ -371,7 +443,6 @@ function enableLoreTab(tabName) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function changeLoreVisibility(i) {
     try {
         if (isGM) {
@@ -383,7 +454,6 @@ function changeLoreVisibility(i) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function deleteLore(i) {
     try {
         if (isGM) {
@@ -395,7 +465,6 @@ function deleteLore(i) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function sendLoreURL () {
     try {
         if (document.getElementById("loreFileUpload").value == "") {
@@ -408,7 +477,6 @@ function sendLoreURL () {
         socket.emit("error_handle", room, e);
     }
 }
-
 function previewLoreURL (value) {
     try {
         document.getElementById("loreFilePreview").src = value;
@@ -416,7 +484,6 @@ function previewLoreURL (value) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function onReadError(file, offset, length, error) {
     try {
         console.log('Upload error for ' + file.name + ': ' + error);
@@ -425,7 +492,6 @@ function onReadError(file, offset, length, error) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function downloadLoreImage(slotNum) {
     try {
         socket.emit("get_lore_file", room, slotNum, function (returnedImage){
@@ -436,7 +502,6 @@ function downloadLoreImage(slotNum) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function changeItemCat(target) {
     try {
         if (target.value == "Custom") {
@@ -450,12 +515,10 @@ function changeItemCat(target) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function handle_error(e) {
 
     socket.emit("error_handle", room, e);
 }
-
 function imageUpload(element, title) {
     console.log("imageUpload");
     var modalBackground = document.createElement("div");
@@ -486,7 +549,6 @@ function imageUpload(element, title) {
     document.body.appendChild(modalBackground);
     document.getElementById("modalBackground").appendChild(div);
 }
-
 function previewImageURL(value) {
     try {
         document.getElementById("imageFileUpload").value = "";
@@ -495,7 +557,6 @@ function previewImageURL(value) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function previewImageFile (callingElement) {
     try {
         document.getElementById("imageURL").value = "";
@@ -504,7 +565,6 @@ function previewImageFile (callingElement) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function selectImage (title) {
     try {
         if (document.getElementById("imageFileUpload").value == "") {
@@ -528,4 +588,11 @@ function selectImage (title) {
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
+}
+function showSheetPage(pageName) {
+    elements = document.getElementsByClassName("sheetPage");
+    for (var i = 0; i < elements.length; i++) {
+        elements[i].style.display = "none";
+    }
+    document.getElementById(pageName).style.display = "block";
 }

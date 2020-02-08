@@ -470,6 +470,65 @@ def on_update_unit(data):
             tmp_unit.initiative = data["initiative"]
         emit('do_update', ROOMS[room].player_json(), room=room)
 
+
+@socketio.on('remove_unit_location')
+def on_remove_unit_location(room, gmKey, tmp_unitNum):
+    if check_room(room):
+        if ROOMS[room].gmKey == gmKey:
+            tmp_unit = ROOMS[room].unitList[int(tmp_unitNum)]
+            tmp_unit.x = -1
+            tmp_unit.y = -1
+            emit('do_update', ROOMS[room].player_json(), room=room)
+
+
+@socketio.on('add_player_spellcasting')
+def on_add_player_spellcasting(data):
+    room = data['room']
+    if check_room(room):
+        tmp_unit = ROOMS[room].playerList[data["charName"]]
+        tmp_spell = {}
+        tmp_spell["class"] = data["class"]
+        tmp_spell["classLevel"] = data["level"]
+        tmp_spell["casterLevel"] = data["level"]
+        if tmp_spell["class"] in ["Arcanist", "Wizard", "Alchemist", "Magus"]:
+            tmp_spell['hasSpellbook'] = True
+            tmp_spell["spellbook"] = []
+        else:
+            tmp_spell['hasSpellbook'] = False
+        if tmp_spell["class"] in ["Arcanist", "Magus", "Soulknife"]:
+            tmp_spell['hasPoints'] = True
+            tmp_spell['currentPoints'] = 0
+            tmp_spell['maxPoints'] = 0
+            tmp_spell['dailyPoints'] = 0
+        else:
+            tmp_spell['hasPoints'] = False
+        if tmp_spell["class"] in ["Arcanist", "Sorcerer", "Alchemist"]:
+            tmp_spell["hasSpellSlots"] = True
+            tmp_spell["spellSlots1"] = 0
+            tmp_spell["spellSlots2"] = 0
+            tmp_spell["spellSlots3"] = 0
+            tmp_spell["spellSlots4"] = 0
+            tmp_spell["spellSlots5"] = 0
+            tmp_spell["spellSlots6"] = 0
+            tmp_spell["spellSlots7"] = 0
+            tmp_spell["spellSlots8"] = 0
+            tmp_spell["spellSlots9"] = 0
+            tmp_spell["spellSlotsDaily1"] = 0
+            tmp_spell["spellSlotsDaily2"] = 0
+            tmp_spell["spellSlotsDaily3"] = 0
+            tmp_spell["spellSlotsDaily4"] = 0
+            tmp_spell["spellSlotsDaily5"] = 0
+            tmp_spell["spellSlotsDaily6"] = 0
+            tmp_spell["spellSlotsDaily7"] = 0
+            tmp_spell["spellSlotsDaily8"] = 0
+            tmp_spell["spellSlotsDaily9"] = 0
+        else:
+            tmp_spell["hasSpellSlots"] = False
+        tmp_spell['currentSpells'] = []
+        tmp_unit.spellcasting.append(tmp_spell)
+
+        emit('do_update', ROOMS[room].player_json())
+
 @socketio.on('update_player')
 def on_update_player(data):
     room = data['room']
@@ -512,6 +571,7 @@ def on_update_player(data):
         tmp_unit.ACNatural = data["ACNatural"]
         tmp_unit.ACMisc = data["ACMisc"]
         tmp_unit.deflection = data["deflection"]
+        tmp_unit.spellcasting = data["spellcasting"]
 
         tmp_unit.BAB = data["BAB"]
 
@@ -528,7 +588,7 @@ def on_update_player(data):
         tmp_unit.ER = data["ER"]
         tmp_unit.weapons = data["weapons"]
         tmp_unit.skills = data["skills"]
-        emit('do_update', ROOMS[room].player_json(), room=room)
+        emit('do_update', ROOMS[room].player_json())
 
 @socketio.on('add_to_initiative')
 def on_add_to_initiative(data):
@@ -601,9 +661,8 @@ def on_locate_unit(data):
             data["yCoord"] -= 1
 
     if "gmKey" in data.keys() and ROOMS[room].gmKey == data['gmKey']:
-        if ROOMS[room].inInit and tmpUnit["inInit"] and \
-                tmpUnit == ROOMS[room].initiativeList[ROOMS[room].initiativeCount] and \
-                "x" in tmpUnit.keys():
+        if ROOMS[room].inInit and tmpUnit.inInit and \
+                tmpUnit == ROOMS[room].initiativeList[ROOMS[room].initiativeCount]:
             ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), data["moveType"])
         else:
             ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), 5)
@@ -616,15 +675,15 @@ def on_locate_unit(data):
     if ROOMS[room].inInit:
         if ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["walkable"] \
                 and ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["seen"] \
-                and ROOMS[room].unitList[data['selectedUnit']]["controlledBy"] == data["requestingPlayer"] \
-                and ROOMS[room].unitList[data['selectedUnit']]["initiative"] \
-                and ROOMS[room].unitList[data['selectedUnit']]["initiative"] == \
-                ROOMS[room].initiativeList[ROOMS[room].initiativeCount]["initiative"]:
-            if "x" in tmpUnit.keys():
+                and ROOMS[room].unitList[data['selectedUnit']].controlledBy == data["requestingPlayer"] \
+                and ROOMS[room].unitList[data['selectedUnit']].initiative \
+                and ROOMS[room].unitList[data['selectedUnit']].initiative == \
+                ROOMS[room].initiativeList[ROOMS[room].initiativeCount].initiative:
+            if tmpUnit.x != "":
                 ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), data["moveType"])
             else:
                 ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), 5)
-            if "revealsMap" in tmpUnit.keys() and tmpUnit["revealsMap"]:
+            if tmpUnit.revealsMap:
                 ROOMS[room].reveal_map(data['selectedUnit'])  # only some controlled units should do this
             emit('do_update', ROOMS[room].player_json(), room=room)
 
@@ -654,10 +713,12 @@ def on_remove_init(data):
         if ROOMS[room].inInit and ROOMS[room].initiativeCount > data['initCount']:
             ROOMS[room].initiativeCount -= 1
         elif ROOMS[room].inInit and ROOMS[room].initiativeCount == data['initCount'] and data['initCount'] < len(
-                data["initList"]):
+                ROOMS[room].initiativeList):
             ROOMS[room].initiativeCount = 0
         ROOMS[room].initiativeList[data['initCount']].inInit = False
         ROOMS[room].initiativeList.pop(data['initCount'])
+        if len(ROOMS[room].initiativeList) == 0:
+            ROOMS[room].inInit = False
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 
