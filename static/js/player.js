@@ -17,11 +17,13 @@ var selectedInventory;
 var savedInventories;
 var spellcasting;
 const isGM = false;
+window.addEventListener("resize", hackSizes);
 window.onload = function() {
     try {
         gpTableSavedHTML = document.getElementById("gpTable").innerHTML;
         inventoryTableSavedHTML = document.getElementById("itemTable").innerHTML;
-        enableTab("mapWrapper")
+        enableTab("mapWrapper");
+
 
     } catch (error) {
         alert ("Page initialization failed: " + error);
@@ -167,6 +169,7 @@ window.onload = function() {
                 document.getElementById("promptDiv").innerHTML = tmpHTML;
             }
         requestedUpdate = false;
+        
         } catch (e) {
             socket.emit("error_handle", room, e);
         }
@@ -1110,4 +1113,8 @@ function displaySpellSlots() {
                 document.getElementById("spellSlotsLVL" + l).lastChild.onclick = (function(l) { return function() { castSpellSlot(l) } })(l);
                 }
         }
+}
+function hackSizes() {
+    headerheights = document.getElementById("sheetHeader").offsetHeight + document.getElementById("tabsDiv").offsetHeight + 20;
+    document.getElementById("sheetContent").style.height = `calc(100% - ${headerheights}px)`;
 }

@@ -42,7 +42,7 @@
   <div id="screenDiv" class="screenDiv" style="display:none;">
     <div id="tabsDiv" class="tabsDiv">
       <div class="tab" onClick="enableTab('mapWrapper')">Map</div>
-      <div class="tab" onClick="enableTab('charWrapper')">Character</div>
+      <div class="tab" onClick="enableTab('charWrapper'); hackSizes();">Character</div>
 
       <div class="tab" onClick="enableTab('inventory')">Inventory</div>
       <div class="tab" onClick="enableTab('lore')">Lore</div>
@@ -368,6 +368,7 @@
                 </div>
 
               </div><!-- Left Column -->
+
 
 
               <div style="width:625px; overflow:auto; margin-bottom:15px;" id="skillsDiv">
@@ -997,7 +998,10 @@
               </div>
               <div class="spellSlots"></div>
             </div>
-            <div class="sheetPage" id="sheetSpellBookPage" style="display:none;"></div>
+            <div class="sheetPage" id="sheetSpellBookPage" style="display:none;">
+
+
+            </div>
           </div>
           <div id="addDiv" style="display:none;">
             ---Add a Unit---<br>
