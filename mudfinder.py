@@ -3,13 +3,14 @@ import json
 import time
 import io
 import base64
+import sqlite3
 from os import path
 from os import mkdir
 from threading import Lock
 from random import randint
 
 from flask import Flask, render_template, request, redirect
-from flask_socketio import SocketIO, join_room, emit
+from flask_socketio import SocketIO, join_room, emit, send
 
 from session import Session
 
@@ -493,12 +494,12 @@ def on_add_player_spellcasting(data):
         tmp_spell["class"] = data["class"]
         tmp_spell["classLevel"] = data["level"]
         tmp_spell["casterLevel"] = data["level"]
-        if tmp_spell["class"] in ["Arcanist", "Wizard", "Alchemist", "Magus"]:
+        if tmp_spell["class"] in ["Arcanist", "Wizard", "Alchemist", "Magus", "Witch"]:
             tmp_spell['hasSpellbook'] = True
             tmp_spell["spellbook"] = []
         else:
             tmp_spell['hasSpellbook'] = False
-        if tmp_spell["class"] in ["Arcanist", "Magus", "Soulknife"]:
+        if tmp_spell["class"] in ["Arcanist", "Magus", "Gifted Blade"]:
             tmp_spell['hasPoints'] = True
             tmp_spell['currentPoints'] = 0
             tmp_spell['maxPoints'] = 0
@@ -527,7 +528,16 @@ def on_add_player_spellcasting(data):
             tmp_spell["spellSlotsDaily9"] = 0
         else:
             tmp_spell["hasSpellSlots"] = False
-        tmp_spell['currentSpells'] = []
+        if tmp_spell["class"] in ["Arcanist", "Magus", "Gifted Blade", "Wizard", "Witch", "Cleric"]:
+            tmp_spell["preparesSpells"] = True;
+            tmp_spell["preparedSpells"] = [[], [], [], [], [], [], [], [], [], []]
+            tmp_spell["preparedSpellsDaily"] = [{"number": 0, "spells": []}, {"number": 0, "spells": []}, {"number": 0, "spells": []},
+                                                {"number": 0, "spells": []}, {"number": 0, "spells": []}, {"number": 0, "spells": []},
+                                                {"number": 0, "spells": []}, {"number": 0, "spells": []}, {"number": 0, "spells": []}, {"number": 0, "spells": []}]
+            if tmp_spell["class"] in ["Magus", "Wizard", "Witch", "Cleric"]:
+                tmp_spell["Vancian"] = True
+            else:
+                tmp_spell["Vancian"] = False
         tmp_unit.spellcasting.append(tmp_spell)
 
         emit('do_update', ROOMS[room].player_json())
@@ -972,6 +982,20 @@ def error_handle(room, error_message):
     if check_room(room):
         print("Error Message: ")
         print(error_message)
+
+@socketio.on('database_spells')
+def database_spells(casterClass, level):
+    conn = sqlite3.connect("mudfinder.sql")
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    q = (level, )
+    if casterClass == "Arcanist": casterClass = "wiz"
+    if casterClass in ["wiz", "sor", "cleric", "druid", "ranger", "bard", "paladin", "alchemist", "summoner", "witch", "inquisitor", "oracle", "antipaladin", "magus", "bloodrager", "shaman", "psychic", "medium", "mesmerist", "occultist", "spiritualist", "skald", "investigator", "hunter"]:
+        c.execute("select name, school, subschool, descriptor, spell_level, casting_time, components, costly_components, range, area, effect, targets, duration, dismissible, shapeable, saving_throw, spell_resistence, description, short_description, description_formated from spells where %s=?;" % casterClass, q)
+    result = [dict(row) for row in c.fetchall()]
+    for i in result:
+        i["level"] = level
+    return result
 
 
 with thread_lock:

@@ -16,6 +16,8 @@ var inventoryTableSavedHTML;
 var selectedInventory;
 var savedInventories;
 var spellcasting;
+var savedSpellList;
+var spellSelectionDestination = ["", 0, 0]
 const isGM = false;
 window.addEventListener("resize", hackSizes);
 window.onload = function() {
@@ -169,7 +171,7 @@ window.onload = function() {
                 document.getElementById("promptDiv").innerHTML = tmpHTML;
             }
         requestedUpdate = false;
-        
+
         } catch (e) {
             socket.emit("error_handle", room, e);
         }
@@ -399,6 +401,7 @@ function resetMovement() {
 }
 function updatePlayer () {
     try {
+        requestedUpdate = true;
         player = {};
         player.room = room;
         player.charName = charName;
@@ -962,6 +965,7 @@ function populateSheet (data) {
             document.getElementById("selectCaster").innerHTML = `Hey, you're an ${data.spellcasting[0].class}`;
             if (data.spellcasting[0].hasSpellbook) {
                 document.getElementById("spellbookButton").style.display = "inline-block";
+                populateSpellbook(0)
             }
             if (data.spellcasting[0].hasPoints) {
                 document.getElementById("spellPoints").style = "block";
@@ -980,6 +984,11 @@ function populateSheet (data) {
                 document.getElementById("spellSlotsPerDayLVL8").value = data.spellcasting[0].spellSlotsDaily8;
                 document.getElementById("spellSlotsPerDayLVL9").value = data.spellcasting[0].spellSlotsDaily9;
                 displaySpellSlots();
+            }
+            if (data.spellcasting[0].preparesSpells) {
+                document.getElementById("spellPreparedSpellsButton").style = "block";
+                document.getElementById("spellsPrepared").style = "block";
+                populatePreparedSpells()
             }
         }
         populateSkills(data.skills);
@@ -1096,6 +1105,18 @@ function getSpellcasting() {
             spellcasting[0].spellSlotsDaily8 = parseInt(document.getElementById("spellSlotsPerDayLVL8").value) | 0;
             spellcasting[0].spellSlotsDaily9 = parseInt(document.getElementById("spellSlotsPerDayLVL9").value) | 0;
         }
+        if (spellcasting[0].preparesSpells) {
+            spellcasting[0].preparedSpellsDaily[0].number = document.getElementById("spellsPreparedPerDayLVL0").value | 0;
+            spellcasting[0].preparedSpellsDaily[1].number = document.getElementById("spellsPreparedPerDayLVL1").value | 0;
+            spellcasting[0].preparedSpellsDaily[2].number = document.getElementById("spellsPreparedPerDayLVL2").value | 0;
+            spellcasting[0].preparedSpellsDaily[3].number = document.getElementById("spellsPreparedPerDayLVL3").value | 0;
+            spellcasting[0].preparedSpellsDaily[4].number = document.getElementById("spellsPreparedPerDayLVL4").value | 0;
+            spellcasting[0].preparedSpellsDaily[5].number = document.getElementById("spellsPreparedPerDayLVL5").value | 0;
+            spellcasting[0].preparedSpellsDaily[6].number = document.getElementById("spellsPreparedPerDayLVL6").value | 0;
+            spellcasting[0].preparedSpellsDaily[7].number = document.getElementById("spellsPreparedPerDayLVL7").value | 0;
+            spellcasting[0].preparedSpellsDaily[8].number = document.getElementById("spellsPreparedPerDayLVL8").value | 0;
+            spellcasting[0].preparedSpellsDaily[9].number = document.getElementById("spellsPreparedPerDayLVL9").value | 0;
+        }
     }
     return spellcasting;
 }
@@ -1124,4 +1145,151 @@ function displaySpellSlots() {
 function hackSizes() {
     headerheights = document.getElementById("sheetHeader").offsetHeight + document.getElementById("tabsDiv").offsetHeight + 20;
     document.getElementById("sheetContent").style.height = `calc(100% - ${headerheights}px)`;
+}
+function addSpell(selectionSource, destination) {
+    spellSelectionDestination = destination;
+    var modalBackground = document.createElement("div");
+    modalBackground.id = "modalBackground";
+    modalBackground.className = "modal";
+    modalBackground.onclick = function () {document.getElementById('modalBackground').remove();};
+
+    var div = document.createElement("div");
+    div.style.width = "80%";
+    div.style.height = "90%";
+    div.style.position = "absolute";
+    div.style.right = "10%";
+    div.style.top = "5%";
+    div.style.background = "white";
+    div.style.border = "black";
+    div.style.borderStyle = "solid";
+    div.style.borderRadius = "25px";
+    div.style.textAlign = "center";
+    div.onclick = function () {event.stopPropagation()}
+    if (selectionSource == "class") {
+        div.innerHTML = `
+        Spell Level: <select onchange="get_spells('${spellcasting[0].class}', this.selectedIndex, populateSpellList);">
+        <option>0</option>
+        <option>1</option>
+        <option>2</option>
+        <option>3</option>
+        <option>4</option>
+        <option>5</option>
+        <option>6</option>
+        <option>7</option>
+        <option>8</option>
+        <option>9</option>
+        </select>
+        <div id="selectSpellsDiv" style="height: 50%;overflow: auto;width: 90%;margin: auto;"></div>
+        <div id="highlightedSpell" style="overflow: auto;width: 90%;margin: auto;height:40%"></div>
+        `;
+            document.body.appendChild(modalBackground);
+    document.getElementById("modalBackground").appendChild(div);
+        get_spells(spellcasting[0].class, 0, populateSpellList);
+    } else if (selectionSource == "spellbook") {
+        div.innerHTML = `
+        Spell Level: <select onchange="populateSpellList(spellcasting[0].spellbook[this.selectedIndex]);">
+        <option>0</option>
+        <option>1</option>
+        <option>2</option>
+        <option>3</option>
+        <option>4</option>
+        <option>5</option>
+        <option>6</option>
+        <option>7</option>
+        <option>8</option>
+        <option>9</option>
+        </select>
+        <div id="selectSpellsDiv" style="height: 50%;overflow: auto;width: 90%;margin: auto;"></div>
+        <div id="highlightedSpell" style="overflow: auto;width: 90%;margin: auto;height:40%"></div>
+        `;
+            document.body.appendChild(modalBackground);
+    document.getElementById("modalBackground").appendChild(div);
+        populateSpellList(spellcasting[0].spellbook[0]);
+
+    }
+
+
+}
+function populateSpellList(results) {
+    savedSpellList = results;
+    spellLevel = results[0].level;
+    if (spellSelectionDestination[0] == "spellbook" && typeof spellcasting[0].spellbook[spellLevel] == "undefined") {
+        spellcasting[0].spellbook[spellLevel] = [];
+    }
+    var spellTable = document.createElement("table");
+    spellTable.style.minWidth = "80%";
+    spellTable.style.margin = "auto";
+    for (i = 0; i < results.length; i++) {
+        if (spellSelectionDestination[0] != "spellbook" || spellcasting[0].spellbook[spellLevel].filter( function(spell) {return (spell.name==results[i].name);} ).length == 0) {
+            var tableRow = document.createElement("tr");
+            tableRow.onclick = (function(i) { return function() { highlightSpell(i) } })(i);
+            var tableData = document.createElement("td");
+            tableData.innerText = results[i].name;
+            tableRow.appendChild(tableData);
+            var tableData = document.createElement("td");
+            tableData.innerText = results[i].short_description
+            var tableData = document.createElement("td");
+            var actionButton = document.createElement("button");
+            if (spellSelectionDestination[0] == "spellbook") {
+                actionButton.innerText = "Add";
+                actionButton.onclick = (function(i) { return function() { addSingleSpellToSpellbook(i) } })(i);
+
+            } else if (spellSelectionDestination[0] == "dailyPrepared" ){
+                actionButton.innerText = "Prepare";
+                actionButton.spell = results[i];
+                actionButton.onclick = function() {prepareSpell(this.spell);};
+            }
+            tableData.appendChild(actionButton);
+            tableRow.appendChild(tableData);
+            spellTable.appendChild(tableRow);
+        }
+    }
+    document.getElementById("selectSpellsDiv").innerHTML = "";
+    document.getElementById("selectSpellsDiv").appendChild(spellTable);
+}
+function highlightSpell(spellNumber) {
+    spellText = savedSpellList[spellNumber].name;
+    spellText += savedSpellList[spellNumber].description_formated;
+    document.getElementById("highlightedSpell").innerHTML = formatSpell(savedSpellList[spellNumber]);
+
+}
+function addSingleSpellToSpellbook(spellNumber) {
+    event.stopPropagation();
+    spellLevel = savedSpellList[spellNumber].level
+    if (typeof spellcasting[0].spellbook[spellLevel] == "undefined") {
+        spellcasting[0].spellbook[spellLevel] = [];
+    }
+    if (spellcasting[0].spellbook[spellLevel].filter( function(spell) {return (spell.name==savedSpellList[spellNumber].name);} ).length == 0) {
+        spellcasting[0].spellbook[spellLevel].push(savedSpellList[spellNumber]);
+        document.getElementById("highlightedSpell").innerHTML = "";
+        populateSpellList(savedSpellList);
+        populateSpellbook(0);
+    }
+}
+
+function populateSpellbook(spellLevel) {
+    spellbookBodyData = "";
+    if (typeof spellcasting[0].spellbook[spellLevel] == "undefined" || spellcasting[0].spellbook[spellLevel].length == 0){
+        document.getElementById("spellbookBody").innerHTML = "No Spells of this Level Yet"
+        return;
+    }
+    for (i=0; i<spellcasting[0].spellbook[spellLevel].length; i++){
+        document.getElementById("spellbookBody").appendChild(formatSpellObj(spellcasting[0].spellbook[spellLevel][i], false))
+        //spellbookBodyData += formatSpell(spellcasting[0].spellbook[spellLevel][i], true) + "<br>";
+    }
+    //document.getElementById("spellbookBody").innerHTML = spellbookBodyData;
+}
+
+function prepareSpell(spell) {
+    //player picks slot
+    event.stopPropagation();
+    document.getElementById('modalBackground').remove();
+    console.log(spell);
+    if (spellSelectionDestination[0] == "dailyPrepared") {
+        spellcasting[0].preparedSpellsDaily[spellSelectionDestination[1]].spells[spellSelectionDestination[2]] = spell;
+    }
+    updatePlayer();
+}
+
+function removeSpell(info) {
 }
