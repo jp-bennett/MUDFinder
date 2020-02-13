@@ -990,6 +990,7 @@ def database_spells(casterClass, level):
     c = conn.cursor()
     q = (level, )
     if casterClass == "Arcanist": casterClass = "wiz"
+    if casterClass == "Cleric": casterClass = "cleric"
     if casterClass in ["wiz", "sor", "cleric", "druid", "ranger", "bard", "paladin", "alchemist", "summoner", "witch", "inquisitor", "oracle", "antipaladin", "magus", "bloodrager", "shaman", "psychic", "medium", "mesmerist", "occultist", "spiritualist", "skald", "investigator", "hunter"]:
         c.execute("select name, school, subschool, descriptor, spell_level, casting_time, components, costly_components, range, area, effect, targets, duration, dismissible, shapeable, saving_throw, spell_resistence, description, short_description, description_formated from spells where %s=?;" % casterClass, q)
     result = [dict(row) for row in c.fetchall()]

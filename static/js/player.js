@@ -1067,7 +1067,8 @@ function addSpellcasting() { //function to add an unmanaged spellcasting class
     requestedUpdate = true;
 }
 function modifySpellPoints(change) {
-    document.getElementById("currentPoints").innerHTML = parseInt(document.getElementById("currentPoints").innerHTML) + change;
+    //document.getElementById("currentPoints").innerHTML = parseInt(document.getElementById("currentPoints").innerHTML) + change;
+    spellcasting[0].currentPoints += change;
     updatePlayer();
 }
 function doRest() {
@@ -1080,8 +1081,9 @@ function doRest() {
         currentHP = maxHP;
     }
     document.getElementById("sheetHP").value = currentHP;
-    if (document.getElementById("spellPoints").style.display != "none") {
-        document.getElementById("currentPoints").innerHTML = document.getElementById("dailyPoints").value;
+    if (spellcasting[0].hasPoints) {
+        //document.getElementById("currentPoints").innerHTML = document.getElementById("dailyPoints").value;
+        spellcasting[0].currentPoints = spellcasting[0].dailyPoints;
     }
     if (spellcasting[0].hasSpellSlots) {
         for (l = 1; l<=9; l++){
@@ -1099,7 +1101,7 @@ function doRest() {
 function getSpellcasting() {
     if (spellcasting.length > 0) {
         if (spellcasting[0].hasPoints) {
-            spellcasting[0].currentPoints = parseInt(document.getElementById("currentPoints").innerHTML) | 0;
+            //spellcasting[0].currentPoints = parseInt(document.getElementById("currentPoints").innerHTML) | 0;
             spellcasting[0].dailyPoints = parseInt(document.getElementById("dailyPoints").value) | 0;
         }
         if (spellcasting[0].hasSpellSlots) {
@@ -1175,7 +1177,7 @@ function addSpell(selectionSource, destination) {
     div.onclick = function () {event.stopPropagation()}
     if (selectionSource == "class") {
         div.innerHTML = `
-        Spell Level: <select onchange="get_spells('${spellcasting[0].class}', this.selectedIndex, populateSpellList);">
+        Spell Level: <select id="spellLevelSelect" onchange="get_spells('${spellcasting[0].class}', this.selectedIndex, populateSpellList);">
         <option>0</option>
         <option>1</option>
         <option>2</option>
@@ -1190,9 +1192,10 @@ function addSpell(selectionSource, destination) {
         <div id="selectSpellsDiv" style="height: 50%;overflow: auto;width: 90%;margin: auto;"></div>
         <div id="highlightedSpell" style="overflow: auto;width: 90%;margin: auto;height:40%"></div>
         `;
-            document.body.appendChild(modalBackground);
-    document.getElementById("modalBackground").appendChild(div);
-        get_spells(spellcasting[0].class, 0, populateSpellList);
+        document.body.appendChild(modalBackground);
+        document.getElementById("modalBackground").appendChild(div);
+        document.getElementById("spellLevelSelect").selectedIndex = destination[1]
+        get_spells(spellcasting[0].class, destination[1], populateSpellList);
     } else if (selectionSource == "spellbook") {
         div.innerHTML = `
         Spell Level: <select onchange="populateSpellList(spellcasting[0].spellbook[this.selectedIndex]);">
@@ -1246,6 +1249,10 @@ function populateSpellList(results) {
                 actionButton.innerText = "Prepare";
                 actionButton.spell = results[i];
                 actionButton.onclick = function() {prepareSpell(this.spell);};
+            } else if (spellSelectionDestination[0] == "prepared" ){
+                actionButton.innerText = "Prepare";
+                actionButton.spell = results[i];
+                actionButton.onclick = function() {prepareSpell(this.spell);};
             }
             tableData.appendChild(actionButton);
             tableRow.appendChild(tableData);
@@ -1295,9 +1302,15 @@ function prepareSpell(spell) {
     console.log(spell);
     if (spellSelectionDestination[0] == "dailyPrepared") {
         spellcasting[0].preparedSpellsDaily[spellSelectionDestination[1]].spells[spellSelectionDestination[2]] = spell;
+    } else if (spellSelectionDestination[0] == "prepared") {
+        spellcasting[0].preparedSpells[spellSelectionDestination[1]].spells[spellSelectionDestination[2]] = spell;
     }
     updatePlayer();
 }
 
 function removeSpell(info) {
+    if (info[0] == "dailyPrepared") {
+        spellcasting[0].preparedSpellsDaily[info[1]].spells.splice(info[2],1)
+        updatePlayer();
+    }
 }

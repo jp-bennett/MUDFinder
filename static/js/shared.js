@@ -707,10 +707,24 @@ function populatePreparedSpells() {
             }
             for (l=0; l<spellcasting[0].preparedSpellsDaily[i].number; l++) {
                 spellList += "<tr>";
-                if (typeof spellcasting[0].preparedSpells[i].spells[l] != "undefined") {
-                    spellList += "<td><button>Cast</button></td>";
+                if (typeof spellcasting[0].preparedSpells[i].spells[l] == "undefined") {
+                    spellList += "<td> </td>";
+                    spellList += "<td> </td>";
+                    if (spellcasting.hasSpellBook){
+                    spellList += `<td><button onclick="addSpell('spellbook', ['prepared', ${i}, ${l}])">Prepare</button></td>`;
+                    } else {
+                    spellList += `<td><button onclick="addSpell('class', ['prepared', ${i}, ${l}])">Prepare</button></td>`;
+                    }
+                } else if (spellcasting[0].preparedSpells[i].spells[l] == null) {
+                    continue;
                 } else {
-                    spellList += "<td><button>Prepare</button></td>";
+                    spellList += "<td>" + spellcasting[0].preparedSpells[i].spells[l].name + "</td>";
+                    spellList += "<td>" + spellcasting[0].preparedSpells[i].spells[l].short_description + "</td>";
+                    spellList += `<td><button onclick='castPreparedSpell(${i}, ${l}, false)' >Cast</button>`;
+                    if (spellcasting[0].class == "Arcanist" && spellcasting[0].currentPoints > 0) {
+                        spellList += `<button onclick='castPreparedSpell(${i}, ${l}, true)' >Cast Empowered</button>`
+                    }
+                    spellList += "</td>";
                 }
                 spellList += "</tr>";
             }
@@ -728,14 +742,19 @@ function populatePreparedSpells() {
             spellList = "<table style='width:100%;'>";
             for (l=0; l<spellcasting[0].preparedSpellsDaily[i].number; l++) {
                 spellList += "<tr>";
-                if (typeof spellcasting[0].preparedSpellsDaily[i].spells[l] != "undefined") {
+                if (typeof spellcasting[0].preparedSpellsDaily[i].spells[l] != "undefined" && spellcasting[0].preparedSpellsDaily[i].spells[l] != null) {
                     spellList += "<td>" + spellcasting[0].preparedSpellsDaily[i].spells[l].name + "</td>";
                     spellList += "<td>" + spellcasting[0].preparedSpellsDaily[i].spells[l].short_description + "</td>";
                     spellList += `<td><button onclick="removeSpell(['dailyPrepared', ${i}, ${l}])">Remove</button></td>`;
                 } else {
                     spellList += "<td>" + "None" + "</td>";
                     spellList += "<td>" + "Available Slot" + "</td>";
-                    spellList += `<td><button onclick="addSpell('spellbook', ['dailyPrepared', ${i}, ${l}])">Prepare</button></td>`;
+                    if (spellcasting[0].hasSpellBook) {
+                        source = "spellbook";
+                    } else {
+                        source = "class";
+                    }
+                    spellList += `<td><button onclick="addSpell('${source}', ['dailyPrepared', ${i}, ${l}])">Prepare</button></td>`;
                 }
                 spellList += "</tr>";
             }
@@ -762,4 +781,25 @@ function populatePreparedSpells() {
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
+}
+
+function castPreparedSpell (spellLvl, spellNum, empowered) {
+    if (empowered) {
+        spellcasting[0].currentPoints -= 1;
+    }
+    if (spellLvl > 0) {
+        if (spellcasting[0].Vancian) {
+            spellcasting[0].preparedSpells[spellLvl].spells[spellNum] = null;
+        } else if (spellcasting[0].hasSpellSlots){
+            spellcasting[0]["spellSlots" + spellLvl] -= 1;
+            if (spellcasting[0]["spellSlots" + spellLvl] == 0) {
+                spellcasting[0].preparedSpells[spellLvl].number = 0;
+                for (i=0; i<spellcasting[0].preparedSpellsDaily[spellLvl].number; i++) {
+                    spellcasting[0].preparedSpells[spellLvl].spells[i] = null;
+                }
+            }
+
+        }
+    }
+   updatePlayer();
 }
