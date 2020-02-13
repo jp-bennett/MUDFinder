@@ -192,6 +192,14 @@ window.onload = function() {
             socket.emit("error_handle", room, e);
         }
     });
+    socket.on("reloadLore", function(msg) {
+        try {
+            loreImages = new Array();
+            updateLore(msg.lore, msg.lore_num);
+        } catch (e) {
+            socket.emit("error_handle", room, e);
+        }
+    });
 } // end onload
 function mapInput() {
     try {

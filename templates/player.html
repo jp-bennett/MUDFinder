@@ -157,9 +157,10 @@
               <button onclick="showSheetPage('sheetPageOne')">Front Page</button>
               <button onclick="showSheetPage('sheetSpellcastingPage')">Spellcasting</button>
               <button style="display:none;" onclick="showSheetPage('sheetSpellBookPage')" id="spellbookButton">Spellbook</button>
+              <button style="display:none;" onclick="showSheetPage('sheetPreparedSpellPage')" id="spellPreparedSpellsButton">Prepared Spells</button>
             </div>
           </div>
-          <div style="overflow: auto;height: calc(100% - 200px);position: absolute;" id="sheetContent">
+          <div style="overflow: auto;height: calc(100% - 200px);position: absolute; width:100%;" id="sheetContent">
             <div class="sheetPage" id="sheetPageOne">
               <div style="overflow:auto; width:495px; float:left;" id="sheetLeftColumn">
                 <div style="text-align:center; float:left;     margin-right: 20px;">
@@ -996,11 +997,70 @@
                 <div id="spellSlotsLVL9"> 9th Level: <input id="spellSlotsPerDayLVL9" size="3">
                 </div>
               </div>
-              <div class="spellSlots"></div>
+              <div style="display:none;" id="spellsPrepared">
+                <p>
+                Spells Prepared:<br>
+                <div id="spellsPreparedLVL0">
+                </div>
+                <div id="spellsPreparedLVL1">
+                </div>
+                <div id="spellsPreparedLVL2">
+                </div>
+                <div id="spellsPreparedLVL3">
+                </div>
+                <div id="spellsPreparedLVL4">
+                </div>
+                <div id="spellsPreparedLVL5">
+                </div>
+                <div id="spellsPreparedLVL6">
+                </div>
+                <div id="spellsPreparedLVL7">
+                </div>
+                <div id="spellsPreparedLVL8">
+                </div>
+                <div id="spellsPreparedLVL9">
+                </div>
+
+              </div>
+
             </div>
             <div class="sheetPage" id="sheetSpellBookPage" style="display:none;">
-
-
+              <button onclick="populateSpellbook(0)">0</button>
+              <button onclick="populateSpellbook(1)">1</button>
+              <button onclick="populateSpellbook(2)">2</button>
+              <button onclick="populateSpellbook(3)">3</button>
+              <button onclick="populateSpellbook(4)">4</button>
+              <button onclick="populateSpellbook(5)">5</button>
+              <button onclick="populateSpellbook(6)">6</button>
+              <button onclick="populateSpellbook(7)">7</button>
+              <button onclick="populateSpellbook(8)">8</button>
+              <button onclick="populateSpellbook(9)">9</button>
+              <button onclick="addSpell('class', ['spellbook', 0, 0])">Add Spell</button>
+              <div id="spellbookBody"></div>
+            </div>
+            <div class="sheetPage" id="sheetPreparedSpellPage" style="display:none;">
+              <p>Daily Spells<br>
+                  Per Day:<br>
+                <div id="spellsPreparedDailyLVL0"> 0th Level: <input id="spellsPreparedPerDayLVL0" size="3">
+                </div>
+                <div id="spellsPreparedDailyLVL1"> 1st Level: <input id="spellsPreparedPerDayLVL1" size="3">
+                </div>
+                <div id="spellsPreparedDailyLVL2"> 2nd Level: <input id="spellsPreparedPerDayLVL2" size="3">
+                </div>
+                <div id="spellsPreparedDailyLVL3"> 3th Level: <input id="spellsPreparedPerDayLVL3" size="3">
+                </div>
+                <div id="spellsPreparedDailyLVL4"> 4th Level: <input id="spellsPreparedPerDayLVL4" size="3">
+                </div>
+                <div id="spellsPreparedDailyLVL5"> 5th Level: <input id="spellsPreparedPerDayLVL5" size="3">
+                </div>
+                <div id="spellsPreparedDailyLVL6"> 6th Level: <input id="spellsPreparedPerDayLVL6" size="3">
+                </div>
+                <div id="spellsPreparedDailyLVL7"> 7th Level: <input id="spellsPreparedPerDayLVL7" size="3">
+                </div>
+                <div id="spellsPreparedDailyLVL8"> 8th Level: <input id="spellsPreparedPerDayLVL8" size="3">
+                </div>
+                <div id="spellsPreparedDailyLVL9"> 9th Level: <input id="spellsPreparedPerDayLVL9" size="3">
+                </div>
             </div>
           </div>
           <div id="addDiv" style="display:none;">

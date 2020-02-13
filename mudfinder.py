@@ -233,13 +233,14 @@ def on_lore_visible(room, gmKey, lore_num):  # but player can choose. TODO:
 def on_delete_lore(room, gmKey, lore_num):
     if check_room(room) and (ROOMS[room].gmKey == gmKey or gmKey == ROOMS[room].lore[lore_num]["loreOwner"]):
         ROOMS[room].lore.pop(lore_num)
-        tmp_keys = []
-        for x in ROOMS[room].loreFiles:
-            tmp_keys.append(x)
-        for x in tmp_keys:
+        tmp_keys = {}
+        for x in ROOMS[room].loreFiles.keys():
             if x > lore_num:
-                ROOMS[room].loreFiles[x - 1] = ROOMS[room].loreFiles[x]
-        emit("showLore", {"lore": ROOMS[room].lore, "lore_num": None}, room=room)
+                tmp_keys[x - 1] = ROOMS[room].loreFiles[x]
+            elif x < lore_num:
+                tmp_keys[x] = ROOMS[room].loreFiles[x]
+        ROOMS[room].loreFiles = tmp_keys
+        emit("reloadLore", {"lore": ROOMS[room].lore, "lore_num": None}, room=room)
 
 
 @socketio.on('get_lore')
