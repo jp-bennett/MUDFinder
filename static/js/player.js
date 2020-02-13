@@ -1084,7 +1084,15 @@ function doRest() {
         document.getElementById("currentPoints").innerHTML = document.getElementById("dailyPoints").value;
     }
     if (spellcasting[0].hasSpellSlots) {
+        for (l = 1; l<=9; l++){
+            spellcasting[0]['spellSlots' + l] = parseInt(spellcasting[0]['spellSlotsDaily' + l]);
+        }
         displaySpellSlots();
+
+    }
+    if (spellcasting[0].preparesSpells) {
+        spellcasting[0].preparedSpells = spellcasting[0].preparedSpellsDaily;
+        populatePreparedSpells()
     }
     updatePlayer();
 }
@@ -1132,7 +1140,7 @@ function displaySpellSlots() {
             while (elements.length > 0) {
                 elements[0].parentNode.removeChild(elements[0]);
             }
-            spellcasting[0]['spellSlots' + l] = parseInt(spellcasting[0]['spellSlotsDaily' + l]);
+            //spellcasting[0]['spellSlots' + l] = parseInt(spellcasting[0]['spellSlotsDaily' + l]);
 
             for (var i = 0; i < spellcasting[0]['spellSlots' + l]; i++) {
                 document.getElementById("spellSlotsLVL" + l).append(document.createElement("button"));

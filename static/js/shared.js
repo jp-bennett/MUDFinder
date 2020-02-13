@@ -699,12 +699,15 @@ function populatePreparedSpells() {
 
         for (i=0; i<9; i++) {
         spellList = "<table style='width:100%;'>";
+            if ( typeof spellcasting[0].preparedSpells[i].spells == "undefined") {
+                continue;
+            }
             if (spellcasting[0].preparedSpellsDaily[i].number > 0) {
                 spellList += "<th>LVL" + i + "spells: </th>"
             }
             for (l=0; l<spellcasting[0].preparedSpellsDaily[i].number; l++) {
                 spellList += "<tr>";
-                if (typeof spellcasting[0].preparedSpells[i][l] != "undefined") {
+                if (typeof spellcasting[0].preparedSpells[i].spells[l] != "undefined") {
                     spellList += "<td><button>Cast</button></td>";
                 } else {
                     spellList += "<td><button>Prepare</button></td>";
