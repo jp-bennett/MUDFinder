@@ -374,7 +374,7 @@ def on_save_encounter(data):
         ROOMS[room].savedEncounters[data['encounterName']]["unitList"] = []
         for x in ROOMS[room].unitList:
             if x.controlledBy == "gm":
-                ROOMS[room].savedEncounters[data['encounterName']]["unitList"].append(x)
+                ROOMS[room].savedEncounters[data['encounterName']]["unitList"].append(x.to_json())
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 
@@ -400,7 +400,7 @@ def on_load_encounter(data):
                     x.y = -1
                     x.location = [-1, -1]
         for x in ROOMS[room].savedEncounters[data['encounterName']]["unitList"]:
-            ROOMS[room].unitList.append(copy.deepcopy(x))
+            ROOMS[room].unitList.append(Unit(copy.deepcopy(x)))
         ROOMS[room].number_units()
         emit('do_update', ROOMS[room].player_json(), room=room)
 
