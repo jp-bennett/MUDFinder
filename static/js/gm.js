@@ -600,7 +600,7 @@ function updateChar () {
         player.room = room;
         player.gmKey = gmKey;
         player.unitNum = document.getElementById("editCharNum").innerText;
-        player.token = document.getElementById("charToken").value;
+        //player.token = document.getElementById("charToken").value;
         player.charName = document.getElementById("charactername").innerText;
         player.charShortName = document.getElementById("charShortName").value;
         player.color = document.getElementById("playerColor").value;
