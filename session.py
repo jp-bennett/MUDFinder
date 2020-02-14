@@ -177,6 +177,7 @@ class Session(object):
     def calc_path(self, tmpUnit, end, moveType):
         if not self.mapArray[end[0]][end[1]]["walkable"]:
             return
+        tmpUnit.movementSpeed = int(tmpUnit.movementSpeed)
         if tmpUnit.size == "large":
             if not self.mapArray[end[0]-1][end[1]]["walkable"]:
                 return

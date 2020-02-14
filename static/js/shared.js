@@ -224,6 +224,11 @@ function updateMap(Data) {
                 }
                 if (Data.initiativeList[Data.initiativeCount].x != -1)
                 document.getElementById("tile" + Data.initiativeList[Data.initiativeCount].x + "," + Data.initiativeList[Data.initiativeCount].y).style.background = "cornflowerblue";
+                if (Data.initiativeList[Data.initiativeCount].size == "large") {
+                    document.getElementById("tile" + (Data.initiativeList[Data.initiativeCount].x - 1) + "," + Data.initiativeList[Data.initiativeCount].y).style.background = "cornflowerblue";
+                    document.getElementById("tile" + Data.initiativeList[Data.initiativeCount].x + "," + (Data.initiativeList[Data.initiativeCount].y + 1)).style.background = "cornflowerblue";
+                    document.getElementById("tile" + (Data.initiativeList[Data.initiativeCount].x - 1) + "," + (Data.initiativeList[Data.initiativeCount].y + 1)).style.background = "cornflowerblue";
+                }
                 document.getElementById("mapGraphic").innerHTML += tmpHTML
                 document.getElementById("movement").innerText = Math.floor(Data.initiativeList[Data.initiativeCount].distance) * 5
             }
