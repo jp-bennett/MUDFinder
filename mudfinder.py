@@ -373,7 +373,7 @@ def on_save_encounter(data):
         ROOMS[room].savedEncounters[data['encounterName']]["mapArray"] = copy.deepcopy(ROOMS[room].mapArray)
         ROOMS[room].savedEncounters[data['encounterName']]["unitList"] = []
         for x in ROOMS[room].unitList:
-            if x["controlledBy"] == "gm":
+            if x.controlledBy == "gm":
                 ROOMS[room].savedEncounters[data['encounterName']]["unitList"].append(x)
         emit('do_update', ROOMS[room].player_json(), room=room)
 
