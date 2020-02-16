@@ -10,6 +10,7 @@ class Unit(object):
         self.inInit = default(unitdict, "inInit", False)
         self.hasted = default(unitdict, "hasted", False)
         self.unitNum = default(unitdict, "unitNum", -1)
+        self.initNum = default(unitdict, "initNum", -1)
         self.controlledBy = default(unitdict, "controlledBy", "")
         self.charShortName = default(unitdict, "charShortName", "")
         self.color = default(unitdict, "color", "black")
@@ -70,6 +71,7 @@ class Unit(object):
             "occupied_tiles": self.occupied_tiles,
             "inInit": self.inInit,
             "unitNum": self.unitNum,
+            "initNum": self.initNum,
             "controlledBy": self.controlledBy,
             "charShortName": self.charShortName,
             "color": self.color,

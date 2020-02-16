@@ -5,6 +5,7 @@ var prevDiff = 0;
 var touchX = 0;
 var touchY = 0;
 var zoom = 1;
+var images = new Object();
 
 if (!('toJSON' in Error.prototype))
 Object.defineProperty(Error.prototype, 'toJSON', {
@@ -205,14 +206,49 @@ function updateMap(Data) {
                     } else {
                         document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).className += " selectableUnit";
                         document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).attributes.units.value += i + " ";
-                        tokenDiv = '<img src="' + Data.unitList[i].token + '" ';
-                        if (Data.unitList[i].size == "large") {
-                            tokenDiv += `style="pointer-events: none; width:${zoomSize*2}px;height:${zoomSize*2}px;position:absolute;top:${Data.unitList[i].x*zoomSize-zoomSize}px;left:${Data.unitList[i].y*zoomSize}px;"`;
-                        } else {
-                            tokenDiv += `style="pointer-events: none; width:${zoomSize}px;height:${zoomSize}px;position:absolute;top:${Data.unitList[i].x*zoomSize}px;left:${Data.unitList[i].y*zoomSize}px;"`;
+                        if (typeof Data.unitList[i].size !== "undefined" && Data.unitList[i].size == "large") {
+
+                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).className += " selectableUnit"
+                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).attributes.units.value += i + " ";
+                            document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).className += " selectableUnit"
+                            document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).attributes.units.value += i + " ";
+                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).className += " selectableUnit"
+                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).attributes.units.value += i + " ";
                         }
-                        tokenDiv += '</img>'; //Add the image of the appropriate size/location
-                        document.getElementById("mapGraphic").innerHTML += tokenDiv;
+                        tokenDiv2 = document.createElement("img");
+                        tokenDiv2.src = Data.unitList[i].token;
+                        tokenDiv = '<img src="' + Data.unitList[i].token + '" ';
+                        tokenDiv2.style.pointerEvents = "none"
+                        tokenDiv += `style="pointer-events: none;`;
+                        position_top = Data.unitList[i].x*zoomSize;
+                        position_left = Data.unitList[i].y*zoomSize;
+                        if (Data.unitList[i].size == "large") {
+                            position_top -= zoomSize;
+                            tokenDiv2.style.width = zoomSize*2 + "px";
+                            tokenDiv2.style.height = zoomSize*2 + "px";
+                            tokenDiv2.style.position = "absolute";
+                            tokenDiv += `width:${zoomSize*2}px;height:${zoomSize*2}px;position:absolute;`;
+                        } else {
+                            tokenDiv2.style.width = zoomSize + "px";
+                            tokenDiv2.style.height = zoomSize + "px";
+                            tokenDiv2.style.position = "absolute";
+                            tokenDiv += `width:${zoomSize}px;height:${zoomSize}px;position:absolute;`;
+                        }
+                        if (Data.inInit && Data.unitList[i].initNum == Data.initiativeCount) {
+                            tokenDiv2.style.borderWidth = "5px";
+                            tokenDiv2.style.borderStyle = "solid";
+                            tokenDiv2.style.borderImage = "radial-gradient(red, transparent)10";
+                            tokenDiv += 'border-width: 5px;border-style: solid;border-image: radial-gradient(red, transparent)10;';
+                            position_top -= 5;
+                            position_left -= 5;
+                        }
+                        tokenDiv2.style.top = position_top + "px";
+                        tokenDiv2.style.left = position_left + "px";
+                        tokenDiv += `top:${position_top}px;left:${position_left}px;`;
+                        tokenDiv += '"></img>'; //Add the image of the appropriate size/location
+                        document.getElementById("mapGraphic").appendChild(tokenDiv2);
+                        //document.getElementById("mapGraphic").innerHTML += tokenDiv;
+                        //console.log(tokenDiv);
                     }
                 }
             }
@@ -223,11 +259,11 @@ function updateMap(Data) {
                     tmpHTML += `<div style="width:${zoomSize/10}px;height:${zoomSize/10}px;position:absolute;top:${moveLoc[0]*zoomSize+zoomSize/2.2}px;left:${moveLoc[1]*zoomSize+zoomSize/2.2}px;background:${Data.initiativeList[Data.initiativeCount].color};"></div>`;
                 }
                 if (Data.initiativeList[Data.initiativeCount].x != -1)
-                document.getElementById("tile" + Data.initiativeList[Data.initiativeCount].x + "," + Data.initiativeList[Data.initiativeCount].y).style.background = "cornflowerblue";
+                document.getElementById("tile" + Data.initiativeList[Data.initiativeCount].x + "," + Data.initiativeList[Data.initiativeCount].y).style.background = "firebrick";
                 if (Data.initiativeList[Data.initiativeCount].size == "large") {
-                    document.getElementById("tile" + (Data.initiativeList[Data.initiativeCount].x - 1) + "," + Data.initiativeList[Data.initiativeCount].y).style.background = "cornflowerblue";
-                    document.getElementById("tile" + Data.initiativeList[Data.initiativeCount].x + "," + (Data.initiativeList[Data.initiativeCount].y + 1)).style.background = "cornflowerblue";
-                    document.getElementById("tile" + (Data.initiativeList[Data.initiativeCount].x - 1) + "," + (Data.initiativeList[Data.initiativeCount].y + 1)).style.background = "cornflowerblue";
+                    document.getElementById("tile" + (Data.initiativeList[Data.initiativeCount].x - 1) + "," + Data.initiativeList[Data.initiativeCount].y).style.background = "firebrick";
+                    document.getElementById("tile" + Data.initiativeList[Data.initiativeCount].x + "," + (Data.initiativeList[Data.initiativeCount].y + 1)).style.background = "firebrick";
+                    document.getElementById("tile" + (Data.initiativeList[Data.initiativeCount].x - 1) + "," + (Data.initiativeList[Data.initiativeCount].y + 1)).style.background = "firebrick";
                 }
                 document.getElementById("mapGraphic").innerHTML += tmpHTML
                 document.getElementById("movement").innerText = Math.floor(Data.initiativeList[Data.initiativeCount].distance) * 5
@@ -442,7 +478,7 @@ function updateLore(msg, num) {
 }
 function enableLoreTab(tabName) {
     try {
-        console.log(tabName);
+        //console.log(tabName);
         //hide all of them
         children = document.getElementById("lorePage").children
         for (x = 0; x < children.length; x++) {
@@ -478,7 +514,7 @@ function deleteLore(i) {
 function sendLoreURL () {
     try {
         if (document.getElementById("loreFileUpload").value == "") {
-            console.log(document.getElementById("loreURL").value)
+            //console.log(document.getElementById("loreURL").value)
             socket.emit("lore_url", room, document.getElementById("loreURL").value, document.getElementById("loreName").value, document.getElementById("loreText").value, charName);
         } else {
             uploadLore();
@@ -496,7 +532,7 @@ function previewLoreURL (value) {
 }
 function onReadError(file, offset, length, error) {
     try {
-        console.log('Upload error for ' + file.name + ': ' + error);
+        //console.log('Upload error for ' + file.name + ': ' + error);
         this.done = true;
     } catch (e) {
         socket.emit("error_handle", room, e);
@@ -530,7 +566,7 @@ function handle_error(e) {
     socket.emit("error_handle", room, e);
 }
 function imageUpload(element, title, character) {
-    console.log("imageUpload");
+    //console.log("imageUpload");
     var modalBackground = document.createElement("div");
     modalBackground.id = "modalBackground";
     modalBackground.className = "modal";
@@ -578,7 +614,7 @@ function previewImageFile (callingElement) {
 function selectImage (title, character) {
     try {
         if (document.getElementById("imageFileUpload").value == "") {
-            console.log(document.getElementById("imageURL").value)
+            //console.log(document.getElementById("imageURL").value)
             socket.emit("image_upload", room, document.getElementById("imageURL").value, title, character);
             document.getElementById('modalBackground').remove()
         } else {
@@ -611,7 +647,7 @@ function get_spells (casterClass, level, callback) {
 }
 function formatSpell(spell, showPrepare) { //probably obsolete
     try {
-        console.log("Warning, using obsolete formatSpell()")
+        //console.log("Warning, using obsolete formatSpell()")
         spellText = "<div class='spellBlock'>";
         spellText += "<div class='spellName'>";
         spellText += spell.name;
@@ -807,4 +843,8 @@ function castPreparedSpell (spellLvl, spellNum, empowered) {
         }
     }
    updatePlayer();
+}
+
+function requestImages() {
+    socket.emit("request_images", room);
 }

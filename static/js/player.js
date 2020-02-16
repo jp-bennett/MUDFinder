@@ -67,8 +67,9 @@ window.onload = function() {
 
     socket.on('do_update', function(msg) {
         try {
+            playerData = undefined;
             playerData = msg;
-            console.log(playerData);
+            //console.log(playerData);
             document.title = playerData.name
             updateMap(playerData);
             if (playerData.inInit) {
@@ -282,10 +283,10 @@ function sendInit() {
 }
 function mapClick(e, x, y) {
     try {
-        console.log("Clicked!" + x + ", " + y);
+        //console.log("Clicked!" + x + ", " + y);
         relative_y = e.offsetX * 16 / zoomSize;
         relative_x = e.offsetY * 16 / zoomSize;
-        console.log(relative_x + ", " + relative_y);
+        //console.log(relative_x + ", " + relative_y);
 
         if (playerData.inInit) {
             socket.emit('locate_unit', {requestingPlayer: charName, moveType: document.getElementById("movementSelector").selectedIndex, selectedUnit: playerData.initiativeList[playerData.initiativeCount].unitNum, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room});
@@ -950,6 +951,7 @@ function populateSheet (data) {
 
         document.getElementById("sheetBAB").value = data.BAB;
         document.getElementById("sheetBAB").onchange();
+            addWeaponForm(true);
         for (var i = 0; i < data.weapons.length; i++) {
             document.getElementsByClassName("sheetWeaponName")[i].value = data.weapons[i][0];
             document.getElementsByClassName("sheetWeaponAttack")[i].value = data.weapons[i][1];
@@ -958,7 +960,7 @@ function populateSheet (data) {
             document.getElementsByClassName("sheetWeaponType")[i].value = data.weapons[i][4];
             document.getElementsByClassName("sheetWeaponRange")[i].value = data.weapons[i][5];
             document.getElementsByClassName("sheetWeaponAmmo")[i].value = data.weapons[i][6];
-            addWeaponForm();
+            addWeaponForm(false);
         }
         spellcasting = data.spellcasting;
         if (data.spellcasting.length > 0) {
@@ -1026,8 +1028,11 @@ function sizeUpdate() {
             break;
     }
 }
-function addWeaponForm() {
+function addWeaponForm(reset) {
     box = document.getElementById("weaponsBox");
+    if (reset) {
+        box.innerHTML = "";
+    }
     newDiv = document.createElement("div");
     newDiv.style.borderStyle = "solid";
     newDiv.style.borderWidth = "2px";

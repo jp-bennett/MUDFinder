@@ -7,7 +7,7 @@
   <title>Spectator Mode!</title>
 </head>
 <body>
-  </div>
+
   <div id="screenDiv" class="screenDiv">
     <div id="tabsDiv" class="tabsDiv">
       <div class="tab" onClick="enableTab('mapWrapper')">Map</div>
@@ -46,7 +46,7 @@
   </div>
 <!--  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js" integrity="sha256-yr4fRk/GU1ehYJPAs8P4JlTgu0Hdsp4ZKrx8bDEDC3I=" crossorigin="anonymous"></script>-->
   <script type="text/javascript" src="static/js/socket.io.js"></script>
-  <script type="text/javascript" src="static/js/shared.js?time={{ current_time }}"></script>
+
   <script type="text/javascript" charset="utf-8">
     url_ob = new URL(window.location.href);
     var room = url_ob.searchParams.get("room");
@@ -126,5 +126,6 @@
         console.log("Clicked!" + x + ", " + y);
     }
   </script>
+  <script type="text/javascript" src="static/js/shared.js?time={{ current_time }}"></script>
 </body>
 </html>

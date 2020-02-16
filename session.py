@@ -19,6 +19,7 @@ class Session(object):
         self.movePath = []
         self.lore = []
         self.loreFiles = {}
+        self.images = {}
 
     def to_json(self):  # need a full version for saves, and a partial version for updates
         """Serialize object to JSON"""
@@ -80,7 +81,8 @@ class Session(object):
             "movePath": self.movePath,
             "savedEncounters": self.savedEncounters,
             "lore": self.lore,
-            "loreFiles": self.loreFiles
+            "loreFiles": self.loreFiles,
+            "images": self.images
         }
 
     def from_json(self, obj):
@@ -105,6 +107,7 @@ class Session(object):
             for x in obj["loreFiles"]:
                 self.loreFiles[int(x)] = obj["loreFiles"][x]
         self.savedEncounters = obj["savedEncounters"]
+        self.images = obj["images"]
         self.number_units()
         return
 
@@ -113,6 +116,10 @@ class Session(object):
         if self.inInit:
             tmp = self.initiativeList[self.initiativeCount].charName
         self.initiativeList.sort(key=lambda i: int(i.initiative), reverse=True)
+        initNum = 0
+        for x in self.initiativeList:
+            x.initNum = initNum
+            initNum += 1
         if self.inInit:
             if self.inInit and tmp != self.initiativeList[self.initiativeCount].charName:
                 self.initiativeCount += 1
@@ -125,12 +132,24 @@ class Session(object):
         if not creature.initiative: return
         if len(self.initiativeList) == 0:
             self.initiativeList.insert(0, creature)
+            initNum = 0
+            for x in self.initiativeList:
+                x.initNum = initNum
+                initNum += 1
             return
         for x in range(len(self.initiativeList)):
             if int(self.initiativeList[x].initiative) <= int(creature.initiative):
                 self.initiativeList.insert(x, creature)
+                initNum = 0
+                for x in self.initiativeList:
+                    x.initNum = initNum
+                    initNum += 1
                 return
         self.initiativeList.append(creature)
+        initNum = 0
+        for x in self.initiativeList:
+            x.initNum = initNum
+            initNum += 1
 
     def player_json(self):
         tmpplayerList = {}

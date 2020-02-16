@@ -4,6 +4,7 @@ import time
 import io
 import base64
 import sqlite3
+import uuid
 from os import path
 from os import mkdir
 from threading import Lock
@@ -109,6 +110,16 @@ def check_room(room):
             data = json.loads(infile.read())
             ROOMS[room] = Session(room, data["gmKey"], data["name"])
             ROOMS[room].from_json(data)
+            # versioning
+            for x in ROOMS[room].unitList:
+                if x.token[0:18] == "data:image;base64,":
+                    image_uuid = str(uuid.uuid4())
+                    ROOMS[room].images[image_uuid] = x.token[19:]
+                    x.token = "get_image.html?room=" + room + "&id=" + image_uuid
+                if x.type == "player" and x.image[0:18] == "data:image;base64,":
+                    image_uuid = str(uuid.uuid4())
+                    ROOMS[room].images[image_uuid] = x.image[19:]
+                    x.image = "get_image.html?room=" + room + "&id=" + image_uuid
             ROOMS[room].number_units()
             return True
     else:
@@ -172,6 +183,19 @@ def save_download():
         )
         return response
 
+@app.route('/get_image.html')
+def get_image():
+    room = request.args['room']
+    if check_room(room):
+        response = app.response_class(
+            response=base64.b64decode(ROOMS[room].images[request.args['id']]),
+            status=200,
+            #headers={"Content-disposition":
+            #         "attachment; filename=" + ROOMS[room].name + ".json"},
+            mimetype='image'
+        )
+        return response
+
 
 @socketio.on('lore_upload')
 def on_lore_upload(room, lore_size, lore_name, lore_text, lore_owner):
@@ -212,6 +236,8 @@ def on_lore_url(room, lore_url, lore_name, lore_text, lore_owner):
 @socketio.on('image_upload')
 def on_image_upload(room, image, title, owner):
     if check_room(room):
+        #test for "data:image;base64,"
+
         if title == "charImage":
             ROOMS[room].playerList[owner].image = image
         if title == "charToken":
@@ -356,6 +382,7 @@ def on_end_init(data):
         ROOMS[room].inInit = False
         for x in ROOMS[room].unitList:
             x.inInit = False
+            x.initNum = -1
             x.movePath = []
             x.distance = 0
             if x.type == "player":
@@ -729,9 +756,15 @@ def on_remove_init(data):
                 ROOMS[room].initiativeList):
             ROOMS[room].initiativeCount = 0
         ROOMS[room].initiativeList[data['initCount']].inInit = False
+        ROOMS[room].initiativeList[data['initCount']].initNum = -1
         ROOMS[room].initiativeList.pop(data['initCount'])
         if len(ROOMS[room].initiativeList) == 0:
             ROOMS[room].inInit = False
+        else:
+            initNum = 0
+            for x in ROOMS[room].initiativeList:
+                x.initNum = initNum
+                initNum += 1
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 
@@ -769,7 +802,7 @@ def on_map_generate(data):
 def on_map_edit(data_pack):
     room = data_pack['room']
     if check_room(room) and ROOMS[room].gmKey == data_pack['gmKey']:
-        print(data_pack)
+        #print(data_pack)
         for data in data_pack["tiles"]:
             if "Tile" in data["newTile"] or "door" in data["newTile"]:
                 ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["tile"] = data["newTile"]
@@ -832,6 +865,10 @@ def on_earlier_initiative(data):
         if data['targetInitiativeCount'] == 0: return
         tmp_data = ROOMS[room].initiativeList.pop(data['targetInitiativeCount'])
         ROOMS[room].initiativeList.insert(data['targetInitiativeCount'] - 1, tmp_data)
+        initNum = 0
+        for x in ROOMS[room].initiativeList:
+            x.initNum = initNum
+            initNum += 1
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 
@@ -841,6 +878,10 @@ def on_later_initiative(data):
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         tmpData = ROOMS[room].initiativeList.pop(data['targetInitiativeCount'])
         ROOMS[room].initiativeList.insert(data['targetInitiativeCount'] + 1, tmpData)
+        initNum = 0
+        for x in ROOMS[room].initiativeList:
+            x.initNum = initNum
+            initNum += 1
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 
@@ -997,6 +1038,11 @@ def database_spells(casterClass, level):
     for i in result:
         i["level"] = level
     return result
+
+@socketio.on('request_images')
+def request_images(room):
+    if check_room(room):
+        return ROOMS[room].images
 
 
 with thread_lock:

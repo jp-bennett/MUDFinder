@@ -21,7 +21,7 @@ window.onload = function() {
 
     socket.on('connect', function() {
         try {
-            console.log('Websocket connected!');
+            //console.log('Websocket connected!');
             if (typeof window.location.search.split("&")[1] != "undefined") {
                 gmKey=window.location.search.split("&")[0].split("=")[1];
                 room=window.location.search.split("&")[1].split("=")[1];
@@ -38,7 +38,7 @@ window.onload = function() {
 
     socket.on('chat', function(msg) {
         try {
-            console.log(msg);
+            //console.log(msg);
             now = new Date;
             document.getElementById("chatText").innerText += "[" + now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0') +
             ":" + now.getSeconds().toString().padStart(2, '0') + "] " + msg["charName"] + ": " + msg["chat"];
@@ -51,9 +51,9 @@ window.onload = function() {
 
     socket.on('gm_update', function(msg) {
         try {
-            console.log("updating the GM data");
+            //console.log("updating the GM data");
             gmData = msg;
-            console.log(gmData);
+            //console.log(gmData);
             document.title = gmData.name
             updateMap(gmData);
             if (typeof selectedTool !== "undefined") {
@@ -179,7 +179,7 @@ window.onload = function() {
 
     socket.on('do_update', function(msg) {
         try {
-            console.log("Request GM Update");
+            //console.log("Request GM Update");
             socket.emit('gm_update', {room: room, gmKey: gmKey});
         } catch (e) {
             socket.emit("error_handle", room, e);
@@ -212,7 +212,7 @@ function mapInput() {
 function saveGameInput() {
     try {
         gameObj = JSON.parse(document.getElementById('saveGameText').value);
-        console.log(gameObj);
+        //console.log(gameObj);
         socket.emit('game_upload', {saveGame: gameObj, mapTextType:"csv", discovered: document.getElementById("mapIsDiscovered").checked, gmKey: gmKey, room: room});
     } catch (e) {
         socket.emit("error_handle", room, e);
@@ -253,7 +253,7 @@ function mapTool(e, tileName) {
 
 function seenOverlayToggle(obj) {
     try {
-        console.log(obj);
+        //console.log(obj);
         if(obj.checked) {
             showSeenOverlay = true;
         } else {
@@ -276,8 +276,8 @@ function sendChat() {
 
 function sendMessage() {
     try {
-        console.log('Sending...');
-        console.log(room);
+        //console.log('Sending...');
+        //console.log(room);
         socket.emit('chat', {chat: document.getElementById("message").value, room: room});
     } catch (e) {
         socket.emit("error_handle", room, e);
@@ -286,7 +286,7 @@ function sendMessage() {
 
 function requestInit() {
     try {
-        console.log('requesting initiative');
+        //console.log('requesting initiative');
         socket.emit('request_init', {gmKey: gmKey, room: room});
     } catch (e) {
         socket.emit("error_handle", room, e);
@@ -344,7 +344,7 @@ function zoomIn(lookingAtX, lookingAtY) {
     try {
         lookingAtX = lookingAtX || (document.getElementById("mapContainer").clientWidth/2 + document.getElementById("mapContainer").scrollLeft)/zoomSize
         lookingAtY = lookingAtY || (document.getElementById("mapContainer").clientHeight/2 + document.getElementById("mapContainer").scrollTop)/zoomSize
-        console.log("x:" + lookingAtX + " Y:" + lookingAtY);
+        //console.log("x:" + lookingAtX + " Y:" + lookingAtY);
         zoomSize *= 1.5;
         updateMap(gmData);
         document.getElementById("mapContainer").scrollLeft = lookingAtX*zoomSize - document.getElementById("mapContainer").clientWidth/2
@@ -427,24 +427,23 @@ function delInit(e, initCount) {
 
 function mapClick(e, x, y) {
     try {
-        console.log("Clicked!" + x + ", " + y);
+        //console.log("Clicked!" + x + ", " + y);
         relative_y = e.offsetX * 16 / zoomSize;
         relative_x = e.offsetY * 16 / zoomSize;
-        if (typeof selectedInitiative !== "undefined") {
-            socket.emit('locate_unit', {selectedInit: selectedInitiative, moveType: document.getElementById("movementSelector").selectedIndex, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room, gmKey: gmKey});
-            return;
-        } else if (typeof selectedUnits[0] !== "undefined" && !e.shiftKey) {
-            console.log({selectedUnit: selectedUnits[0], xCoord: x, yCoord: y, room: room, gmKey: gmKey});
-            socket.emit('locate_unit', {selectedUnit: selectedUnits[0], moveType: document.getElementById("movementSelector").selectedIndex, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room, gmKey: gmKey});
-            return;
-        } else if (typeof selectedTool !== "undefined") {
+        if (typeof selectedTool !== "undefined") {
             tiles = [{newTile: selectedTool.id, xCoord: x, yCoord: y}]
             socket.emit('map_edit', {tiles: tiles, room: room, gmKey: gmKey});
             return
+        } else if (typeof selectedInitiative !== "undefined") {
+            socket.emit('locate_unit', {selectedInit: selectedInitiative, moveType: document.getElementById("movementSelector").selectedIndex, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room, gmKey: gmKey});
+            //return;
+        } else if (typeof selectedUnits[0] !== "undefined" && !e.shiftKey) {
+            socket.emit('locate_unit', {selectedUnit: selectedUnits[0], moveType: document.getElementById("movementSelector").selectedIndex, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room, gmKey: gmKey});
+            //return;
         } else {
             if (gmData.inInit && gmData.initiativeList[gmData.initiativeCount].controlledBy == "gm") {
                 socket.emit('locate_unit', {selectedInit: gmData.initiativeCount, moveType: document.getElementById("movementSelector").selectedIndex, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room, gmKey: gmKey});
-                return
+                //return
             }
         }
         if (!e.shiftKey) {
@@ -453,9 +452,11 @@ function mapClick(e, x, y) {
         }
         if (e.currentTarget.attributes.units.value != ""){
             i = parseInt(e.currentTarget.attributes.units.value.split(" ")[0]);
-            document.getElementById("unitsDiv").children[i].children[0].className = "selected";
-            selectedUnits.push(i);
-            populateEditChar(gmData,i);
+            selectUnit(e, i)
+            //document.getElementById("unitsDiv").children[i].children[0].className = "selected";
+
+            //selectedUnits.push(i);
+            //populateEditChar(gmData,i);
         }
         //for (i=0;i<gmData.unitList.length; i++) {
         //    if (typeof gmData.unitList[i].x !== "undefined" && gmData.unitList[i].x == x && gmData.unitList[i].y == y){
@@ -494,7 +495,7 @@ function deselectAll() {
 
 function selectInitiative(initiativeNum) {
     try {
-        if (typeof selectedInitiative !== "undefined") {
+        /*if (typeof selectedInitiative !== "undefined") {
             if (initiativeNum == selectedInitiative) {
                 document.getElementById("initiativeDiv").children[initiativeNum].children[0].className = "nonSelectedInit";
                 selectedInitiative = undefined;
@@ -513,7 +514,8 @@ function selectInitiative(initiativeNum) {
             populateEditChar(gmData, gmData.initiativeList[selectedInitiative].unitNum);
         } else {
             populateEditChar(gmData, 0);
-        }
+        }*/
+        selectUnit([], gmData.initiativeList[initiativeNum].unitNum)
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
@@ -524,9 +526,17 @@ function selectUnit(e, unitNum) {
         if (selectedUnits.length == 0) {
             deselectAll();
             document.getElementById("unitsDiv").children[unitNum].children[0].className = "selected";
+            if (gmData.unitList[unitNum].initNum != -1) {
+                document.getElementById("initiativeDiv").children[gmData.unitList[unitNum].initNum].children[0].className = "selectedInit";
+                selectedInitiative = gmData.unitList[unitNum].initNum;
+            }
             selectedUnits = [unitNum];
         } else if (selectedUnits.includes(unitNum)) {
             document.getElementById("unitsDiv").children[unitNum].children[0].className = "nonSelected";
+            if (gmData.unitList[unitNum].initNum != -1) {
+                document.getElementById("initiativeDiv").children[gmData.unitList[unitNum].initNum].children[0].className = "nonSelectedInit";
+                selectedInitiative = undefined;
+            }
             selectedUnits.splice(selectedUnits.indexOf(unitNum), 1)
         } else if (e.shiftKey) {
             tmpUnits = selectedUnits;
@@ -535,12 +545,21 @@ function selectUnit(e, unitNum) {
             selectedUnits.push(unitNum);
             for (i=0; i<selectedUnits.length;i++) {
                 document.getElementById("unitsDiv").children[selectedUnits[i]].children[0].className = "selected";
+                if (gmData.unitList[unitNum].initNum != -1) {
+                    document.getElementById("initiativeDiv").children[gmData.unitList[i].initNum].children[0].className = "selectedInit";
+                    selectedInitiative = gmData.unitList[unitNum].initNum;
+                }
             }
         } else {
-            for (i = 0; i < selectedUnits.length; i++) {
-                document.getElementById("unitsDiv").children[selectedUnits[i]].children[0].className = "nonSelected";
-            }
+            //for (i = 0; i < selectedUnits.length; i++) {
+            //    document.getElementById("unitsDiv").children[selectedUnits[i]].children[0].className = "nonSelected";
+            //}
+            deselectAll()
             document.getElementById("unitsDiv").children[unitNum].children[0].className = "selected";
+            if (gmData.unitList[unitNum].initNum != -1) {
+                document.getElementById("initiativeDiv").children[gmData.unitList[unitNum].initNum].children[0].className = "selectedInit";
+                selectedInitiative = gmData.unitList[unitNum].initNum;
+            }
             selectedUnits = [unitNum];
         }
         if (typeof selectedUnits[0] !== "undefined") {
@@ -587,7 +606,7 @@ function earlierInit(e, ourInitNum) {
 function laterInit(e, ourInitNum) {
     try {
         e.stopPropagation();
-        console.log(ourInitNum);
+        //console.log(ourInitNum);
         socket.emit('later_initiative', {targetInitiativeCount: ourInitNum, room: room, gmKey: gmKey});
     } catch (error) {
         socket.emit("error_handle", room, error);
@@ -632,7 +651,7 @@ function removeCharFromMap () {
 
 function handleDrag (elements) {
     try {
-        console.log(elements)
+        //console.log(elements)
         selectionSize = ds.getCursorPositionDifference();
         if (Math.abs(selectionSize.x) < 10 && Math.abs(selectionSize.y) < 10){
             ds.clearSelection();
@@ -671,7 +690,7 @@ function handleDrag (elements) {
 function deleteUser(delUser) {
     try {
         if (confirm("Delete " + delUser + "?")) {
-            console.log("Deleting");
+            //console.log("Deleting");
             socket.emit('delete_player', room, gmKey, delUser);
         }
     } catch (e) {
