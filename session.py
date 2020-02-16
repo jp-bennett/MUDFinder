@@ -107,7 +107,7 @@ class Session(object):
             for x in obj["loreFiles"]:
                 self.loreFiles[int(x)] = obj["loreFiles"][x]
         self.savedEncounters = obj["savedEncounters"]
-        self.images = obj["images"]
+        self.images = default(obj, "images", {})
         self.number_units()
         return
 
@@ -398,3 +398,8 @@ def astar(maze, start, end, maxMove, ignoreSeen):
                         break
                 else:
                     open_list.append(child)
+def default(local_dict, key, local_default):
+    if key in local_dict:
+        return local_dict[key]
+    else:
+        return local_default
