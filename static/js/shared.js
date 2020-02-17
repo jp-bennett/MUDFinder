@@ -218,35 +218,28 @@ function updateMap(Data) {
                         }
                         tokenDiv2 = document.createElement("img");
                         tokenDiv2.src = Data.unitList[i].token;
-                        tokenDiv = '<img src="' + Data.unitList[i].token + '" ';
                         tokenDiv2.style.pointerEvents = "none"
-                        tokenDiv += `style="pointer-events: none;`;
-                        position_top = Data.unitList[i].x*zoomSize;
-                        position_left = Data.unitList[i].y*zoomSize;
+                        position_top = Data.unitList[i].x*zoomSize + 4;
+                        position_left = Data.unitList[i].y*zoomSize + 4;
                         if (Data.unitList[i].size == "large") {
                             position_top -= zoomSize;
-                            tokenDiv2.style.width = zoomSize*2 + "px";
-                            tokenDiv2.style.height = zoomSize*2 + "px";
+                            tokenDiv2.style.width = zoomSize*2 - 8 + "px";
+                            tokenDiv2.style.height = zoomSize*2  - 8+ "px";
                             tokenDiv2.style.position = "absolute";
-                            tokenDiv += `width:${zoomSize*2}px;height:${zoomSize*2}px;position:absolute;`;
                         } else {
-                            tokenDiv2.style.width = zoomSize + "px";
-                            tokenDiv2.style.height = zoomSize + "px";
+                            tokenDiv2.style.width = zoomSize - 8 + "px";
+                            tokenDiv2.style.height = zoomSize  - 8 + "px";
                             tokenDiv2.style.position = "absolute";
-                            tokenDiv += `width:${zoomSize}px;height:${zoomSize}px;position:absolute;`;
                         }
                         if (Data.inInit && Data.unitList[i].initNum == Data.initiativeCount) {
                             tokenDiv2.style.borderWidth = "5px";
                             tokenDiv2.style.borderStyle = "solid";
                             tokenDiv2.style.borderImage = "radial-gradient(red, transparent)10";
-                            tokenDiv += 'border-width: 5px;border-style: solid;border-image: radial-gradient(red, transparent)10;';
                             position_top -= 5;
                             position_left -= 5;
                         }
                         tokenDiv2.style.top = position_top + "px";
                         tokenDiv2.style.left = position_left + "px";
-                        tokenDiv += `top:${position_top}px;left:${position_left}px;`;
-                        tokenDiv += '"></img>'; //Add the image of the appropriate size/location
                         document.getElementById("mapGraphic").appendChild(tokenDiv2);
                         //document.getElementById("mapGraphic").innerHTML += tokenDiv;
                         //console.log(tokenDiv);
