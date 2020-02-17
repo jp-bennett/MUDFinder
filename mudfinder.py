@@ -521,6 +521,7 @@ def on_add_player_spellcasting(data):
         tmp_spell["class"] = data["class"]
         tmp_spell["classLevel"] = data["level"]
         tmp_spell["casterLevel"] = data["level"]
+        tmp_spell["castingStat"] = "INT"
         if tmp_spell["class"] in ["Arcanist", "Wizard", "Alchemist", "Magus", "Witch"]:
             tmp_spell['hasSpellbook'] = True
             tmp_spell["spellbook"] = []

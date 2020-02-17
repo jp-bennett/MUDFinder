@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <link rel="stylesheet" media="screen" href="https://fontlibrary.org/face/liberation-serif" type="text/css"/>
+  <link rel="stylesheet" media="screen" href="static/font/liberation-serif" type="text/css"/>
   <link rel="stylesheet" type="text/css" href="static/css/html.css">
   <link rel="stylesheet" type="text/css" href="static/css/mudfinder.css?time={{ current_time }}">
+
   <meta charset="UTF-8">
   <title>Flask SocketIO Test</title>
 </head>
@@ -55,13 +56,25 @@
           <button class="centeredButton" id="advanceInit" onclick="advanceInit()">Advance Inititiative</button>
         </div>
         <div id="unitDivContainer" style="display:none;">
-          <div style="text-align:center;">Select<br></div>
+          <div style="text-align:center;">Units<br></div>
           <div class="leftDiv" id="unitDiv"></div>
         </div>
+               <div class="chatContainerDiv">
+          <div id="chatText" class="chatText"></div>
+          <div id="chatInput" class="chatInput">
+            <form action="javascript:sendChat()">
+            <input id="newChat" style="width:100%;height:50%;text-align:left;">
+            </form>
+          </div>
+        </div>
+        <!--<div class="connectedPlayersContainer">Connected Players
+          <div id="connectedPlayers" class="connectedPlayers"><br></div>
+        </div>
+        -->
       </div>
       <div id="activeTabDiv">
         <div id="mapWrapper">
-          <div id="mapContainer">
+          <div id="mapContainer" class="dragscroll">
             <div id="mapForm">
             </div>
             <div style="display:none;" id='mapGraphic'></div>
@@ -85,56 +98,54 @@
           <div style="width:100%; overflow:auto" id="sheetHeader">
             <img style="float:left;max-width:200px;max-height:200px;" id="charImageView" src="static/images/profile.svg" onclick="imageUpload(this, 'charImage', charName)">
 
-            <div style="float:right; text-align:center">
-              Token:<br>
-            <img id="charTokenView" src="static/images/profile.svg" width="100px" onclick="imageUpload(this, 'charToken', charName)">
-            </div>
-            <div style="overflow:auto;">
-              <div style="float:left; padding:5px;">
-                Name:<br>
-                Level:<br>
-                Race:
+            <div style="float:left;">
+              <div style="float:left;">
+                <div style="float:left; padding:5px;">
+                  Name:<br>
+                  Level:<br>
+                  Race:
+                </div>
+                <div style="float:left; padding:1px;">
+                  <input id="sheetCharName" readonly><br>
+                  <input id="sheetLevel" value="Commoner (1)"><br>
+                  <input id="sheetRace" value="Human" size="5">
+                </div>
+                <div style="padding:5px; float:left;">
+                  Alignment:
+                  <select id="sheetAlignment">
+                    <option value="LG">LG</option>
+                    <option value="NG">NG</option>
+                    <option value="CG">CG</option>
+                    <option value="LN">LN</option>
+                    <option value="N" selected="selected">N</option>
+                    <option value="CN">CN</option>
+                    <option value="LE">LE</option>
+                    <option value="NE">NE</option>
+                    <option value="CE">CE</option>
+                  </select>
+                  <br>
+                  Age:  <input id="sheetAge" size="3" value=""><br>
+                  Gender: <input id="sheetGender" size="4">
+                </div>
+                <div style="padding:5px; float:left;">
+                  Size:
+                  <select id="sheetSize" onchange = "sizeUpdate()">
+                    <option value="huge">huge</option>
+                    <option value="large">large</option>
+                    <option value="medium" selected="selected">medium</option>
+                    <option value="small">small</option>
+                    <option value="tiny">tiny</option>
+                  </select><br>
+                  Deity: <input id="sheetDeity" size="6"><br>
+                  Homeland: <input id="sheetHomeland" size="6">
+                </div>
+                <div style="padding:5px; float:left;">
+                  Height: <input size="4" id="sheetHeight"> Weight: <input size="4" id="sheetWeight"><br>
+                  Hair: <input size="4" id="sheetHair"> Eyes: <input size="4" id="sheetEyes"><br>
+                </div>
+
               </div>
-              <div style="float:left; padding:1px;">
-                <input id="sheetCharName" readonly><br>
-                <input id="sheetLevel" value="Commoner (1)"><br>
-                <input id="sheetRace" value="Human" size="5">
-              </div>
-              <div style="padding:5px; float:left;">
-                Alignment:
-                <select id="sheetAlignment">
-                  <option value="LG">LG</option>
-                  <option value="NG">NG</option>
-                  <option value="CG">CG</option>
-                  <option value="LN">LN</option>
-                  <option value="N" selected="selected">N</option>
-                  <option value="CN">CN</option>
-                  <option value="LE">LE</option>
-                  <option value="NE">NE</option>
-                  <option value="CE">CE</option>
-                </select>
-                <br>
-                Age:  <input id="sheetAge" size="3" value=""><br>
-                Gender: <input id="sheetGender" size="4">
-              </div>
-              <div style="padding:5px; float:left;">
-                Size:
-                <select id="sheetSize" onchange = "sizeUpdate()">
-                  <option value="huge">huge</option>
-                  <option value="large">large</option>
-                  <option value="medium" selected="selected">medium</option>
-                  <option value="small">small</option>
-                  <option value="tiny">tiny</option>
-                </select><br>
-                Deity: <input id="sheetDeity" size="6"><br>
-                Homeland: <input id="sheetHomeland" size="6">
-              </div>
-              <div style="padding:5px; float:left;">
-                Height: <input size="4" id="sheetHeight"> Weight: <input size="4" id="sheetWeight"><br>
-                Hair: <input size="4" id="sheetHair"> Eyes: <input size="4" id="sheetEyes"><br>
-              </div>
-            </div>
-            <div style="overflow:auto;">
+            <div style="/*float:left;*/">
               <div style="padding:5px; float:left;">
                 Speed (land): <input size="2" class="ft" id="sheetMovementSpeed" onchange="setSpeeds()"><span class="ft">ft</span> <input size="2" class="sq" id="sheetMovementSpeedSQ"><span class="sq">sq</span><br>
                 With Armor: <input size="2" class="ft" id="sheetArmorSpeed" onchange="setSpeeds()"><span class="ft">ft</span> <input size="2" class="sq" id="sheetArmorSpeedSQ"><span class="sq">sq</span>
@@ -149,17 +160,22 @@
                 <button style="width:80px;height:40px;float:left; text-align:center;" onclick="updatePlayer()">Save Changes</button>
                 <button style="width:80px;height:40px; text-align:center;" onclick="doRest()">Rest</button>
                 <button style="width:80px;height:40px; text-align:center;">LevelUp</button>
-
-
               </div>
+
             </div>
-            <div>
+            <div style="/*float:left;*/ clear:both;">
               <button onclick="showSheetPage('sheetPageOne')">Front Page</button>
               <button onclick="showSheetPage('sheetSpellcastingPage')">Spellcasting</button>
               <button style="display:none;" onclick="showSheetPage('sheetSpellBookPage')" id="spellbookButton">Spellbook</button>
               <button style="display:none;" onclick="showSheetPage('sheetPreparedSpellPage')" id="spellPreparedSpellsButton">Prepared Spells</button>
             </div>
+            </div>
+          <div style="overflow:auto;">
+              Token:<br>
+            <img id="charTokenView" src="static/images/profile.svg" width="100px" onclick="imageUpload(this, 'charToken', charName)">
+            </div>
           </div>
+
           <div style="overflow: auto;height: calc(100% - 200px);position: absolute; width:100%;" id="sheetContent">
             <div class="sheetPage" id="sheetPageOne">
               <div style="overflow:auto; width:495px; float:left;" id="sheetLeftColumn">
@@ -1037,6 +1053,7 @@
               <button onclick="populateSpellbook(8)">8</button>
               <button onclick="populateSpellbook(9)">9</button>
               <button onclick="addSpell('class', ['spellbook', 0, 0])">Add Spell</button>
+              <button onclick="populateSpellbook('prepared')">Prepared</button>
               <div id="spellbookBody"></div>
             </div>
             <div class="sheetPage" id="sheetPreparedSpellPage" style="display:none;">
@@ -1164,19 +1181,6 @@
           <div id="loreTabs"></div>
         </div><!--lore-->
       </div>
-      <div class="rightDivContainer">
-        <div class="chatContainerDiv">
-          <div id="chatText" class="chatText"></div>
-          <div id="chatInput" class="chatInput">
-            <form action="javascript:sendChat()">
-            <input id="newChat" style="width:100%;height:50%;text-align:left;">
-            </form>
-          </div>
-        </div>
-        <div class="connectedPlayersContainer">Connected Players
-          <div id="connectedPlayers" class="connectedPlayers"><br></div>
-        </div>
-      </div>
     <div id="bottomDiv" class="bottomDiv">
       <div id="promptDiv" class="promptDiv"></div>
     </div>
@@ -1184,7 +1188,6 @@
   <script type="text/javascript" src="static/js/socket.io.js"></script>
   <script type="text/javascript" src="static/js/player.js?time={{ current_time }}"></script>
   <script type="text/javascript" src="static/js/shared.js?time={{ current_time }}"></script>
-
   </div>
 </body>
 </html>

@@ -51,7 +51,7 @@ input {
    width:18%;
    overflow:auto;
    padding:1%;
-   height:calc(98% - 40px);
+   height:calc(96% - 40px);
    position:absolute;
 }
 .rightDivContainer {
@@ -169,11 +169,19 @@ input {
     overflow:auto;
 }
 #activeTabDiv {
-    width: 60%;
+    width: 80%;
     height:calc(100% - 40px);
     left: 20%;
     position: absolute;
     /*overflow:auto;*/
+}
+#initiativeDivContainer {
+    overflow:auto;
+    height:50%;
+}
+#unitDivContainer {
+    overflow:auto;
+    height:50%;
 }
 .bottomDiv {
     height:25%;

@@ -146,13 +146,13 @@ window.onload = function() {
             }
 
             //update player list
-            document.getElementById("connectedPlayers").innerHTML = "";
+            /*document.getElementById("connectedPlayers").innerHTML = "";
             for (var i = 0; i < Object.keys(playerData.playerList).length; i++) {
               tmpPlayerName = Object.keys(playerData.playerList)[i];
               if (playerData.playerList[tmpPlayerName].connected) {
                 document.getElementById("connectedPlayers").innerHTML += tmpPlayerName + "<br >";
               }
-            }
+            }*/
 
             //handle request for init roll
             if (playerData.playerList[charName].requestInit && document.getElementById("promptDiv").innerHTML == "") {
@@ -1203,7 +1203,7 @@ function addSpell(selectionSource, destination) {
         get_spells(spellcasting[0].class, destination[1], populateSpellList);
     } else if (selectionSource == "spellbook") {
         div.innerHTML = `
-        Spell Level: <select onchange="populateSpellList(spellcasting[0].spellbook[this.selectedIndex]);">
+        Spell Level: <select id="spellLevelSelect" onchange="populateSpellList(spellcasting[0].spellbook[this.selectedIndex]);">
         <option>0</option>
         <option>1</option>
         <option>2</option>
@@ -1219,8 +1219,9 @@ function addSpell(selectionSource, destination) {
         <div id="highlightedSpell" style="overflow: auto;width: 90%;margin: auto;height:40%"></div>
         `;
             document.body.appendChild(modalBackground);
-    document.getElementById("modalBackground").appendChild(div);
-        populateSpellList(spellcasting[0].spellbook[0]);
+        document.getElementById("modalBackground").appendChild(div);
+        document.getElementById("spellLevelSelect").selectedIndex = destination[1]
+        populateSpellList(spellcasting[0].spellbook[destination[1]]);
 
     }
 
@@ -1288,16 +1289,29 @@ function addSingleSpellToSpellbook(spellNumber) {
 }
 
 function populateSpellbook(spellLevel) {
-    spellbookBodyData = "";
-    if (typeof spellcasting[0].spellbook[spellLevel] == "undefined" || spellcasting[0].spellbook[spellLevel].length == 0){
-        document.getElementById("spellbookBody").innerHTML = "No Spells of this Level Yet"
-        return;
+    document.getElementById("spellbookBody").innerHTML = "";
+    if (spellLevel == "prepared") {
+        for (spellLevel=0; spellLevel<=9; spellLevel++){
+            spellcasting[0].preparedSpells[spellLevel].spells = spellcasting[0].preparedSpells[spellLevel].spells.sort(function(a,b){return a.name.localeCompare(b.name)})
+            header = document.createElement("div");
+            header.innerText = "LVL:" + spellLevel;
+            if (spellcasting[0].preparedSpells[spellLevel].spells.length > 0) {
+                document.getElementById("spellbookBody").appendChild(header);
+            }
+            for (i=0; i<spellcasting[0].preparedSpells[spellLevel].spells.length; i++){
+                document.getElementById("spellbookBody").appendChild(formatSpellObj(spellcasting[0].preparedSpells[spellLevel].spells[i], false))
+            }
+        }
+    } else {
+        if (typeof spellcasting[0].spellbook[spellLevel] == "undefined" || spellcasting[0].spellbook[spellLevel].length == 0){
+            document.getElementById("spellbookBody").innerHTML = "No Spells of this Level Yet"
+            return;
+        }
+        for (i=0; i<spellcasting[0].spellbook[spellLevel].length; i++){
+            spellcasting[0].spellbook[spellLevel] = spellcasting[0].spellbook[spellLevel].sort(function(a,b){return a.name.localeCompare(b.name)})
+            document.getElementById("spellbookBody").appendChild(formatSpellObj(spellcasting[0].spellbook[spellLevel][i], false))
+        }
     }
-    for (i=0; i<spellcasting[0].spellbook[spellLevel].length; i++){
-        document.getElementById("spellbookBody").appendChild(formatSpellObj(spellcasting[0].spellbook[spellLevel][i], false))
-        //spellbookBodyData += formatSpell(spellcasting[0].spellbook[spellLevel][i], true) + "<br>";
-    }
-    //document.getElementById("spellbookBody").innerHTML = spellbookBodyData;
 }
 
 function prepareSpell(spell) {
@@ -1317,5 +1331,102 @@ function removeSpell(info) {
     if (info[0] == "dailyPrepared") {
         spellcasting[0].preparedSpellsDaily[info[1]].spells.splice(info[2],1)
         updatePlayer();
+    }
+}
+
+function populatePreparedSpells() {
+    try {
+        if (typeof spellcasting[0].castingStat == "undefined") {
+            spellcasting[0].castingStat = "INT";
+        }
+        var castingStat = parseInt(playerData.playerList[charName][spellcasting[0].castingStat]) | 0;
+        var castingMod = Math.floor((castingStat - 10) / 2)
+
+        for (i=0; i<9; i++) {
+        spellList = "<table style='width:100%;'>";
+            if ( typeof spellcasting[0].preparedSpells[i].spells == "undefined") {
+                continue;
+            }
+            if (spellcasting[0].preparedSpellsDaily[i].number > 0) {
+                spellList += "<th>LVL" + i + "spells: </th>"
+            }
+            for (l=0; l<spellcasting[0].preparedSpellsDaily[i].number; l++) {
+                spellList += "<tr>";
+                if (typeof spellcasting[0].preparedSpells[i].spells[l] == "undefined") {
+                    spellList += "<td> </td>";
+                    spellList += "<td> </td>";
+                    if (spellcasting[0].hasSpellbook){
+                    spellList += `<td><button onclick="addSpell('spellbook', ['prepared', ${i}, ${l}])">Prepare</button></td>`;
+                    } else {
+                    spellList += `<td><button onclick="addSpell('class', ['prepared', ${i}, ${l}])">Prepare</button></td>`;
+                    }
+                } else if (spellcasting[0].preparedSpells[i].spells[l] == null) {
+                    continue;
+                } else {
+                    spellList += "<td>" + spellcasting[0].preparedSpells[i].spells[l].name + "</td>";
+                    spellList += "<td>" + spellcasting[0].preparedSpells[i].spells[l].short_description + "</td>";
+                    spellList += "<td>" + spellcasting[0].preparedSpells[i].spells[l].range + "</td>";
+                    spellList += "<td>" + spellcasting[0].preparedSpells[i].spells[l].saving_throw + "</td>";
+                    spellList += "<td>" + (spellcasting[0].preparedSpells[i].spells[l].level + 10 + castingMod)  + "</td>";
+                    spellList += `<td><button onclick='castPreparedSpell(${i}, ${l}, false)' >Cast</button>`;
+                    if (spellcasting[0].class == "Arcanist" && spellcasting[0].currentPoints > 0) {
+                        spellList += `<button onclick='castPreparedSpell(${i}, ${l}, true)' >Cast Empowered</button>`
+                    }
+                    spellList += "</td>";
+                }
+                spellList += "</tr>";
+            }
+            spellList += "</table>";
+            lastTable = document.getElementById("spellsPreparedLVL" + i).lastElementChild;
+            if (lastTable != null && lastTable.nodeName == "TABLE") {
+                document.getElementById("spellsPreparedLVL" + i).removeChild(lastTable);
+            }
+            document.getElementById("spellsPreparedLVL" + i).innerHTML += spellList;
+
+        }
+        document.getElementById("spellsPrepared").style = "block";
+
+        for (i=0; i<9; i++) {
+            spellList = "<table style='width:100%;'>";
+            for (l=0; l<spellcasting[0].preparedSpellsDaily[i].number; l++) {
+                spellList += "<tr>";
+                if (typeof spellcasting[0].preparedSpellsDaily[i].spells[l] != "undefined" && spellcasting[0].preparedSpellsDaily[i].spells[l] != null) {
+                    spellList += "<td>" + spellcasting[0].preparedSpellsDaily[i].spells[l].name + "</td>";
+                    spellList += "<td>" + spellcasting[0].preparedSpellsDaily[i].spells[l].short_description + "</td>";
+                    spellList += `<td><button onclick="removeSpell(['dailyPrepared', ${i}, ${l}])">Remove</button></td>`;
+                } else {
+                    spellList += "<td>" + "None" + "</td>";
+                    spellList += "<td>" + "Available Slot" + "</td>";
+                    if (spellcasting[0].hasSpellbook) {
+                        source = "spellbook";
+                    } else {
+                        source = "class";
+                    }
+                    spellList += `<td><button onclick="addSpell('${source}', ['dailyPrepared', ${i}, ${l}])">Prepare</button></td>`;
+                }
+                spellList += "</tr>";
+            }
+            spellList += "</table>";
+            lastTable = document.getElementById("spellsPreparedDailyLVL" + i).lastElementChild;
+            if (lastTable.nodeName == "TABLE") {
+                document.getElementById("spellsPreparedDailyLVL" + i).removeChild(lastTable);
+            }
+            document.getElementById("spellsPreparedDailyLVL" + i).innerHTML += spellList;
+
+        }
+
+        document.getElementById("spellsPreparedPerDayLVL0").value = spellcasting[0].preparedSpellsDaily[0].number;
+        document.getElementById("spellsPreparedPerDayLVL1").value = spellcasting[0].preparedSpellsDaily[1].number;
+        document.getElementById("spellsPreparedPerDayLVL2").value = spellcasting[0].preparedSpellsDaily[2].number;
+        document.getElementById("spellsPreparedPerDayLVL3").value = spellcasting[0].preparedSpellsDaily[3].number;
+        document.getElementById("spellsPreparedPerDayLVL4").value = spellcasting[0].preparedSpellsDaily[4].number;
+        document.getElementById("spellsPreparedPerDayLVL5").value = spellcasting[0].preparedSpellsDaily[5].number;
+        document.getElementById("spellsPreparedPerDayLVL6").value = spellcasting[0].preparedSpellsDaily[6].number;
+        document.getElementById("spellsPreparedPerDayLVL7").value = spellcasting[0].preparedSpellsDaily[7].number;
+        document.getElementById("spellsPreparedPerDayLVL8").value = spellcasting[0].preparedSpellsDaily[8].number;
+        document.getElementById("spellsPreparedPerDayLVL9").value = spellcasting[0].preparedSpellsDaily[9].number;
+
+    } catch (e) {
+        socket.emit("error_handle", room, e);
     }
 }
