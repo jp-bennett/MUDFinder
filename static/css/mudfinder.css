@@ -248,7 +248,7 @@ width:100%;
 }
 #mapContainer {
     font-family: FreeMono, monospace;
-    width:95%;
+    width:100%;
     height:90%;
     /*text-align:center;*/
     position:absolute;

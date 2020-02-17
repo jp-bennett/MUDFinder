@@ -3,7 +3,7 @@ var requestedUpdate = true;
 var room = url_ob.searchParams.get("room");
 var socket;
 var charName = "";
-var zoomSize = 20;
+var zoomSize = 70;
 var activeCharName = "";
 var playerdata;
 var socket;
@@ -25,6 +25,43 @@ window.onload = function() {
         gpTableSavedHTML = document.getElementById("gpTable").innerHTML;
         inventoryTableSavedHTML = document.getElementById("itemTable").innerHTML;
         enableTab("mapWrapper");
+
+        document.getElementById("mapContainer").onwheel = function(e){
+            try {
+            e.preventDefault()
+            e.stopPropagation();
+            mouseX = (e.clientX)// / zoomSize;
+            mouseX -= document.getElementById("mapContainer").getBoundingClientRect().x
+            mouseXonDiv = mouseX;
+            mouseX += document.getElementById("mapContainer").scrollLeft;
+            oldZoom = zoom;
+            mouseY = (e.clientY)// / zoomSize;
+            mouseY -= document.getElementById("mapContainer").getBoundingClientRect().y
+            mouseYonDiv = mouseY;
+            mouseY += document.getElementById("mapContainer").scrollTop;
+            YHidden = mouseY - mouseYonDiv
+            XHidden = mouseX - mouseXonDiv
+
+            if (e.deltaY < 0) {
+                zoom *= 1.1; //add max zoom
+                //zoomIn(mouseX, mouseY);
+            } else if (e.deltaY > 0) {
+                zoom /= 1.1 //add min zoom
+                //zoomOut(mouseX, mouseY);
+            }
+            document.getElementById("mapGraphic").style.transform = `scale(${zoom})`;
+            newMouseXfromPoint = mouseXonDiv / oldZoom * zoom;
+            newMouseYfromPoint = mouseYonDiv / oldZoom * zoom;
+            newYHidden = YHidden / oldZoom * zoom;
+            newXHidden = XHidden / oldZoom * zoom;
+
+            document.getElementById("mapContainer").scrollLeft = newXHidden + newMouseXfromPoint - mouseXonDiv;
+            document.getElementById("mapContainer").scrollTop = newYHidden + newMouseYfromPoint - mouseYonDiv;
+
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
 
 
     } catch (error) {
@@ -283,6 +320,10 @@ function sendInit() {
 }
 function mapClick(e, x, y) {
     try {
+        if (isDragging) {
+            isDragging = false;
+            return;
+        }
         //console.log("Clicked!" + x + ", " + y);
         relative_y = e.offsetX * 16 / zoomSize;
         relative_x = e.offsetY * 16 / zoomSize;

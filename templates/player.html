@@ -79,7 +79,7 @@
             </div>
             <div style="display:none;" id='mapGraphic'></div>
           </div>
-          <div id="zoomControls" style="text-align:center; float:right; font-size: 5em;"> <div id="zoomIn" onclick="zoomIn()"> + </div> <div id="zoomOut" onclick="zoomOut()">-</div></div>
+          <div id="zoomControls" style="display:none;text-align:center; float:right; font-size: 5em;"> <div id="zoomIn" onclick="zoomIn()"> + </div> <div id="zoomOut" onclick="zoomOut()">-</div></div>
           <div id="mapTools">
           <div id="movementDiv">
           <button id="movementButton" style="float:left;" onclick="resetMovement()">Reset Movement</button>
@@ -1188,6 +1188,8 @@
   <script type="text/javascript" src="static/js/socket.io.js"></script>
   <script type="text/javascript" src="static/js/player.js?time={{ current_time }}"></script>
   <script type="text/javascript" src="static/js/shared.js?time={{ current_time }}"></script>
+  <script type="text/javascript" src="static/js/dragscroll.js"></script>
+
   </div>
 </body>
 </html>

@@ -5,6 +5,7 @@ var prevDiff = 0;
 var touchX = 0;
 var touchY = 0;
 var zoom = 1;
+var isDragging = false;
 var images = new Object();
 
 if (!('toJSON' in Error.prototype))
