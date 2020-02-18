@@ -79,19 +79,20 @@
             </div>
             <div style="display:none;" id='mapGraphic'></div>
           </div>
-          <div id="zoomControls" style="display:none;text-align:center; float:right; font-size: 5em;"> <div id="zoomIn" onclick="zoomIn()"> + </div> <div id="zoomOut" onclick="zoomOut()">-</div></div>
+          <!--<div id="zoomControls" style="display:none;text-align:center; float:right; font-size: 5em;"> <div id="zoomIn" onclick="zoomIn()"> + </div> <div id="zoomOut" onclick="zoomOut()">-</div></div>-->
           <div id="mapTools">
-          <div id="movementDiv">
-          <button id="movementButton" style="float:left;" onclick="resetMovement()">Reset Movement</button>
-          <div style="float:left;" id="movement"></div>
-          <select id="movementSelector" style="float:left;">
-          <option>5 ft step</option>
-          <option selected>Move Action</option>
-          <option>Full Round Move</option>
-          <option>unlimited</option>
-          <option>untracked</option>
-          </select>
-          </div>
+            <button id="showEffectDivButton" onclick="showEffectControls()">Effect</button>
+            <div id="movementDiv">
+              <button id="movementButton" style="float:left;" onclick="resetMovement()">Reset Movement</button>
+              <div style="float:left;" id="movement"></div>
+              <select id="movementSelector" style="float:left;">
+              <option>5 ft step</option>
+              <option selected>Move Action</option>
+              <option>Full Round Move</option>
+              <option>unlimited</option>
+              <option>untracked</option>
+              </select>
+            </div>
           </div>
         </div><!--mapWrapper-->
         <div id="charWrapper" style="line-height: 1.7; overflow:auto;">

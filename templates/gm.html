@@ -91,7 +91,7 @@
           </div>
         </div>
         <div id="mapWrapper">
-          <div id="mapContainer">
+          <div id="mapContainer" class="dragscroll">
             <div id="mapForm">
               <form>
                 <textarea id="mapText" style="width:50%;height:50%;"></textarea>
@@ -106,7 +106,7 @@
             </div>
             <div style="display:none;" id='mapGraphic'></div>
           </div>
-          <div id="zoomControls" style="text-align:center; float:right; font-size: 5em;"> <div id="zoomIn" onclick="zoomIn()"> + </div> <div id="zoomOut" onclick="zoomOut()">-</div></div>
+          <!--<div id="zoomControls" style="text-align:center; float:right; font-size: 5em;"> <div id="zoomIn" onclick="zoomIn()"> + </div> <div id="zoomOut" onclick="zoomOut()">-</div></div>-->
           <div id="mapTools">
           <div class="nonSelected" style="float:left;">
             <div id="floorTile" onclick="mapTool(event, 'floor')" style="margin:5px;" class="mapTile floorTile tooltip"><span class="tooltiptext">Floor Tile</span></div>
@@ -159,6 +159,7 @@
           </select>
           </div>
           <div style="float:right;padding-right:100px;padding-top:10px;">Show discovered overlay: <input type="checkbox" id="seenOverlay" value="seenOverlay" onchange="seenOverlayToggle(this)" checked></div>
+            <button id="showEffectDivButton" onclick="showEffectControls()">Effect</button>
           </div>
         </div>
         <div id="units" style="display:none;">

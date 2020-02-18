@@ -7,6 +7,8 @@ var touchY = 0;
 var zoom = 1;
 var isDragging = false;
 var images = new Object();
+var testEffect;
+var effects;
 
 if (!('toJSON' in Error.prototype))
 Object.defineProperty(Error.prototype, 'toJSON', {
@@ -22,22 +24,6 @@ Object.defineProperty(Error.prototype, 'toJSON', {
     configurable: true,
     writable: true
 });
-document.getElementById("mapContainer").onwheel = function(e){
-    try {
-        if (e.ctrlKey){
-            e.preventDefault()
-            mouseX = (e.clientX - e.currentTarget.getBoundingClientRect().x + e.currentTarget.scrollLeft) / zoomSize;
-            mouseY = (e.clientY - e.currentTarget.getBoundingClientRect().y + e.currentTarget.scrollTop) / zoomSize;
-            if (e.deltaY < 0) {
-                zoomIn(mouseX, mouseY);
-            } else if (e.deltaY > 0) {
-                zoomOut(mouseX, mouseY);
-            }
-        }
-    } catch (e) {
-        socket.emit("error_handle", room, e);
-    }
-}
 document.getElementById("mapContainer").ontouchstart = function(e){
     try {
         if (e.touches.length > 1) {
@@ -176,7 +162,7 @@ function updateMap(Data) {
             document.getElementById("mapGraphic").innerHTML = newMapText;
             document.getElementById("mapForm").style.display = "none";
             document.getElementById("mapGraphic").style.display = "inline-block";
-            document.getElementById("zoomControls").style.display = "block";
+            //document.getElementById("zoomControls").style.display = "block";
             for (var i = 0; i < Data.unitList.length; i++) {
                 if (typeof Data.unitList[i].x !== "undefined" && document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`) !== null) {
                     if (typeof Data.unitList[i].token === "undefined" || Data.unitList[i].token == "") {
@@ -245,6 +231,10 @@ function updateMap(Data) {
                         //console.log(tokenDiv);
                     }
                 }
+            }
+            for (var i = 0; i < Data.effects.length; i++) {
+                tmpEffect = generateEffect(Data.effects[i].shape, Data.effects[i].size, "green");
+                locateEffect(tmpEffect, Data.effects[i].origin.x, Data.effects[i].origin.y);
             }
             if (Data.inInit /*&& Data.initiativeList[Data.initiativeCount].movePath.length > 0*/) {
                 tmpHTML = ""
@@ -753,4 +743,403 @@ function castPreparedSpell (spellLvl, spellNum, empowered) {
 
 function requestImages() {
     socket.emit("request_images", room);
+}
+
+function generateEffect(effectShape, size, color){
+    var effect = {};
+    effect.origin = {};
+    if (effectShape == "circle") {
+        effect.shape = "circle";
+        effect.size = size;
+        if (effect.size == 0) {
+            effect.numSquares = 1;
+        } else if (effect.size == 5) {
+            effect.numSquares = 4;
+        } else if (effect.size == 10) {
+            effect.numSquares = 12;
+        } else if (effect.size == 15) {
+            effect.numSquares = 24;
+        } else if (effect.size == 20) {
+            effect.numSquares = 44;
+        }
+        effect.divs = [];
+        for (i = 0; i< effect.numSquares; i++){
+            effect.divs[i] = document.createElement("div");
+            effect.divs[i].style.background = color;
+            effect.divs[i].style.opacity = 0.5;
+            effect.divs[i].style.width = zoomSize + "px";
+            effect.divs[i].style.height = zoomSize + "px";
+            effect.divs[i].style.position = "absolute";
+            effect.divs[i].style.pointerEvents = "none";
+        }
+    }
+    return effect;
+}
+
+function deleteEffect(effect) {
+    for (i = 0; i< effect.numSquares; i++){
+        effect.divs[i].remove();
+    }
+}
+
+function locateEffect(effect, x, y) {
+    if (effect.shape == "circle"){
+        effect.origin.x = x;
+        effect.origin.y = y;
+        if (effect.size == 0) {
+            effect.divs[0].style.top = y * 70 + "px";
+            effect.divs[0].style.left = x * 70 + "px";
+        } else {
+            effect.divs[0].style.top = y * 70 + "px";
+            effect.divs[0].style.left = x * 70 + "px";
+
+            effect.divs[1].style.top = (y -1) * 70 + "px";
+            effect.divs[1].style.left = x * 70 + "px";
+
+            effect.divs[2].style.top = y * 70 + "px";
+            effect.divs[2].style.left = (x -1) * 70 + "px";
+
+            effect.divs[3].style.top = (y-1) * 70 + "px";
+            effect.divs[3].style.left = (x-1) * 70 + "px";
+            if (effect.size > 5) {
+                effect.divs[4].style.top = (y+1) * 70 + "px";
+                effect.divs[4].style.left = (x) * 70 + "px";
+
+                effect.divs[5].style.top = (y) * 70 + "px";
+                effect.divs[5].style.left = (x+1) * 70 + "px";
+
+                effect.divs[6].style.top = (y-1) * 70 + "px";
+                effect.divs[6].style.left = (x+1) * 70 + "px";
+
+                effect.divs[7].style.top = (y+1) * 70 + "px";
+                effect.divs[7].style.left = (x-1) * 70 + "px";
+
+                effect.divs[8].style.top = (y-2) * 70 + "px";
+                effect.divs[8].style.left = (x) * 70 + "px";
+
+                effect.divs[9].style.top = (y) * 70 + "px";
+                effect.divs[9].style.left = (x-2) * 70 + "px";
+
+                effect.divs[10].style.top = (y-1) * 70 + "px";
+                effect.divs[10].style.left = (x-2) * 70 + "px";
+
+                effect.divs[11].style.top = (y-2) * 70 + "px";
+                effect.divs[11].style.left = (x-1) * 70 + "px";
+            }
+            if (effect.size > 10) {
+                effect.divs[12].style.top = (y+1) * 70 + "px";
+                effect.divs[12].style.left = (x+1) * 70 + "px";
+
+                effect.divs[13].style.top = (y-2) * 70 + "px";
+                effect.divs[13].style.left = (x+1) * 70 + "px";
+
+                effect.divs[14].style.top = (y-2) * 70 + "px";
+                effect.divs[14].style.left = (x-2) * 70 + "px";
+
+                effect.divs[15].style.top = (y+1) * 70 + "px";
+                effect.divs[15].style.left = (x-2) * 70 + "px";
+
+                effect.divs[16].style.top = (y+2) * 70 + "px";
+                effect.divs[16].style.left = (x) * 70 + "px";
+
+                effect.divs[17].style.top = (y) * 70 + "px";
+                effect.divs[17].style.left = (x+2) * 70 + "px";
+
+                effect.divs[18].style.top = (y-1) * 70 + "px";
+                effect.divs[18].style.left = (x+2) * 70 + "px";
+
+                effect.divs[19].style.top = (y+2) * 70 + "px";
+                effect.divs[19].style.left = (x-1) * 70 + "px";
+
+                effect.divs[20].style.top = (y-3) * 70 + "px";
+                effect.divs[20].style.left = (x) * 70 + "px";
+
+                effect.divs[21].style.top = (y) * 70 + "px";
+                effect.divs[21].style.left = (x-3) * 70 + "px";
+
+                effect.divs[22].style.top = (y-1) * 70 + "px";
+                effect.divs[22].style.left = (x-3) * 70 + "px";
+
+                effect.divs[23].style.top = (y-3) * 70 + "px";
+                effect.divs[23].style.left = (x-1) * 70 + "px";
+            }
+            if (effect.size > 15) {
+                effect.divs[24].style.top = (y-4) * 70 + "px";
+                effect.divs[24].style.left = (x) * 70 + "px";
+
+                effect.divs[25].style.top = (y-3) * 70 + "px";
+                effect.divs[25].style.left = (x+1) * 70 + "px";
+
+                effect.divs[26].style.top = (y-3) * 70 + "px";
+                effect.divs[26].style.left = (x+2) * 70 + "px";
+
+                effect.divs[27].style.top = (y-2) * 70 + "px";
+                effect.divs[27].style.left = (x+2) * 70 + "px";
+
+                effect.divs[28].style.top = (y-1) * 70 + "px";
+                effect.divs[28].style.left = (x+3) * 70 + "px";
+
+                effect.divs[29].style.top = (y) * 70 + "px";
+                effect.divs[29].style.left = (x+3) * 70 + "px";
+
+                effect.divs[30].style.top = (y+1) * 70 + "px";
+                effect.divs[30].style.left = (x+2) * 70 + "px";
+
+                effect.divs[31].style.top = (y+2) * 70 + "px";
+                effect.divs[31].style.left = (x+2) * 70 + "px";
+
+                effect.divs[32].style.top = (y+2) * 70 + "px";
+                effect.divs[32].style.left = (x+1) * 70 + "px";
+
+                effect.divs[33].style.top = (y+3) * 70 + "px";
+                effect.divs[33].style.left = (x) * 70 + "px";
+
+                effect.divs[34].style.top = (y+3) * 70 + "px";
+                effect.divs[34].style.left = (x-1) * 70 + "px";
+
+                effect.divs[35].style.top = (y+2) * 70 + "px";
+                effect.divs[35].style.left = (x-2) * 70 + "px";
+
+                effect.divs[36].style.top = (y+2) * 70 + "px";
+                effect.divs[36].style.left = (x-3) * 70 + "px";
+
+                effect.divs[37].style.top = (y+1) * 70 + "px";
+                effect.divs[37].style.left = (x-3) * 70 + "px";
+
+                effect.divs[38].style.top = (y) * 70 + "px";
+                effect.divs[38].style.left = (x-4) * 70 + "px";
+
+                effect.divs[39].style.top = (y-1) * 70 + "px";
+                effect.divs[39].style.left = (x-4) * 70 + "px";
+
+                effect.divs[40].style.top = (y-2) * 70 + "px";
+                effect.divs[40].style.left = (x-3) * 70 + "px";
+
+                effect.divs[41].style.top = (y-3) * 70 + "px";
+                effect.divs[41].style.left = (x-3) * 70 + "px";
+
+                effect.divs[42].style.top = (y-3) * 70 + "px";
+                effect.divs[42].style.left = (x-2) * 70 + "px";
+
+                effect.divs[43].style.top = (y-4) * 70 + "px";
+                effect.divs[43].style.left = (x-1) * 70 + "px";
+
+            }
+        }
+    }
+    if (effect.divs[0].parentNode == null) {
+        for (i = 0; i< effect.numSquares; i++){
+            document.getElementById("mapGraphic").appendChild(effect.divs[i]);
+        }
+    }
+}
+
+function showEffectControls() { //TODO: add a button to add effect, rather than automatically doing so.
+    document.getElementById("activeTabDiv").style.height = "calc(80% - 40px)";
+    document.getElementById("bottomDiv").style.display = "block";
+    document.getElementById("showEffectDivButton").onclick = hideEffectControls;
+    testEffect = generateEffect("circle", 0, "green");
+    table = document.createElement("table");
+    table.id = "effectTable";
+    tr = document.createElement("tr");
+    th = document.createElement("th");
+    th.innerText = "Title";
+    tr.appendChild(th);
+    th = document.createElement("th");
+    th.innerText = "shape";
+    tr.appendChild(th);
+    th = document.createElement("th");
+    th.innerText = "size";
+    tr.appendChild(th);
+    th = document.createElement("th");
+    th.innerText = "duration";
+    tr.appendChild(th);
+
+    table.appendChild(tr);
+    document.getElementById("bottomDiv").appendChild(table);
+
+    for (i=0; i<effects.length; i++) {
+        tr = document.createElement("tr");
+        td = document.createElement("td");
+        td.innerText = "test";
+        tr.appendChild(td);
+        td = document.createElement("td");
+        td.innerText = effects[i].shape;
+        tr.appendChild(td);
+        td = document.createElement("td");
+        td.innerText = effects[i].size;
+        tr.appendChild(td);
+        td = document.createElement("td");
+        deleteButton = document.createElement("button");
+        deleteButton.innerText = "remove";
+        deleteButton.onclick = (function(i) { return function() {effects.splice(i,1); updateEffects(false);  hideEffectControls();}})(i);
+        td.appendChild(deleteButton);
+        tr.appendChild(td);
+        table.appendChild(tr);
+
+
+    }
+
+
+    tr = document.createElement("tr");
+    td = document.createElement("td");
+    input = document.createElement("input");
+    td.appendChild(input);
+    //td.innerText = "test";
+    tr.appendChild(td);
+    td = document.createElement("td");
+    effectShapeSelect = document.createElement("select");
+    effectShapeOption = document.createElement("option");
+    effectShapeOption.innerText = "Circle";
+    effectShapeSelect.appendChild(effectShapeOption);
+    /*effectShapeOption = document.createElement("option");
+    effectShapeOption.innerText = "Line";
+    effectShapeSelect.appendChild(effectShapeOption);*/
+    td.appendChild(effectShapeSelect);
+
+    tr.appendChild(td);
+    td = document.createElement("td");
+
+
+
+    effectSizeSelect = document.createElement("select");
+    td.appendChild(effectSizeSelect);
+    tr.appendChild(td);
+    table.appendChild(tr);
+    effectSizeSelect.onchange = function() {deleteEffect(testEffect); testEffect = generateEffect("circle", parseInt(this.value), "salmon");}
+    effectSizeOption = document.createElement("option");
+    effectSizeOption.innerText = "0";
+    effectSizeSelect.appendChild(effectSizeOption);
+
+    effectSizeOption = document.createElement("option");
+    effectSizeOption.innerText = "5";
+    effectSizeSelect.appendChild(effectSizeOption);
+
+    effectSizeOption = document.createElement("option");
+    effectSizeOption.innerText = "10";
+    effectSizeSelect.appendChild(effectSizeOption);
+
+    effectSizeOption = document.createElement("option");
+    effectSizeOption.innerText = "15";
+    effectSizeSelect.appendChild(effectSizeOption);
+
+    effectSizeOption = document.createElement("option");
+    effectSizeOption.innerText = "20";
+    effectSizeSelect.appendChild(effectSizeOption);
+
+    document.getElementById("mapContainer").onclick = function(e){
+        if (isDragging) {
+            return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        console.log("click!");
+        updateEffects(true);
+        hideEffectControls();
+
+    }
+
+    document.getElementById("mapContainer").onmousemove = function(e){
+        try {
+            mouseX = (e.clientX)
+            mouseX -= document.getElementById("mapContainer").getBoundingClientRect().x
+            mouseX += document.getElementById("mapContainer").scrollLeft;
+            mouseX /= zoom;
+
+            mouseY = (e.clientY)
+            mouseY -= document.getElementById("mapContainer").getBoundingClientRect().y
+            mouseY += document.getElementById("mapContainer").scrollTop;
+            mouseY /= zoom;
+            if (testEffect.shape == "circle" && testEffect.size == 0) {
+            mouseX = Math.floor(mouseX/70)
+            mouseY = Math.floor(mouseY/70)
+            } else {
+            mouseX = Math.round(mouseX/70)
+            mouseY = Math.round(mouseY/70)
+            }
+            locateEffect(testEffect, mouseX, mouseY);
+        } catch (e) {
+            socket.emit("error_handle", room, e);
+        }
+    }
+}
+
+function hideEffectControls() {
+    deleteEffect(testEffect);
+    testEffect = undefined;
+    document.getElementById("mapContainer").onmousemove = null;
+    document.getElementById("mapContainer").onclick = null;
+    /*while (document.getElementById("promptDiv").firstChild) {
+        document.getElementById("promptDiv").firstChild.remove();
+    }*/
+    document.getElementById("effectTable").remove();
+    document.getElementById("bottomDiv").style.display = "none";
+    document.getElementById("activeTabDiv").style.height = "calc(100% - 40px)";
+    document.getElementById("showEffectDivButton").onclick = showEffectControls;
+
+
+
+    /*
+    var effectCanvas = document.createElement("canvas")
+    effectCanvas.style.position = "absolute"
+    effectCanvas.style.top = 0
+    effectCanvas.style.pointerEvents = "none";
+    document.getElementById("mapGraphic").appendChild(effectCanvas);
+    effectCanvas.width = playerData.mapArray[0].length*70
+    effectCanvas.height = playerData.mapArray.length*70
+    var ctx = effectCanvas.getContext("2d");
+
+    document.getElementById("mapContainer").onmousemove = function(e){
+        mouseX = (e.clientX)
+        mouseX -= document.getElementById("mapContainer").getBoundingClientRect().x
+        mouseX += document.getElementById("mapContainer").scrollLeft;
+        mouseX /= zoom;
+
+        mouseY = (e.clientY)
+        mouseY -= document.getElementById("mapContainer").getBoundingClientRect().y
+        mouseY += document.getElementById("mapContainer").scrollTop;
+        mouseY /= zoom;
+
+        //need to get the point in the middle of the player. Will simplify for now.
+        playerX = playerData.playerList[charName].x * 70 + 35
+        playerY = playerData.playerList[charName].y * 70 + 35
+
+        angle = Math.atan2(mouseY - playerX, mouseX - playerY) * 180 / Math.PI;
+        newPoint = findNewPoint(playerY, playerX, angle, 70*6);
+        ctx.clearRect(0, 0, effectCanvas.width, effectCanvas.height)
+        ctx.beginPath();
+        ctx.moveTo(playerY, playerX);
+        ctx.lineTo(newPoint.x, newPoint.y)
+        ctx.lineWidth = 10;
+        //console.log(newPoint);
+        //console.log (playerY);
+        ctx.stroke();
+    }*/
+
+
+
+}
+
+function findNewPoint(x, y, angle, distance) { //https://stackoverflow.com/questions/17456783/javascript-figure-out-point-y-by-angle-and-distance
+    var result = {};
+
+    result.x = Math.round(Math.cos(angle * Math.PI / 180) * distance + x);
+    result.y = Math.round(Math.sin(angle * Math.PI / 180) * distance + y);
+
+    return result;
+}
+
+function updateEffects(addnew) {
+    if (addnew && typeof testEffect !== "undefined"){
+        tempEffect = {};
+        tempEffect.shape = testEffect.shape;
+        tempEffect.size = testEffect.size;
+        tempEffect.origin = testEffect.origin;
+        effects.push(tempEffect);
+    }
+    if (isGM) {
+        socket.emit("update_effects", room, effects, gmKey);
+    } else {
+        socket.emit("update_effects", room, effects, "");
+    }
 }

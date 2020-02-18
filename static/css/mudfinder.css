@@ -184,10 +184,12 @@ input {
     height:50%;
 }
 .bottomDiv {
-    height:25%;
-    top:75%;
+    height:20%;
+    top:80%;
     position:absolute;
-    width:100%;
+    width:80%;
+    left:20%;
+    overflow:auto;
     display:none;
 }
 tr:nth-child(even) {background-color: #f2f2f2;}

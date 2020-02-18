@@ -1,7 +1,7 @@
 var selectedInitiative;
 var selectedUnits = [];
 var gmData;
-var zoomSize = 20;
+var zoomSize = 70;
 var selectedTool;
 var socket;
 var charName = "GM";
@@ -12,6 +12,57 @@ var ds = new DragSelect({
 });
 const isGM = true;
 showSeenOverlay = true;
+
+
+document.getElementById("mapContainer").onwheel = function(e){
+    try {
+        if (e.ctrlKey){
+
+            e.preventDefault()
+            e.stopPropagation();
+            mouseX = (e.clientX)// / zoomSize;
+            mouseX -= document.getElementById("mapContainer").getBoundingClientRect().x
+            mouseXonDiv = mouseX;
+            mouseX += document.getElementById("mapContainer").scrollLeft;
+            oldZoom = zoom;
+            mouseY = (e.clientY)// / zoomSize;
+            mouseY -= document.getElementById("mapContainer").getBoundingClientRect().y
+            mouseYonDiv = mouseY;
+            mouseY += document.getElementById("mapContainer").scrollTop;
+            YHidden = mouseY - mouseYonDiv
+            XHidden = mouseX - mouseXonDiv
+
+            if (e.deltaY < 0) {
+                zoom *= 1.1; //add max zoom
+                //zoomIn(mouseX, mouseY);
+            } else if (e.deltaY > 0) {
+                zoom /= 1.1 //add min zoom
+                //zoomOut(mouseX, mouseY);
+            }
+            document.getElementById("mapGraphic").style.transform = `scale(${zoom})`;
+            newMouseXfromPoint = mouseXonDiv / oldZoom * zoom;
+            newMouseYfromPoint = mouseYonDiv / oldZoom * zoom;
+            newYHidden = YHidden / oldZoom * zoom;
+            newXHidden = XHidden / oldZoom * zoom;
+
+            document.getElementById("mapContainer").scrollLeft = newXHidden + newMouseXfromPoint - mouseXonDiv;
+            document.getElementById("mapContainer").scrollTop = newYHidden + newMouseYfromPoint - mouseYonDiv;
+
+        /*
+            e.preventDefault()
+            mouseX = (e.clientX - e.currentTarget.getBoundingClientRect().x + e.currentTarget.scrollLeft) / zoomSize;
+            mouseY = (e.clientY - e.currentTarget.getBoundingClientRect().y + e.currentTarget.scrollTop) / zoomSize;
+            if (e.deltaY < 0) {
+                zoomIn(mouseX, mouseY);
+            } else if (e.deltaY > 0) {
+                zoomOut(mouseX, mouseY);
+            } */
+        }
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
 window.onload = function() {
     try {
         socket = io.connect(document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
@@ -55,6 +106,7 @@ window.onload = function() {
             gmData = msg;
             //console.log(gmData);
             document.title = gmData.name
+            effects = gmData.effects;
             updateMap(gmData);
             if (typeof selectedTool !== "undefined") {
                 ds.setSelectables(document.getElementsByClassName('selectableTile'));
@@ -340,7 +392,7 @@ function css_getclass(name) {
     }
 }
 
-function zoomIn(lookingAtX, lookingAtY) {
+/*function zoomIn(lookingAtX, lookingAtY) {
     try {
         lookingAtX = lookingAtX || (document.getElementById("mapContainer").clientWidth/2 + document.getElementById("mapContainer").scrollLeft)/zoomSize
         lookingAtY = lookingAtY || (document.getElementById("mapContainer").clientHeight/2 + document.getElementById("mapContainer").scrollTop)/zoomSize
@@ -365,7 +417,7 @@ function zoomOut(lookingAtX, lookingAtY) {
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
-}
+}*/
 
 function beginInit() {
     socket.emit('begin_init', {room: room, gmKey: gmKey});
@@ -427,6 +479,10 @@ function delInit(e, initCount) {
 
 function mapClick(e, x, y) {
     try {
+        if (typeof testEffect !== "undefined"){
+
+            return;
+        }
         //console.log("Clicked!" + x + ", " + y);
         relative_y = e.offsetX * 16 / zoomSize;
         relative_x = e.offsetY * 16 / zoomSize;

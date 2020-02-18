@@ -26,7 +26,12 @@
             </div>
             <div style="display:none;" id='mapGraphic'></div>
           </div>
-          <div id="zoomControls" style="text-align:center; float:right; font-size: 5em;"> <div id="zoomIn" onclick="zoomIn()"> + </div> <div id="zoomOut" onclick="zoomOut()">-</div></div>
+          <!--<div id="zoomControls" style="text-align:center; float:right; font-size: 5em;"> <div id="zoomIn" onclick="zoomIn()"> + </div> <div id="zoomOut" onclick="zoomOut()">-</div></div>-->
+          <div id="mapTools">
+            <div id="movementDiv">
+              <div style="float:left;" id="movement"></div>
+            </div>
+          </div>
         </div>
                 <div id="lore">
           <div id="lorePage" class="lorePage"></div>
@@ -123,7 +128,7 @@
       updateMap(playerData);
     }
     function mapClick(x, y) {
-        console.log("Clicked!" + x + ", " + y);
+
     }
   </script>
   <script type="text/javascript" src="static/js/shared.js?time={{ current_time }}"></script>

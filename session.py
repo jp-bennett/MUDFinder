@@ -20,6 +20,7 @@ class Session(object):
         self.lore = []
         self.loreFiles = {}
         self.images = {}
+        self.effects = []
 
     def to_json(self):  # need a full version for saves, and a partial version for updates
         """Serialize object to JSON"""
@@ -51,7 +52,8 @@ class Session(object):
             "initiativeList": tmpinitiativeList,
             "mapArray": self.mapArray,
             "movePath": self.movePath,
-            "savedEncounters": keyNames
+            "savedEncounters": keyNames,
+            "effects": self.effects
         }
 
     def gen_save(self):
@@ -82,7 +84,8 @@ class Session(object):
             "savedEncounters": self.savedEncounters,
             "lore": self.lore,
             "loreFiles": self.loreFiles,
-            "images": self.images
+            "images": self.images,
+            "effects": self.effects
         }
 
     def from_json(self, obj):
@@ -109,6 +112,7 @@ class Session(object):
         self.savedEncounters = obj["savedEncounters"]
         self.images = default(obj, "images", {})
         self.number_units()
+        self.effects = default(obj, "effects", [])
         return
 
     def order_initiative_list(self):
@@ -169,7 +173,8 @@ class Session(object):
             "roundCount": self.roundCount,
             "playerList": tmpplayerList,
             "mapArray": self.mapArray,
-            "movePath": self.movePath
+            "movePath": self.movePath,
+            "effects": self.effects
         }  # add visible units from unitlist
 
         if self.inInit:

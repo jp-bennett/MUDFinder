@@ -17,7 +17,8 @@ var selectedInventory;
 var savedInventories;
 var spellcasting;
 var savedSpellList;
-var spellSelectionDestination = ["", 0, 0]
+var spellSelectionDestination = ["", 0, 0];
+var effects;
 const isGM = false;
 window.addEventListener("resize", hackSizes);
 window.onload = function() {
@@ -106,6 +107,7 @@ window.onload = function() {
         try {
             playerData = undefined;
             playerData = msg;
+            effects = playerData.effects;
             //console.log(playerData);
             document.title = playerData.name
             updateMap(playerData);
@@ -273,7 +275,8 @@ function advanceInit() {
 
     socket.emit('advance_init', {room: room, charName: charName});
 }
-function zoomIn(lookingAtX, lookingAtY) {
+
+/*function zoomIn(lookingAtX, lookingAtY) {
     try {
         lookingAtX = lookingAtX || (document.getElementById("mapContainer").clientWidth/2 + document.getElementById("mapContainer").scrollLeft)/zoomSize
         lookingAtY = lookingAtY || (document.getElementById("mapContainer").clientHeight/2 + document.getElementById("mapContainer").scrollTop)/zoomSize
@@ -296,7 +299,7 @@ function zoomOut(lookingAtX, lookingAtY) {
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
-}
+}*/
 function sendInit() {
         try {
         console.log('Sending...');
@@ -322,12 +325,17 @@ function mapClick(e, x, y) {
     try {
         if (isDragging) {
             isDragging = false;
+            e.stopPropagation()
             return;
         }
         //console.log("Clicked!" + x + ", " + y);
         relative_y = e.offsetX * 16 / zoomSize;
         relative_x = e.offsetY * 16 / zoomSize;
         //console.log(relative_x + ", " + relative_y);
+        if (typeof testEffect !== "undefined"){
+
+            return;
+        }
 
         if (playerData.inInit) {
             socket.emit('locate_unit', {requestingPlayer: charName, moveType: document.getElementById("movementSelector").selectedIndex, selectedUnit: playerData.initiativeList[playerData.initiativeCount].unitNum, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room});

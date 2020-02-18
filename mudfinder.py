@@ -1045,6 +1045,12 @@ def request_images(room):
     if check_room(room):
         return ROOMS[room].images
 
+@socketio.on('update_effects')
+def update_effects(room, effects, gmKey):
+    if check_room(room):
+        ROOMS[room].effects = effects
+        emit('do_update', ROOMS[room].player_json(), room=room)
+
 
 with thread_lock:
     if thread is None:
