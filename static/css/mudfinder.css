@@ -272,6 +272,7 @@ width:100%;
 #mapGraphic {
     user-select: none;
     transform-origin: top left;
+    transform: scale(1);
 }
 .tooltip {
   /*position: relative;

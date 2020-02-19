@@ -169,7 +169,7 @@ function updateMap(Data) {
             }
             document.getElementById("mapGraphic").innerHTML = newMapText;
             document.getElementById("mapForm").style.display = "none";
-            document.getElementById("mapGraphic").style.display = "inline-block";
+            document.getElementById("mapGraphic").style.display = "block";
             for (var i = 0; i < Data.unitList.length; i++) {
                 if (typeof Data.unitList[i].x !== "undefined" && document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`) !== null) {
                     if (typeof Data.unitList[i].token === "undefined" || Data.unitList[i].token == "") {
@@ -259,11 +259,22 @@ function updateMap(Data) {
                 document.getElementById("mapGraphic").innerHTML += tmpHTML
                 document.getElementById("movement").innerText = Math.floor(Data.initiativeList[Data.initiativeCount].distance) * 5
             }
-            document.getElementById("mapGraphic").style.height = Data.mapArray.length * 70 +"px";
+            /*document.getElementById("mapGraphic").style.height = Data.mapArray.length * 70 +"px";
             document.getElementById("mapGraphic").style.width = Data.mapArray[0].length * 70 + "px";
             if (defaultBackground) {
                 document.getElementById("mapGraphic").style.backgroundImage = "url(static/images/mapbackground.jpg)";
 
+            }*/
+            backgroundDiv = document.createElement("div");
+            backgroundDiv.style.height = Data.mapArray.length * 70 +"px";
+            backgroundDiv.style.width = Data.mapArray[0].length * 70 + "px";
+            backgroundDiv.style.position = "absolute";
+            backgroundDiv.style.left = "0";
+            backgroundDiv.style.top = "0";
+            backgroundDiv.style.zIndex = "-1";
+            if (defaultBackground) {
+                backgroundDiv.style.backgroundImage = "url(static/images/mapbackground.jpg)";
+                document.getElementById("mapGraphic").appendChild(backgroundDiv);
             }
         }
     } catch (e) {

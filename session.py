@@ -160,9 +160,9 @@ class Session(object):
         for x in self.playerList:
             tmpplayerList[x] = self.playerList[x].to_json()
 
-            tmpinitiativeList = []
-            for x in self.initiativeList:
-                tmpinitiativeList.append(x.to_json())
+        tmpinitiativeList = []
+        for x in self.initiativeList:
+            tmpinitiativeList.append(x.to_json())
 
         playerObject = {
             "unitList": [],
