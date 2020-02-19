@@ -316,6 +316,7 @@ width:100%;
 }
 .unseenTileTransparent {
     background: transparent;
+    border:none;
 }
 .slightlyTransparent {
     opacity: 0.6;
