@@ -5,6 +5,7 @@ import io
 import base64
 import sqlite3
 import uuid
+import atexit
 from os import path
 from os import mkdir
 from threading import Lock
@@ -17,7 +18,8 @@ from session import Session
 
 from player import Player
 from unit import Unit
-
+global savegame_lock
+savegame_lock = Lock()
 
 def roll_dice(input_roll_string):
     roll_output = ""
@@ -88,13 +90,15 @@ if not path.exists("saves"):
 
 
 def savegame_thread():
+    global savegame_lock
     global ROOMS
     with app.app_context():
         while True:
             socketio.sleep(300)
-            for room in ROOMS.keys():
-                with open("saves/" + room + ".json", "w") as outfile:
-                    json.dump(ROOMS[room].gen_save(), outfile)
+            with thread_lock:
+                for room in ROOMS.keys():
+                    with open("saves/" + room + ".json", "w") as outfile:
+                        json.dump(ROOMS[room].gen_save(), outfile)
 
 
 # https://stackoverflow.com/questions/14384739/how-can-i-add-a-background-thread-to-flask
@@ -1048,13 +1052,24 @@ def request_images(room):
 @socketio.on('update_effects')
 def update_effects(room, effects, gmKey):
     if check_room(room):
-        ROOMS[room].effects = effects
+        with thread_lock:
+            ROOMS[room].effects = effects
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 
-with thread_lock:
-    if thread is None:
-        thread = socketio.start_background_task(savegame_thread)
+def cleanup():
+    print("Attempting cleanup")
+    thread_lock.acquire()
+    for room in ROOMS.keys():
+        with open("saves/" + room + ".json", "w") as outfile:
+            json.dump(ROOMS[room].gen_save(), outfile)
+    print("Bye")
+
+
+if thread is None:
+    thread = socketio.start_background_task(savegame_thread)
+atexit.register(cleanup)
 
 if __name__ == '__main__':
     socketio.run(app, debug=False, host='0.0.0.0', port="5000")
+
