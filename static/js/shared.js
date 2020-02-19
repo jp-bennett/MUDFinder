@@ -90,7 +90,6 @@ function updateMap(Data) {
             document.getElementById("mapGraphic").innerHTML = "";
             document.getElementById("mapForm").style.display = "block";
             document.getElementById("mapGraphic").style.display = "none";
-            document.getElementById("zoomControls").style.display = "none";
         } else {
             newMapText = "";
             for (x = 0; x < Data.mapArray.length; x++) {
