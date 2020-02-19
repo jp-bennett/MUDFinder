@@ -5,18 +5,19 @@ var zoomSize = 70;
 var selectedTool;
 var socket;
 var charName = "GM";
-var ds = new DragSelect({
+var multiSelect = false;
+var ds; /* = new DragSelect({
   selectables: document.getElementsByClassName('selectableTile'),
   callback: function(elements) {handleDrag(elements);},
   area: document.getElementById("mapContainer")
-});
+});*/
 const isGM = true;
 showSeenOverlay = true;
 
 
 document.getElementById("mapContainer").onwheel = function(e){
     try {
-        if (e.ctrlKey){
+        if (e.ctrlKey || !multiSelect){
 
             e.preventDefault()
             e.stopPropagation();
@@ -108,11 +109,13 @@ window.onload = function() {
             document.title = gmData.name
             effects = gmData.effects;
             updateMap(gmData);
-            if (typeof selectedTool !== "undefined") {
-                ds.setSelectables(document.getElementsByClassName('selectableTile'));
+            if (multiSelect) {
+                if (typeof selectedTool !== "undefined") {
+                    ds.setSelectables(document.getElementsByClassName('selectableTile'));
 
-            } else {
-                ds.setSelectables(document.getElementsByClassName('selectableUnit'));
+                } else {
+                    ds.setSelectables(document.getElementsByClassName('selectableUnit'));
+                }
             }
             // populate units
             document.getElementById("unitsDiv").innerHTML = "";
@@ -290,12 +293,16 @@ function mapTool(e, tileName) {
     try {
         if (typeof selectedTool !== "undefined" && selectedTool == e.target) {
             //ds.setSelectables(undefined, true, false);
-            ds.setSelectables(document.getElementsByClassName('selectableUnit'));
+            if (multiSelect) {
+                ds.setSelectables(document.getElementsByClassName('selectableUnit'));
+            }
             deselectAll();
             return;
         }
         deselectAll();
-        ds.setSelectables(document.getElementsByClassName('selectableTile'));
+        if (multiSelect) {
+            ds.setSelectables(document.getElementsByClassName('selectableTile'));
+        }
         e.target.parentElement.className="selected"
         selectedTool = e.target;
     } catch (error) {
@@ -479,10 +486,16 @@ function delInit(e, initCount) {
 
 function mapClick(e, x, y) {
     try {
+        if (isDragging) {
+            isDragging = false;
+            e.stopPropagation()
+            return;
+        }
         if (typeof testEffect !== "undefined"){
 
             return;
         }
+
         //console.log("Clicked!" + x + ", " + y);
         relative_y = e.offsetX * 16 / zoomSize;
         relative_x = e.offsetY * 16 / zoomSize;
@@ -752,4 +765,23 @@ function deleteUser(delUser) {
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
+}
+
+function multiSelectToggle(element) {
+    if (element.checked) {
+        ds = new DragSelect({
+        selectables: document.getElementsByClassName('selectableTile'),
+        callback: function(elements) {handleDrag(elements);},
+        area: document.getElementById("mapContainer")
+        });
+        multiSelect = true;
+        document.getElementById("mapContainer").className = "";
+    } else {
+        ds.stop();
+        ds = undefined;
+        multiSelect = false;
+        document.getElementById("mapContainer").className = "dragscroll";
+    }
+    dragscroll.reset();
+
 }

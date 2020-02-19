@@ -985,7 +985,9 @@ function showEffectControls() { //TODO: add a button to add effect, rather than 
         deleteButton = document.createElement("button");
         deleteButton.innerText = "remove";
         deleteButton.onclick = (function(i) { return function() {effects.splice(i,1); updateEffects(false);  hideEffectControls();}})(i);
-        td.appendChild(deleteButton);
+        if (isGM || charName == effects[i].owner) {
+            td.appendChild(deleteButton);
+        }
         tr.appendChild(td);
         table.appendChild(tr);
 
@@ -1193,6 +1195,11 @@ function updateEffects(addnew) {
         tempEffect.title = testEffect.title;
         tempEffect.color = testEffect.color;
         tempEffect.duration = testEffect.duration;
+        if (isGM) {
+        tempEffect.owner = 0;
+        } else {
+        tempEffect.owner = charName;
+        }
         effects.push(tempEffect);
     }
     if (isGM) {

@@ -174,7 +174,8 @@
           </select>
           </div>
           <div style="float:right;padding-right:100px;padding-top:10px;">Show discovered overlay: <input type="checkbox" id="seenOverlay" value="seenOverlay" onchange="seenOverlayToggle(this)" checked></div>
-            <button id="showEffectDivButton" onclick="showEffectControls()">Effect</button>
+            <div style="float:right;padding-right:100px;padding-top:10px;">MultiSelect: <input type="checkbox" id="multiSelect" value="multiSelect" onchange="multiSelectToggle(this)"></div>
+          <button id="showEffectDivButton" onclick="showEffectControls()">Effect</button>
           </div>
         </div>
         <div id="units" style="display:none;">
@@ -297,6 +298,7 @@
   <script type="text/javascript" src="static/js/ds.min.js"></script>
   <script type="text/javascript" src="static/js/gm.js?time={{ current_time }}"></script>
   <script type="text/javascript" src="static/js/shared.js?time={{ current_time }}"></script>
+  <script type="text/javascript" src="static/js/dragscroll.js"></script>
 
 </body>
 </html>
