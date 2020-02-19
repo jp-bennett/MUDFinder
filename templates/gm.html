@@ -34,6 +34,20 @@
           <div id="unitsDiv" class="leftDiv"></div>
           <button class="centeredButton" id="addInit" onclick="addInit()">Add to Inititiative</button>
         </div>
+        <div class="chatContainerDiv">
+          <div id="chatText" class="chatText"></div>
+          <div id="chatInput" class="chatInput">
+            <form action="javascript:sendChat()">
+            <input id="newChat" style="width:100%;height:50%;">
+            </form>
+          </div>
+        </div>
+        <div class="connectedPlayersContainer">Connected Players
+          <div id="connectedPlayers" class="connectedPlayers"><br></div>
+          <div>
+            <button onclick="requestInit()">Request initiative</button>
+          </div>
+        </div>
       </div>
       <div id="activeTabDiv">
         <div id="saveGame" style="display:none;">Savegame 
@@ -266,22 +280,7 @@
           Select options
         </div>
       </div>
-      <div class="rightDivContainer">
-        <div class="chatContainerDiv">
-          <div id="chatText" class="chatText"></div>
-          <div id="chatInput" class="chatInput">
-            <form action="javascript:sendChat()">
-            <input id="newChat" style="width:100%;height:50%;">
-            </form>
-          </div>
-        </div>
-        <div class="connectedPlayersContainer">Connected Players
-          <div id="connectedPlayers" class="connectedPlayers"><br></div>
-          <div>
-            <button onclick="requestInit()">Request initiative</button>
-          </div>
-        </div>
-      </div>
+
     </div>
     <div id="bottomDiv" class="bottomDiv">
      <!-- <div class="connectedPlayersContainer">Connected Players
