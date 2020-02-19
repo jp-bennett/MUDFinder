@@ -10,7 +10,7 @@ from os import mkdir
 from threading import Lock
 from random import randint
 
-from flask import Flask, render_template, request, redirect
+from flask import Flask, render_template, request, redirect, send_from_directory
 from flask_socketio import SocketIO, join_room, emit, send
 
 from session import Session

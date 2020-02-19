@@ -9,6 +9,8 @@ var isDragging = false;
 var images = new Object();
 var testEffect;
 var effects;
+const colors = ["blueviolet","darkorange","dodgerblue","forestgreen","hotpink","lightcoral","mediumspringgreen",
+            "olivedrab","salmon","sienna","skyblue","steelblue","tomato"]
 
 if (!('toJSON' in Error.prototype))
 Object.defineProperty(Error.prototype, 'toJSON', {
@@ -233,7 +235,7 @@ function updateMap(Data) {
                 }
             }
             for (var i = 0; i < Data.effects.length; i++) {
-                tmpEffect = generateEffect(Data.effects[i].shape, Data.effects[i].size, "green");
+                tmpEffect = generateEffect(Data.effects[i].shape, Data.effects[i].size, Data.effects[i].color);
                 locateEffect(tmpEffect, Data.effects[i].origin.x, Data.effects[i].origin.y);
             }
             if (Data.inInit /*&& Data.initiativeList[Data.initiativeCount].movePath.length > 0*/) {
@@ -748,6 +750,7 @@ function requestImages() {
 function generateEffect(effectShape, size, color){
     var effect = {};
     effect.origin = {};
+    effect.color = color;
     if (effectShape == "circle") {
         effect.shape = "circle";
         effect.size = size;
@@ -938,7 +941,7 @@ function showEffectControls() { //TODO: add a button to add effect, rather than 
     document.getElementById("activeTabDiv").style.height = "calc(80% - 40px)";
     document.getElementById("bottomDiv").style.display = "block";
     document.getElementById("showEffectDivButton").onclick = hideEffectControls;
-    testEffect = generateEffect("circle", 0, "green");
+
     table = document.createElement("table");
     table.id = "effectTable";
     tr = document.createElement("tr");
@@ -954,6 +957,9 @@ function showEffectControls() { //TODO: add a button to add effect, rather than 
     th = document.createElement("th");
     th.innerText = "duration";
     tr.appendChild(th);
+    th = document.createElement("th");
+    th.innerText = "color";
+    tr.appendChild(th);
 
     table.appendChild(tr);
     document.getElementById("bottomDiv").appendChild(table);
@@ -961,13 +967,19 @@ function showEffectControls() { //TODO: add a button to add effect, rather than 
     for (i=0; i<effects.length; i++) {
         tr = document.createElement("tr");
         td = document.createElement("td");
-        td.innerText = "test";
+        td.innerText = effects[i].title;
         tr.appendChild(td);
         td = document.createElement("td");
         td.innerText = effects[i].shape;
         tr.appendChild(td);
         td = document.createElement("td");
         td.innerText = effects[i].size;
+        tr.appendChild(td);
+        td = document.createElement("td");
+        td.innerText = effects[i].duration;
+        tr.appendChild(td);
+        td = document.createElement("td");
+        td.innerText = effects[i].color;
         tr.appendChild(td);
         td = document.createElement("td");
         deleteButton = document.createElement("button");
@@ -982,6 +994,8 @@ function showEffectControls() { //TODO: add a button to add effect, rather than 
 
 
     tr = document.createElement("tr");
+    tr.style.display = "none";
+    tr.id = "addEffectRow";
     td = document.createElement("td");
     input = document.createElement("input");
     td.appendChild(input);
@@ -998,15 +1012,38 @@ function showEffectControls() { //TODO: add a button to add effect, rather than 
     td.appendChild(effectShapeSelect);
 
     tr.appendChild(td);
+
+
+
+
     td = document.createElement("td");
-
-
-
     effectSizeSelect = document.createElement("select");
     td.appendChild(effectSizeSelect);
     tr.appendChild(td);
+
+    td = document.createElement("td");
+    durationSpinner = document.createElement("select");
+    durationOption = document.createElement("option");
+    durationOption.innerText = "instantaneous";
+    durationSpinner.append(durationOption);
+    td.appendChild(durationSpinner);
+    tr.appendChild(td);
+
+    td = document.createElement("td");
+    colorSelect = document.createElement("select");
+    colorSelect.id = "effectColorPicker";
+    colorSelect.onchange = function() {deleteEffect(testEffect); testEffect = generateEffect("circle", parseInt(effectSizeSelect.value), colorSelect.value);}
+    for (i=0;i<colors.length; i++) {
+        colorOption = document.createElement("option");
+        colorOption.innerText = colors[i];
+        colorOption.style.color = colors[i];
+        colorSelect.appendChild(colorOption);
+    }
+    td.appendChild(colorSelect)
+    tr.appendChild(td);
+
     table.appendChild(tr);
-    effectSizeSelect.onchange = function() {deleteEffect(testEffect); testEffect = generateEffect("circle", parseInt(this.value), "salmon");}
+    effectSizeSelect.onchange = function() {deleteEffect(testEffect); testEffect = generateEffect("circle", parseInt(effectSizeSelect.value), colorSelect.value);}
     effectSizeOption = document.createElement("option");
     effectSizeOption.innerText = "0";
     effectSizeSelect.appendChild(effectSizeOption);
@@ -1027,46 +1064,64 @@ function showEffectControls() { //TODO: add a button to add effect, rather than 
     effectSizeOption.innerText = "20";
     effectSizeSelect.appendChild(effectSizeOption);
 
-    document.getElementById("mapContainer").onclick = function(e){
-        if (isDragging) {
-            return;
-        }
-        e.preventDefault();
-        e.stopPropagation();
-        console.log("click!");
-        updateEffects(true);
-        hideEffectControls();
 
-    }
+    tr = document.createElement("tr");
+    td = document.createElement("td");
+    button = document.createElement("button");
+    button.innerText = "Add";
+    td.appendChild(button);
+    tr.appendChild(td);
+    table.appendChild(tr);
 
-    document.getElementById("mapContainer").onmousemove = function(e){
-        try {
-            mouseX = (e.clientX)
-            mouseX -= document.getElementById("mapContainer").getBoundingClientRect().x
-            mouseX += document.getElementById("mapContainer").scrollLeft;
-            mouseX /= zoom;
+    button.onclick = function () {
+        document.getElementById("addEffectRow").style.display = "table-row";
+        testEffect = generateEffect("circle", 0, "blueviolet");
 
-            mouseY = (e.clientY)
-            mouseY -= document.getElementById("mapContainer").getBoundingClientRect().y
-            mouseY += document.getElementById("mapContainer").scrollTop;
-            mouseY /= zoom;
-            if (testEffect.shape == "circle" && testEffect.size == 0) {
-            mouseX = Math.floor(mouseX/70)
-            mouseY = Math.floor(mouseY/70)
-            } else {
-            mouseX = Math.round(mouseX/70)
-            mouseY = Math.round(mouseY/70)
+        document.getElementById("mapContainer").onclick = function(e){
+            if (isDragging) {
+                return;
             }
-            locateEffect(testEffect, mouseX, mouseY);
-        } catch (e) {
-            socket.emit("error_handle", room, e);
+            e.preventDefault();
+            e.stopPropagation();
+            testEffect.title = input.value;
+            testEffect.duration = durationSpinner.value;
+            updateEffects(true);
+            hideEffectControls();
+
+        }
+
+        document.getElementById("mapContainer").onmousemove = function(e){
+            try {
+                mouseX = (e.clientX)
+                mouseX -= document.getElementById("mapContainer").getBoundingClientRect().x
+                mouseX += document.getElementById("mapContainer").scrollLeft;
+                mouseX /= zoom;
+
+                mouseY = (e.clientY)
+                mouseY -= document.getElementById("mapContainer").getBoundingClientRect().y
+                mouseY += document.getElementById("mapContainer").scrollTop;
+                mouseY /= zoom;
+                if (testEffect.shape == "circle" && testEffect.size == 0) {
+                mouseX = Math.floor(mouseX/70)
+                mouseY = Math.floor(mouseY/70)
+                } else {
+                mouseX = Math.round(mouseX/70)
+                mouseY = Math.round(mouseY/70)
+                }
+                locateEffect(testEffect, mouseX, mouseY);
+            } catch (e) {
+                socket.emit("error_handle", room, e);
+            }
         }
     }
 }
 
 function hideEffectControls() {
-    deleteEffect(testEffect);
-    testEffect = undefined;
+    if (typeof testEffect !== "undefined"){
+
+        deleteEffect(testEffect);
+        testEffect = undefined;
+    }
     document.getElementById("mapContainer").onmousemove = null;
     document.getElementById("mapContainer").onclick = null;
     /*while (document.getElementById("promptDiv").firstChild) {
@@ -1135,6 +1190,9 @@ function updateEffects(addnew) {
         tempEffect.shape = testEffect.shape;
         tempEffect.size = testEffect.size;
         tempEffect.origin = testEffect.origin;
+        tempEffect.title = testEffect.title;
+        tempEffect.color = testEffect.color;
+        tempEffect.duration = testEffect.duration;
         effects.push(tempEffect);
     }
     if (isGM) {
