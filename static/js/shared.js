@@ -9,6 +9,7 @@ var isDragging = false;
 var images = new Object();
 var testEffect;
 var effects;
+var defaultBackground = true;
 const colors = ["blueviolet","darkorange","dodgerblue","forestgreen","hotpink","lightcoral","mediumspringgreen",
             "olivedrab","salmon","sienna","skyblue","steelblue","tomato"]
 
@@ -91,6 +92,7 @@ function updateMap(Data) {
             document.getElementById("mapForm").style.display = "block";
             document.getElementById("mapGraphic").style.display = "none";
         } else {
+
             newMapText = "";
             for (x = 0; x < Data.mapArray.length; x++) {
                 for (y = 0; y < Data.mapArray[x].length; y++) {
@@ -106,7 +108,12 @@ function updateMap(Data) {
                     }
                     newMapText += '"';
                     newMapText += `class='mapTile selectableTile `;
-                    if (Data.mapArray[x][y].tile == "doorOpen") {
+                    if (defaultBackground) {
+                        newMapText += "slightlyTransparent ";
+                    }
+                    if (Data.mapArray[x][y].tile == "unseenTile" && defaultBackground) {
+                        newMapText += "unseenTileTransparent ";
+                    } else if (Data.mapArray[x][y].tile == "doorOpen") {
                         if ((typeof Data.mapArray[x+1] !== "undefined" && Data.mapArray[x+1][y].walkable) || (typeof Data.mapArray[x-1] !== "undefined" && Data.mapArray[x-1][y].walkable)) {
                             newMapText += "doorTileAOpen";
                         } else {
@@ -163,7 +170,6 @@ function updateMap(Data) {
             document.getElementById("mapGraphic").innerHTML = newMapText;
             document.getElementById("mapForm").style.display = "none";
             document.getElementById("mapGraphic").style.display = "inline-block";
-            //document.getElementById("zoomControls").style.display = "block";
             for (var i = 0; i < Data.unitList.length; i++) {
                 if (typeof Data.unitList[i].x !== "undefined" && document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`) !== null) {
                     if (typeof Data.unitList[i].token === "undefined" || Data.unitList[i].token == "") {
@@ -252,6 +258,12 @@ function updateMap(Data) {
                 }
                 document.getElementById("mapGraphic").innerHTML += tmpHTML
                 document.getElementById("movement").innerText = Math.floor(Data.initiativeList[Data.initiativeCount].distance) * 5
+            }
+            document.getElementById("mapGraphic").style.height = Data.mapArray.length * 70 +"px";
+            document.getElementById("mapGraphic").style.width = Data.mapArray[0].length * 70 + "px";
+            if (defaultBackground) {
+                document.getElementById("mapGraphic").style.backgroundImage = "url(static/images/mapbackground.jpg)";
+
             }
         }
     } catch (e) {

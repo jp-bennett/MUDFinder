@@ -314,7 +314,12 @@ width:100%;
 .unseenTile {
     background: darkslategray;
 }
-
+.unseenTileTransparent {
+    background: transparent;
+}
+.slightlyTransparent {
+    opacity: 0.6;
+}
 .stairTileLeft {
     background: repeating-linear-gradient(to left, white calc(10%), black calc(20%));
 }
