@@ -126,6 +126,7 @@ function updateMap(Data) {
                             newMapText += "doorTileB";
                         }
                     } else if (Data.mapArray[x][y].tile == "stairsUp") {
+                        try {
                         if (Data.mapArray[x+1][y].tile =="stairsUp") {
                             newMapText += "stairTileTop";
                         } else if (Data.mapArray[x-1][y].tile =="stairsUp") {
@@ -137,6 +138,9 @@ function updateMap(Data) {
                         } else if (Data.mapArray[x+1][y].walkable || Data.mapArray[x-1][y].walkable) {
                             newMapText += "stairTileTop";
                         } else {
+                            newMapText += "stairTileLeft";
+                        }
+                        } catch (error) {
                             newMapText += "stairTileLeft";
                         }
                     } else if (Data.mapArray[x][y].tile.includes("stairsDown")) {
