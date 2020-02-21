@@ -50,7 +50,7 @@ document.getElementById("mapContainer").ontouchstart = function(e){
 }
 document.getElementById("mapContainer").ontouchmove = function(e){
     try {
-        if (scaling & e.touches.length > 1) {
+        if (scaling && e.touches.length > 1) {
             e.preventDefault();
             e.stopPropagation();
             diff = Math.abs(Math.hypot(e.touches[0].clientX, e.touches[0].clientY) - Math.hypot(e.touches[1].clientX, e.touches[1].clientY));
@@ -120,7 +120,7 @@ function updateMap(Data) {
                             newMapText += "doorTileBOpen";
                         }
                     } else if (Data.mapArray[x][y].tile == "doorClosed") {
-                        if (Data.mapArray[x+1][y].walkable || Data.mapArray[x-1][y].walkable) {
+                        if ((typeof Data.mapArray[x+1] !== "undefined" && Data.mapArray[x+1][y].walkable) || (typeof Data.mapArray[x-1] !== "undefined" && Data.mapArray[x-1][y].walkable)) {
                             newMapText += "doorTileA";
                         } else {
                             newMapText += "doorTileB";
@@ -140,6 +140,7 @@ function updateMap(Data) {
                             newMapText += "stairTileLeft";
                         }
                     } else if (Data.mapArray[x][y].tile.includes("stairsDown")) {
+                        try {
                         if (Data.mapArray[x][y+1].tile =="stairsDown" && Data.mapArray[x][y-1].tile.includes("floorTile")) {
                             newMapText += "stairDownTileRight";
                         } else if (Data.mapArray[x][y-1].tile =="stairsDown" && Data.mapArray[x][y+1].tile =="wallTile") {
@@ -157,6 +158,9 @@ function updateMap(Data) {
                         } else if (Data.mapArray[x+1][y].tile =="stairsDown" && Data.mapArray[x-1][y].tile =="wallTile") {
                             newMapText += "stairDownDownTileTop";
                         } else {
+                            newMapText += "stairDownDownTileTop";
+                        }
+                        } catch (stairerror) {
                             newMapText += "stairDownDownTileTop";
                         }
                     } else {
