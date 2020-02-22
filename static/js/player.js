@@ -141,7 +141,11 @@ window.onload = function() {
             document.getElementById("unitDiv").innerHTML = "";
             if (playerData.inInit) {
               if (playerData.initiativeList[playerData.initiativeCount].controlledBy == charName) {
+                  //populate the bottom div with all the appropriate options
+                  //Tab system?
                   document.getElementById("movementDiv").style.display = "block";
+                  document.getElementById("activeTabDiv").style.height = "calc(80% - 40px)";
+                  document.getElementById("bottomDiv").style.display = "block";
                   //document.getElementById("movement").style.display = "block";
               } else {
                 document.getElementById("movementDiv").style.display = "none";
@@ -272,7 +276,8 @@ function deleteItem(invNum) {
     socket.emit('delete_item', room, charName, selectedInventory, invNum);
 }
 function advanceInit() {
-
+    document.getElementById("bottomDiv").style.display = "none";
+    document.getElementById("activeTabDiv").style.height = "calc(100% - 40px)";
     socket.emit('advance_init', {room: room, charName: charName});
 }
 

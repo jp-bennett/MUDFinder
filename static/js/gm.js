@@ -232,14 +232,14 @@ window.onload = function() {
         }
     });
 
-    socket.on('do_update', function(msg) {
+    /*socket.on('do_update', function(msg) {
         try {
             //console.log("Request GM Update");
             socket.emit('gm_update', {room: room, gmKey: gmKey});
         } catch (e) {
             socket.emit("error_handle", room, e);
         }
-    });
+    });*/
     socket.on("showLore", function(msg) {
         try {
             updateLore(msg.lore, msg.lore_num);

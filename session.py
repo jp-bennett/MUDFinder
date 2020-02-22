@@ -1,5 +1,7 @@
 from unit import Unit
 from player import Player
+from flask_socketio import emit
+
 
 
 class Session(object):
@@ -7,6 +9,7 @@ class Session(object):
     def __init__(self, room, gmKey, name):
         self.room = room
         self.gmKey = gmKey
+        self.gmRoom = ""
         self.name = name
         self.inInit = False
         self.initiativeCount = 0  # current spot in itiative. Tracks whos turn it is.
@@ -72,6 +75,7 @@ class Session(object):
         return {
             "room": self.room,
             "gmKey": self.gmKey,
+            "gmRoom": self.gmRoom,
             "name": self.name,
             "inInit": self.inInit,
             "initiativeCount": self.initiativeCount,
@@ -113,6 +117,7 @@ class Session(object):
         self.images = default(obj, "images", {})
         self.number_units()
         self.effects = default(obj, "effects", [])
+        self.gmRoom = default(obj, "gmRoom", "")
         return
 
     def order_initiative_list(self):
@@ -249,7 +254,7 @@ class Session(object):
         tmpUnit.y = path[-1][1]
         return
 
-    def reveal_map(self, selectedPlayer):
+    def reveal_map(self, selectedPlayer): # would be nice to return a list of changed tiles.
         if self.unitList[selectedPlayer].location == [-1, -1]: return
         x = self.unitList[selectedPlayer].location[0]
         y = self.unitList[selectedPlayer].location[1]
@@ -258,12 +263,17 @@ class Session(object):
                 cells = raytrace(x, y, max(0, x + xBox), max(0, y + yBox))
                 for distance in range(len(cells)):
                     try:
+                        if self.mapArray[cells[distance][0]][cells[distance][1]]["seen"] == False:
+                            pass #ideally, push the changed tiles onto a list, and return it
                         self.mapArray[cells[distance][0]][cells[distance][1]]["seen"] = True
                         if not self.mapArray[cells[distance][0]][cells[distance][1]]["walkable"]:
                             break
                     except:
                         break
 
+    def send_updates(self):
+        emit('gm_update', self.to_json(), room=self.gmRoom)
+        emit('do_update', self.player_json(), room=self.room)
 
 def raytrace(x0, y0, x1, y1):  # https://playtechs.blogspot.com/2007/03/raytracing-on-grid.html
     cells = []
@@ -403,6 +413,8 @@ def astar(maze, start, end, maxMove, ignoreSeen):
                         break
                 else:
                     open_list.append(child)
+
+
 def default(local_dict, key, local_default):
     if key in local_dict:
         return local_dict[key]
