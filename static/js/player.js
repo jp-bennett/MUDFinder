@@ -59,10 +59,10 @@ window.onload = function() {
             document.getElementById("mapContainer").scrollLeft = newXHidden + newMouseXfromPoint - mouseXonDiv;
             document.getElementById("mapContainer").scrollTop = newYHidden + newMouseYfromPoint - mouseYonDiv;
 
-    } catch (e) {
-        socket.emit("error_handle", room, e);
-    }
-}
+            } catch (e) {
+                socket.emit("error_handle", room, e);
+            }
+        }
 
 
     } catch (error) {
@@ -144,7 +144,7 @@ window.onload = function() {
                   document.getElementById("movementDiv").style.display = "block";
                   //document.getElementById("movement").style.display = "block";
               } else {
-              document.getElementById("movementDiv").style.display = "none";
+                document.getElementById("movementDiv").style.display = "none";
               }
               document.getElementById("initiativeDivContainer").style.display = "block";
               document.getElementById("unitDivContainer").style.display = "none";
@@ -418,11 +418,11 @@ function selectUnit(e, selectedUnitNum) {
                 selectedUnit = selectedUnitNum;
             }
         }
-        if (typeof selectedUnit !== "undefined") {
+        /*if (typeof selectedUnit !== "undefined") {
             if (playerData.unitList[selectedUnit].controlledBy == charName) {populateEditChar(playerData, selectedUnit)}
         } else {
             populateEditChar(playerData, playerData.playerList[charName].unitNum)
-        }
+        }*/
     } catch (error) {
         socket.emit("error_handle", room, error);
     }

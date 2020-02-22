@@ -100,7 +100,7 @@ function updateMap(Data) {
                     newMapText += `style="width:${zoomSize}px;height:${zoomSize}px;position:absolute;top:${x*zoomSize}px;left:${y*zoomSize}px;`;
                     if (typeof Data.mapArray[x][y].seen !== "undefined") {
                         if (!Data.mapArray[x][y].seen && showSeenOverlay) {
-                            newMapText += 'opacity:.5;';
+                            newMapText += 'opacity:.9;';
                         }
                     }
                     if (Data.mapArray[x][y].secret) {
@@ -482,7 +482,7 @@ function updateLore(msg, num) {
             //document.getElementById("loreTabs").innerHTML += `<div class="tab" onClick="enableLoreTab('${i}')">Blank</div>`;
         }
         if (num == null) {
-            enableLoreTab(0);
+            enableLoreTab(i);
         } else {
             enableLoreTab(num);
             enableTab("lore");
