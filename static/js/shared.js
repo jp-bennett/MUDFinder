@@ -88,202 +88,205 @@ document.getElementById("mapContainer").ontouchend = function(e){
 function updateMap(Data) {
     try {
         if (typeof Data.mapArray[0] === "undefined" ) {
-            document.getElementById("mapGraphic").innerHTML = "";
+            removeContents(document.getElementById("mapGraphic"));
             document.getElementById("mapForm").style.display = "block";
             document.getElementById("mapGraphic").style.display = "none";
-        } else {
-
-            newMapText = "";
-            for (x = 0; x < Data.mapArray.length; x++) {
-                for (y = 0; y < Data.mapArray[x].length; y++) {
-                    newMapText += `<div id="tile${x},${y}" onclick="mapClick(event, ${x}, ${y})" x="${x}" y="${y}" units=""`;
-                    newMapText += `style="width:${zoomSize}px;height:${zoomSize}px;position:absolute;top:${x*zoomSize}px;left:${y*zoomSize}px;`;
-                    if (typeof Data.mapArray[x][y].seen !== "undefined") {
-                        if (!Data.mapArray[x][y].seen && showSeenOverlay) {
-                            newMapText += 'opacity:.9;';
-                        }
+            return;
+        }
+        removeContents(document.getElementById("mapGraphic")); //TODO: eventually make needed changes only
+        for (x = 0; x < Data.mapArray.length; x++) {
+            for (y = 0; y < Data.mapArray[x].length; y++) {
+                newMapTile = document.createElement("div");
+                newMapTile.id = `tile${x},${y}`;
+                newMapTile.onclick = ((x, y) => { return function() { mapClick(event, x, y)
+                }
+                })(x, y);
+                newMapTile.attributes.x = x;
+                newMapTile.attributes.y = y;
+                newMapTile.attributes.units = "";
+                newMapTile.style.width = zoomSize + "px";
+                newMapTile.style.height = zoomSize + "px";
+                newMapTile.style.position = "absolute";
+                newMapTile.style.top = x * zoomSize + "px";
+                newMapTile.style.left = y * zoomSize + "px";
+                if (typeof Data.mapArray[x][y].seen !== "undefined") {
+                    if (!Data.mapArray[x][y].seen && showSeenOverlay) {
+                        newMapTile.style.opacity = ".9";
                     }
-                    if (Data.mapArray[x][y].secret) {
-                        newMapText += 'border-color:red;';
-                    }
-                    newMapText += '"';
-                    newMapText += `class='mapTile selectableTile `;
-                    if (defaultBackground) {
-                        newMapText += "slightlyTransparent ";
-                    }
-                    if (Data.mapArray[x][y].tile == "unseenTile" && defaultBackground) {
-                        newMapText += "unseenTileTransparent ";
-                    } else if (Data.mapArray[x][y].tile == "doorOpen") {
-                        if ((typeof Data.mapArray[x+1] !== "undefined" && Data.mapArray[x+1][y].walkable) || (typeof Data.mapArray[x-1] !== "undefined" && Data.mapArray[x-1][y].walkable)) {
-                            newMapText += "doorTileAOpen";
-                        } else {
-                            newMapText += "doorTileBOpen";
-                        }
-                    } else if (Data.mapArray[x][y].tile == "doorClosed") {
-                        if ((typeof Data.mapArray[x+1] !== "undefined" && Data.mapArray[x+1][y].walkable) || (typeof Data.mapArray[x-1] !== "undefined" && Data.mapArray[x-1][y].walkable)) {
-                            newMapText += "doorTileA";
-                        } else {
-                            newMapText += "doorTileB";
-                        }
-                    } else if (Data.mapArray[x][y].tile == "stairsUp") {
-                        try {
-                        if (Data.mapArray[x+1][y].tile =="stairsUp") {
-                            newMapText += "stairTileTop";
-                        } else if (Data.mapArray[x-1][y].tile =="stairsUp") {
-                            newMapText += "stairTileTop";
-                        } else if (Data.mapArray[x][y+1].tile =="stairsUp") {
-                            newMapText += "stairTileLeft";
-                        } else if (Data.mapArray[x][y-1].tile =="stairsUp") {
-                            newMapText += "stairTileLeft";
-                        } else if (Data.mapArray[x+1][y].walkable || Data.mapArray[x-1][y].walkable) {
-                            newMapText += "stairTileTop";
-                        } else {
-                            newMapText += "stairTileLeft";
-                        }
-                        } catch (error) {
-                            newMapText += "stairTileLeft";
-                        }
-                    } else if (Data.mapArray[x][y].tile.includes("stairsDown")) {
-                        try {
-                        if (Data.mapArray[x][y+1].tile =="stairsDown" && Data.mapArray[x][y-1].tile.includes("floorTile")) {
-                            newMapText += "stairDownTileRight";
-                        } else if (Data.mapArray[x][y-1].tile =="stairsDown" && Data.mapArray[x][y+1].tile =="wallTile") {
-                            newMapText += "stairDownDownTileRight";
-                        } else if (Data.mapArray[x][y-1].tile =="stairsDown" && Data.mapArray[x][y+1].tile.includes("floorTile")) {
-                            newMapText += "stairDownTileLeft";
-                        } else if (Data.mapArray[x][y+1].tile =="stairsDown" && Data.mapArray[x][y-1].tile =="wallTile") {
-                            newMapText += "stairDownDownTileLeft";
-                        } else if (Data.mapArray[x+1][y].tile =="stairsDown" && Data.mapArray[x-1][y].tile.includes("floorTile")) {
-                            newMapText += "stairDownTileBottom";
-                        } else if (Data.mapArray[x-1][y].tile =="stairsDown" && Data.mapArray[x+1][y].tile =="wallTile") {
-                            newMapText += "stairDownDownTileBottom";
-                        } else if (Data.mapArray[x-1][y].tile =="stairsDown" && Data.mapArray[x+1][y].tile.includes("floorTile")) {
-                            newMapText += "stairDownTileTop";
-                        } else if (Data.mapArray[x+1][y].tile =="stairsDown" && Data.mapArray[x-1][y].tile =="wallTile") {
-                            newMapText += "stairDownDownTileTop";
-                        } else {
-                            newMapText += "stairDownDownTileTop";
-                        }
-                        } catch (stairerror) {
-                            newMapText += "stairDownDownTileTop";
-                        }
+                }
+                if (Data.mapArray[x][y].secret) {
+                    newMapTile.style.borderColor = "red";
+                }
+                newMapTile.className = "mapTile selectableTile";
+                if (defaultBackground) {
+                    newMapTile.classList.add("slightlyTransparent");
+                }
+                if (Data.mapArray[x][y].tile == "unseenTile" && defaultBackground) {
+                    newMapTile.classList.add("unseenTileTransparent");
+                } else if (Data.mapArray[x][y].tile == "doorOpen") {
+                    if ((typeof Data.mapArray[x+1] !== "undefined" && Data.mapArray[x+1][y].walkable) || (typeof Data.mapArray[x-1] !== "undefined" && Data.mapArray[x-1][y].walkable)) {
+                        newMapTile.classList.add("doorTileAOpen");
                     } else {
-                        newMapText += Data.mapArray[x][y].tile;
+                        newMapTile.classList.add("doorTileBOpen");
                     }
-                    newMapText += `'>`;
-                    newMapText += "</div>";
-                }
-                    newMapText += "<br>";
-            }
-            document.getElementById("mapGraphic").innerHTML = newMapText;
-            document.getElementById("mapForm").style.display = "none";
-            document.getElementById("mapGraphic").style.display = "block";
-            for (var i = 0; i < Data.unitList.length; i++) {
-                if (typeof Data.unitList[i].x !== "undefined" && document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`) !== null) {
-                    if (typeof Data.unitList[i].token === "undefined" || Data.unitList[i].token == "") {
-                        if (typeof Data.unitList[i].charShortName === "undefined" || Data.unitList[i].charShortName == "") {
-                            Data.unitList[i].charShortName = Data.unitList[i].charName
-                        }
-                        tmpHTML = `<div style="color:${Data.unitList[i].color}">`;
-                        if (Data.unitList[i].charName.length * 10 <= zoomSize) {
-                            tmpHTML += Data.unitList[i].charName;
-                        } else {
-                            tmpHTML += Data.unitList[i].charShortName;
-                        }
-                        tmpHTML += "</div>";
-                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).innerHTML += tmpHTML;
-                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).className += " selectableUnit";
-                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).attributes.units.value += i + " ";
-                        if (typeof Data.unitList[i].size !== "undefined" && Data.unitList[i].size == "large") {
-                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).innerHTML += tmpHTML;
-                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).className += " selectableUnit"
-                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).attributes.units.value += i + " ";
-                            document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).innerHTML += tmpHTML;
-                            document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).className += " selectableUnit"
-                            document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).attributes.units.value += i + " ";
-                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).innerHTML += tmpHTML;
-                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).className += " selectableUnit"
-                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).attributes.units.value += i + " ";
-                        }
+                } else if (Data.mapArray[x][y].tile == "doorClosed") {
+                    if ((typeof Data.mapArray[x+1] !== "undefined" && Data.mapArray[x+1][y].walkable) || (typeof Data.mapArray[x-1] !== "undefined" && Data.mapArray[x-1][y].walkable)) {
+                        newMapTile.classList.add("doorTileA");
                     } else {
-                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).className += " selectableUnit";
-                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).attributes.units.value += i + " ";
-                        if (typeof Data.unitList[i].size !== "undefined" && Data.unitList[i].size == "large") {
-
-                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).className += " selectableUnit"
-                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).attributes.units.value += i + " ";
-                            document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).className += " selectableUnit"
-                            document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).attributes.units.value += i + " ";
-                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).className += " selectableUnit"
-                            document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).attributes.units.value += i + " ";
-                        }
-                        tokenDiv2 = document.createElement("img");
-                        tokenDiv2.src = Data.unitList[i].token;
-                        tokenDiv2.style.pointerEvents = "none"
-                        position_top = Data.unitList[i].x*zoomSize + 4;
-                        position_left = Data.unitList[i].y*zoomSize + 4;
-                        if (Data.unitList[i].size == "large") {
-                            position_top -= zoomSize;
-                            tokenDiv2.style.width = zoomSize*2 - 8 + "px";
-                            tokenDiv2.style.height = zoomSize*2  - 8+ "px";
-                            tokenDiv2.style.position = "absolute";
-                        } else {
-                            tokenDiv2.style.width = zoomSize - 8 + "px";
-                            tokenDiv2.style.height = zoomSize  - 8 + "px";
-                            tokenDiv2.style.position = "absolute";
-                        }
-                        if (Data.inInit && Data.unitList[i].initNum == Data.initiativeCount) {
-                            tokenDiv2.style.borderWidth = "5px";
-                            tokenDiv2.style.borderStyle = "solid";
-                            tokenDiv2.style.borderImage = "radial-gradient(red, transparent)10";
-                            position_top -= 5;
-                            position_left -= 5;
-                        }
-                        tokenDiv2.style.top = position_top + "px";
-                        tokenDiv2.style.left = position_left + "px";
-                        document.getElementById("mapGraphic").appendChild(tokenDiv2);
-                        //document.getElementById("mapGraphic").innerHTML += tokenDiv;
-                        //console.log(tokenDiv);
+                        newMapTile.classList.add("doorTileB");
                     }
+                } else if (Data.mapArray[x][y].tile == "stairsUp") {
+                    try {
+                    if (Data.mapArray[x+1][y].tile =="stairsUp") {
+                        newMapTile.classList.add("stairTileTop");
+                    } else if (Data.mapArray[x-1][y].tile =="stairsUp") {
+                        newMapTile.classList.add("stairTileTop");
+                    } else if (Data.mapArray[x][y+1].tile =="stairsUp") {
+                        newMapTile.classList.add("stairTileLeft");
+                    } else if (Data.mapArray[x][y-1].tile =="stairsUp") {
+                        newMapTile.classList.add("stairTileLeft");
+                    } else if (Data.mapArray[x+1][y].walkable || Data.mapArray[x-1][y].walkable) {
+                        newMapTile.classList.add("stairTileTop");
+                    } else {
+                        newMapTile.classList.add("stairTileLeft");
+                    }
+                    } catch (error) {
+                        newMapTile.classList.add("stairTileLeft");
+                    }
+                } else if (Data.mapArray[x][y].tile.includes("stairsDown")) {
+                    try {
+                    if (Data.mapArray[x][y+1].tile =="stairsDown" && Data.mapArray[x][y-1].tile.includes("floorTile")) {
+                        newMapTile.classList.add("stairDownTileRight");
+                    } else if (Data.mapArray[x][y-1].tile =="stairsDown" && Data.mapArray[x][y+1].tile =="wallTile") {
+                        newMapTile.classList.add("stairDownDownTileRight");
+                    } else if (Data.mapArray[x][y-1].tile =="stairsDown" && Data.mapArray[x][y+1].tile.includes("floorTile")) {
+                        newMapTile.classList.add("stairDownTileLeft");
+                    } else if (Data.mapArray[x][y+1].tile =="stairsDown" && Data.mapArray[x][y-1].tile =="wallTile") {
+                        newMapTile.classList.add("stairDownDownTileLeft");
+                    } else if (Data.mapArray[x+1][y].tile =="stairsDown" && Data.mapArray[x-1][y].tile.includes("floorTile")) {
+                        newMapTile.classList.add("stairDownTileBottom");
+                    } else if (Data.mapArray[x-1][y].tile =="stairsDown" && Data.mapArray[x+1][y].tile =="wallTile") {
+                        newMapTile.classList.add("stairDownDownTileBottom");
+                    } else if (Data.mapArray[x-1][y].tile =="stairsDown" && Data.mapArray[x+1][y].tile.includes("floorTile")) {
+                        newMapTile.classList.add("stairDownTileTop");
+                    } else if (Data.mapArray[x+1][y].tile =="stairsDown" && Data.mapArray[x-1][y].tile =="wallTile") {
+                        newMapTile.classList.add("stairDownDownTileTop");
+                    } else {
+                        newMapTile.classList.add("stairDownDownTileTop");
+                    }
+                    } catch (stairerror) {
+                        newMapTile.classList.add("stairDownDownTileTop");
+                    }
+                } else {
+                    newMapTile.classList.add(Data.mapArray[x][y].tile);
+                }
+                document.getElementById("mapGraphic").appendChild(newMapTile);
+            }
+        }
+
+        //document.getElementById("mapGraphic").innerHTML = newMapText;
+        document.getElementById("mapForm").style.display = "none";
+        document.getElementById("mapGraphic").style.display = "block";
+
+        for (var i = 0; i < Data.unitList.length; i++) {
+            if (typeof Data.unitList[i].x !== "undefined" && document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`) !== null) {
+                document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).classList.add("selectableUnit");
+                document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).attributes.units += i + " ";
+                if (typeof Data.unitList[i].size !== "undefined" && Data.unitList[i].size == "large") {
+
+                document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).classList.add("selectableUnit");
+                    document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).attributes.units += i + " ";
+                document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).classList.add("selectableUnit");
+                    document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).attributes.units += i + " ";
+                document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).classList.add("selectableUnit");
+                    document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).attributes.units += i + " ";
+                }
+                if (typeof Data.unitList[i].token === "undefined" || Data.unitList[i].token == "") {
+                    tmpSpan = document.createElement("span");
+                    tmpSpan.style.color = Data.unitList[i].color;
+                    tmpSpan.innerText = Data.unitList[i].charName;
+                    document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).appendChild(tmpSpan);
+                    if (typeof Data.unitList[i].size !== "undefined" && Data.unitList[i].size == "large") {
+                        document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).appendChild(tmpSpan);
+                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).appendChild(tmpSpan);
+                        document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).appendChild(tmpSpan);
+                    }
+                } else {
+                    tokenDiv2 = document.createElement("img");
+                    tokenDiv2.src = Data.unitList[i].token;
+                    tokenDiv2.style.pointerEvents = "none"
+                    position_top = Data.unitList[i].x*zoomSize + 4;
+                    position_left = Data.unitList[i].y*zoomSize + 4;
+                    if (Data.unitList[i].size == "large") {
+                        position_top -= zoomSize;
+                        tokenDiv2.style.width = zoomSize*2 - 8 + "px";
+                        tokenDiv2.style.height = zoomSize*2  - 8+ "px";
+                        tokenDiv2.style.position = "absolute";
+                    } else {
+                        tokenDiv2.style.width = zoomSize - 8 + "px";
+                        tokenDiv2.style.height = zoomSize  - 8 + "px";
+                        tokenDiv2.style.position = "absolute";
+                    }
+                    if (Data.inInit && Data.unitList[i].initNum == Data.initiativeCount) {
+                        tokenDiv2.style.borderWidth = "5px";
+                        tokenDiv2.style.borderStyle = "solid";
+                        tokenDiv2.style.borderImage = "radial-gradient(red, transparent)10";
+                        position_top -= 5;
+                        position_left -= 5;
+                    }
+                    tokenDiv2.style.top = position_top + "px";
+                    tokenDiv2.style.left = position_left + "px";
+                    document.getElementById("mapGraphic").appendChild(tokenDiv2);
                 }
             }
-            for (var i = 0; i < Data.effects.length; i++) {
-                tmpEffect = generateEffect(Data.effects[i].shape, Data.effects[i].size, Data.effects[i].color);
-                locateEffect(tmpEffect, Data.effects[i].origin.x, Data.effects[i].origin.y);
+        }
+        for (var i = 0; i < Data.effects.length; i++) {
+            tmpEffect = generateEffect(Data.effects[i].shape, Data.effects[i].size, Data.effects[i].color);
+            locateEffect(tmpEffect, Data.effects[i].origin.x, Data.effects[i].origin.y);
+        }
+        if (Data.inInit) {
+            for (i = 0; i<Data.initiativeList[Data.initiativeCount].movePath.length - 1;i++) {
+                moveLoc = Data.initiativeList[Data.initiativeCount].movePath[i];
+                tmpMovDiv = document.createElement("div");
+                tmpMovDiv.style.width = zoomSize/10 + "px";
+                tmpMovDiv.style.height = zoomSize/10 + "px";
+                tmpMovDiv.style.position = "absolute";
+                tmpMovDiv.style.top = moveLoc[0]*zoomSize+zoomSize/2.2 + "px";
+                tmpMovDiv.style.left = moveLoc[1]*zoomSize+zoomSize/2.2 + "px";
+                tmpMovDiv.style.background = Data.initiativeList[Data.initiativeCount].color;
+                document.getElementById("mapGraphic").appendChild(tmpMovDiv);
             }
-            if (Data.inInit /*&& Data.initiativeList[Data.initiativeCount].movePath.length > 0*/) {
-                tmpHTML = ""
-                for (i = 0; i<Data.initiativeList[Data.initiativeCount].movePath.length - 1;i++) {
-                    moveLoc = Data.initiativeList[Data.initiativeCount].movePath[i];
-                    tmpHTML += `<div style="width:${zoomSize/10}px;height:${zoomSize/10}px;position:absolute;top:${moveLoc[0]*zoomSize+zoomSize/2.2}px;left:${moveLoc[1]*zoomSize+zoomSize/2.2}px;background:${Data.initiativeList[Data.initiativeCount].color};"></div>`;
-                }
-                if (Data.initiativeList[Data.initiativeCount].x != -1)
+            if (Data.initiativeList[Data.initiativeCount].x != -1) {
                 document.getElementById("tile" + Data.initiativeList[Data.initiativeCount].x + "," + Data.initiativeList[Data.initiativeCount].y).style.background = "firebrick";
                 if (Data.initiativeList[Data.initiativeCount].size == "large") {
                     document.getElementById("tile" + (Data.initiativeList[Data.initiativeCount].x - 1) + "," + Data.initiativeList[Data.initiativeCount].y).style.background = "firebrick";
                     document.getElementById("tile" + Data.initiativeList[Data.initiativeCount].x + "," + (Data.initiativeList[Data.initiativeCount].y + 1)).style.background = "firebrick";
                     document.getElementById("tile" + (Data.initiativeList[Data.initiativeCount].x - 1) + "," + (Data.initiativeList[Data.initiativeCount].y + 1)).style.background = "firebrick";
                 }
-                document.getElementById("mapGraphic").innerHTML += tmpHTML
-                document.getElementById("movement").innerText = Math.floor(Data.initiativeList[Data.initiativeCount].distance) * 5
             }
-            /*document.getElementById("mapGraphic").style.height = Data.mapArray.length * 70 +"px";
-            document.getElementById("mapGraphic").style.width = Data.mapArray[0].length * 70 + "px";
-            if (defaultBackground) {
-                document.getElementById("mapGraphic").style.backgroundImage = "url(static/images/mapbackground.jpg)";
+            if (typeof selectedUnits !== "undefined") { //selectedUnit
+                for (u=0; u> selectedUnits.length; u++){
+                    document.getElementById("tile" + Data.unitList[selectedUnits[u]].x + "," + Data.unitList[selectedUnits[u]].y).style.background = "firebrick";
+                    if (Data.initiativeList[Data.initiativeCount].size == "large") {
+                        document.getElementById("tile" + (Data.unitList[selectedUnits[u]].x - 1) + "," + Data.unitList[selectedUnits[u]].y).style.background = "firebrick";
+                        document.getElementById("tile" + Data.unitList[selectedUnits[u]].x + "," + (Data.unitList[selectedUnits[u]].y + 1)).style.background = "firebrick";
+                        document.getElementById("tile" + (Data.unitList[selectedUnits[u]].x - 1) + "," + (Data.unitList[selectedUnits[u]].y + 1)).style.background = "firebrick";
+                    }
+                }
+            }
+            document.getElementById("movement").innerText = Math.floor(Data.initiativeList[Data.initiativeCount].distance) * 5
+        }
 
-            }*/
-            backgroundDiv = document.createElement("div");
-            backgroundDiv.style.height = Data.mapArray.length * 70 +"px";
-            backgroundDiv.style.width = Data.mapArray[0].length * 70 + "px";
-            backgroundDiv.style.position = "absolute";
-            backgroundDiv.style.left = "0";
-            backgroundDiv.style.top = "0";
-            backgroundDiv.style.zIndex = "-1";
-            if (defaultBackground) {
-                backgroundDiv.style.backgroundImage = "url(static/images/mapbackground.jpg)";
-                document.getElementById("mapGraphic").appendChild(backgroundDiv);
-            }
+        backgroundDiv = document.createElement("div");
+        backgroundDiv.style.height = Data.mapArray.length * 70 +"px";
+        backgroundDiv.style.width = Data.mapArray[0].length * 70 + "px";
+        backgroundDiv.style.position = "absolute";
+        backgroundDiv.style.left = "0";
+        backgroundDiv.style.top = "0";
+        backgroundDiv.style.zIndex = "-1";
+        if (defaultBackground) {
+            backgroundDiv.style.backgroundImage = "url(static/images/mapbackground.jpg)";
+            document.getElementById("mapGraphic").appendChild(backgroundDiv);
         }
     } catch (e) {
         socket.emit("error_handle", room, e);
@@ -1236,5 +1239,11 @@ function updateEffects(addnew) {
         socket.emit("update_effects", room, effects, gmKey);
     } else {
         socket.emit("update_effects", room, effects, "");
+    }
+}
+
+function removeContents(el) {
+    while(el.firstChild) {
+        el.firstChild.remove();
     }
 }

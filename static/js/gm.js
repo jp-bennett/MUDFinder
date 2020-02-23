@@ -519,8 +519,8 @@ function mapClick(e, x, y) {
             deselectAll()
             populateEditChar(gmData,0);
         }
-        if (e.currentTarget.attributes.units.value != ""){
-            i = parseInt(e.currentTarget.attributes.units.value.split(" ")[0]);
+        if (e.currentTarget.attributes.units != ""){
+            i = parseInt(e.currentTarget.attributes.units.split(" ")[0]);
             selectUnit(e, i)
             //document.getElementById("unitsDiv").children[i].children[0].className = "selected";
 
@@ -742,7 +742,7 @@ function handleDrag (elements) {
         } else {
             deselectAll()
             for (z=0; z<elements.length; z++) {
-                i = elements[z].attributes.units.value.split(" ");
+                i = elements[z].attributes.units.split(" ");
                 for (y=0; y<i.length-1; y++) {
                     document.getElementById("unitsDiv").children[parseInt(i[y])].children[0].className = "selected";
                     selectedUnits.push(parseInt(i[y]));
