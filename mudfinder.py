@@ -709,7 +709,6 @@ def on_locate_unit(data):
     room = data['room']
     if not check_room(room):
         return
-    print("x: " + str(data["xCoord"]) + "y: " + str(data["yCoord"]))
     if "selectedUnit" in data.keys():
         tmpUnit = ROOMS[room].unitList[data['selectedUnit']]
     elif "selectedInit" in data.keys():
