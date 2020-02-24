@@ -100,7 +100,14 @@ window.onload = function() {
             socket.emit("error_handle", room, e);
         }
     });
-
+    socket.on('gm_map', function(msg) {
+        drawMap(msg);
+        mapObject = msg;
+    });
+    socket.on('gm_map_update', function(msg) {
+        updateMap(msg, mapObject);
+        ds.addSelectables(document.getElementsByClassName('selectableTile'));
+    });
     socket.on('gm_update', function(msg) {
         try {
             //console.log("updating the GM data");
@@ -108,7 +115,8 @@ window.onload = function() {
             //console.log(gmData);
             document.title = gmData.name
             effects = gmData.effects;
-            updateMap(gmData);
+            //updateMap(gmData);
+            drawUnits(gmData);
             if (multiSelect) {
                 if (typeof selectedTool !== "undefined") {
                     ds.setSelectables(document.getElementsByClassName('selectableTile'));
@@ -318,7 +326,7 @@ function seenOverlayToggle(obj) {
         } else {
             showSeenOverlay = false;
         }
-        updateMap(gmData);
+        drawMap(mapObject);
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
@@ -733,7 +741,7 @@ function handleDrag (elements) {
             }
             tiles = [];
             for (i=0; i<elements.length; i++) {
-                tiles.push({newTile: selectedTool.id, xCoord: parseInt(elements[i].attributes.x.value), yCoord: parseInt(elements[i].attributes.y.value)})
+                tiles.push({newTile: selectedTool.id, xCoord: parseInt(elements[i].attributes.x), yCoord: parseInt(elements[i].attributes.y)})
             }
 
             socket.emit('map_edit', {tiles: tiles, room: room, gmKey: gmKey});

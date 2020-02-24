@@ -296,6 +296,7 @@ def on_player_join(data):
         ROOMS[room].playerList[data['charName']].connections += 1
         ROOMS[room].playerList[data['charName']].connected = True
         ROOMS[room].number_units()
+        emit('draw_map', ROOMS[room].player_map())
         emit('do_update', ROOMS[room].player_json(), room=room)
     else:
         emit('error', {'error': 'Unable to join room. Room does not exist.'})
@@ -328,6 +329,7 @@ def on_join_gm(data):
         if ROOMS[room].gmRoom == "":
             ROOMS[room].gmRoom = request.sid
         join_room(ROOMS[room].gmRoom)
+        emit('gm_map', ROOMS[room].mapArray)
         emit('gm_update', ROOMS[room].to_json())
     else:
         emit('error', {'error': 'Unable to join room. Room does not exist.'})
@@ -439,6 +441,13 @@ def on_load_encounter(data):
         for x in ROOMS[room].savedEncounters[data['encounterName']]["unitList"]:
             ROOMS[room].unitList.append(Unit(copy.deepcopy(x)))
         ROOMS[room].number_units()
+        if not ROOMS[room].mapArray[0][0]["x"]:
+            for y in range(len(ROOMS[room].mapArray)):
+                for x in range(len(ROOMS[room].mapArray[y])):
+                    ROOMS[room].mapArray[y][x]["x"] = x
+                    ROOMS[room].mapArray[y][x]["y"] = y
+        emit('gm_map', ROOMS[room].mapArray)
+        emit('draw_map', ROOMS[room].player_map(), room=room)
         ROOMS[room].send_updates()
 
 
@@ -473,6 +482,8 @@ def on_clear_map(data):
         ROOMS[room].initiativeCount = 0
         ROOMS[room].initiativeList = []
         ROOMS[room].number_units()
+        emit('gm_map', ROOMS[room].mapArray)
+        emit('draw_map', ROOMS[room].player_map(), room=room)
         ROOMS[room].send_updates()
 
 
@@ -698,7 +709,7 @@ def on_locate_unit(data):
     room = data['room']
     if not check_room(room):
         return
-
+    print("x: " + str(data["xCoord"]) + "y: " + str(data["yCoord"]))
     if "selectedUnit" in data.keys():
         tmpUnit = ROOMS[room].unitList[data['selectedUnit']]
     elif "selectedInit" in data.keys():
@@ -707,44 +718,51 @@ def on_locate_unit(data):
         return
 
     if tmpUnit.size == "large":
-        if data["relative_x"] > 8:
-            data["xCoord"] += 1
-        if data["relative_y"] < 8:
-            data["yCoord"] -= 1
+        if data["relative_y"] > 8:
+            data["yCoord"] += 1
+        if data["relative_x"] < 8:
+            data["xCoord"] -= 1
 
     if "gmKey" in data.keys() and ROOMS[room].gmKey == data['gmKey']:
         if ROOMS[room].inInit and tmpUnit.inInit and \
                 tmpUnit == ROOMS[room].initiativeList[ROOMS[room].initiativeCount]:
-            ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), data["moveType"])
+            ROOMS[room].calc_path(tmpUnit, (data["yCoord"], data["xCoord"]), data["moveType"])
         else:
-            ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), 5)
+            ROOMS[room].calc_path(tmpUnit, (data["yCoord"], data["xCoord"]), 5)
         if tmpUnit.revealsMap:
-            ROOMS[room].reveal_map(tmpUnit.unitNum)
+            revealedTiles = ROOMS[room].reveal_map(tmpUnit.unitNum)
+            if revealedTiles:
+                emit('gm_map_update', revealedTiles, room=ROOMS[room].gmRoom)
+                emit('player_map_update', revealedTiles, room=room)
         ROOMS[room].send_updates()
         return
 
     # If a player controls, and the unit doesn't have a location, use the player's location as starting location.
     if ROOMS[room].inInit:
-        if ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["walkable"] \
-                and ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["seen"] \
+        if ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] \
+                and ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["seen"] \
                 and ROOMS[room].unitList[data['selectedUnit']].controlledBy == data["requestingPlayer"] \
                 and ROOMS[room].unitList[data['selectedUnit']].initiative \
                 and ROOMS[room].unitList[data['selectedUnit']].initiative == \
                 ROOMS[room].initiativeList[ROOMS[room].initiativeCount].initiative:
             if tmpUnit.x != "":
-                ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), data["moveType"])
+                ROOMS[room].calc_path(tmpUnit, (data["yCoord"], data["xCoord"]), data["moveType"])
             else:
-                ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), 5)
+                ROOMS[room].calc_path(tmpUnit, (data["yCoord"], data["xCoord"]), 5)
             if tmpUnit.revealsMap:
-                ROOMS[room].reveal_map(data['selectedUnit'])  # only some controlled units should do this
+                revealedTiles = ROOMS[room].reveal_map(data['selectedUnit'])  # only some controlled units should do this
+                emit('gm_map_update', revealedTiles, room=ROOMS[room].gmRoom)
+                emit('player_map_update', revealedTiles, room=room)
             ROOMS[room].send_updates()
 
-    elif ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["walkable"] \
-            and ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["seen"] \
+    elif ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] \
+            and ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["seen"] \
             and ROOMS[room].unitList[data['selectedUnit']].controlledBy == data["requestingPlayer"]:
-        ROOMS[room].calc_path(tmpUnit, (data["xCoord"], data["yCoord"]), 5)
+        ROOMS[room].calc_path(tmpUnit, (data["yCoord"], data["xCoord"]), 5)
         if tmpUnit.revealsMap:
-            ROOMS[room].reveal_map(data['selectedUnit'])  # only some controlled units should do this
+            revealedTiles = ROOMS[room].reveal_map(data['selectedUnit'])  # only some controlled units should do this
+            emit('gm_map_update', revealedTiles, room=ROOMS[room].gmRoom)
+            emit('player_map_update', revealedTiles, room=room)
         ROOMS[room].send_updates()
 
 
@@ -804,7 +822,7 @@ def on_map_generate(data):
         for y in range(data["mapHeight"]):
             for x in range(data["mapWidth"]):
                 map_line_list.append(
-                    {"tile": "floorTile", "walkable": True, "seen": data["discovered"], "secret": False})
+                    {"tile": "floorTile", "walkable": True, "seen": data["discovered"], "secret": False, "x": x, "y": y})
             ROOMS[room].mapArray.append(map_line_list)
             map_line_list = []
         ROOMS[room].send_updates()
@@ -814,30 +832,41 @@ def on_map_generate(data):
 def on_map_edit(data_pack):
     room = data_pack['room']
     if check_room(room) and ROOMS[room].gmKey == data_pack['gmKey']:
+        updatedTiles = []
         # print(data_pack)
         for data in data_pack["tiles"]:
             if "Tile" in data["newTile"] or "door" in data["newTile"]:
-                ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["tile"] = data["newTile"]
+                ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["tile"] = data["newTile"]
                 if data["newTile"] in ["doorClosed", "doorTileB"]:
-                    ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["secret"] = False
+                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["secret"] = False
                 if data["newTile"] in ["wallTile", "wallTileA", "wallTileB", "wallTileC", "doorClosed", "doorTileB"]:
-                    ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["walkable"] = False
+                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] = False
                 else:
-                    ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["walkable"] = True
+                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] = True
             elif "stairs" in data["newTile"]:
-                ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["tile"] = data["newTile"]
-                ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["secret"] = False
-                ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["walkable"] = True
+                ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["tile"] = data["newTile"]
+                ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["secret"] = False
+                ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] = True
             elif data["newTile"] == "secret":
-                ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["secret"] = not \
-                    ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["secret"]
+                ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["secret"] = not \
+                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["secret"]
             elif data["newTile"] == "seen":
-                ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["seen"] = not \
-                    ROOMS[room].mapArray[data["xCoord"]][data["yCoord"]]["seen"]
+                ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["seen"] = not \
+                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["seen"]
             if data["newTile"] in ["doorOpen", "doorTileAOpen", "doorTileBOpen"]:
                 for players in ROOMS[room].playerList.keys():
-                    ROOMS[room].reveal_map(ROOMS[room].playerList[players].unitNum)
-        ROOMS[room].send_updates()
+                    revealedTiles = ROOMS[room].reveal_map(ROOMS[room].playerList[players].unitNum)
+                    updatedTiles.extend(revealedTiles)
+            updatedTiles.append(ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]])
+        emit('gm_map_update', updatedTiles)
+        tmpUpdatedTiles = copy.deepcopy(updatedTiles)
+        for y in tmpUpdatedTiles:
+            if not y["seen"]:
+                y = {"tile": "unseenTile", "walkable": False}
+            elif y["secret"]:
+                y = {"tile": "wallTile", "walkable": False}
+        emit('player_map_update', tmpUpdatedTiles, room=room)
+        #ROOMS[room].send_updates()
 
 
 @socketio.on('map_upload')
@@ -864,6 +893,8 @@ def on_map_upload(data):
                     if mapLine[x][:2] == "DS":
                         map_line_list[x]["secret"] = True
                 map_line_list[x]["seen"] = data["discovered"]
+                map_line_list[x]["x"] = x
+                map_line_list[x]["y"] = y
                 if "secret" not in map_line_list[x].keys():
                     map_line_list[x]["secret"] = False
             ROOMS[room].mapArray.append(map_line_list)

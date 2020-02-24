@@ -53,7 +53,7 @@ class Session(object):
             "playerList": tmpplayerList,
             "unitList": tmpunitList,
             "initiativeList": tmpinitiativeList,
-            "mapArray": self.mapArray,
+            #"mapArray": self.mapArray,
             "movePath": self.movePath,
             "savedEncounters": keyNames,
             "effects": self.effects
@@ -106,6 +106,12 @@ class Session(object):
             if self.unitList[-1].inInit:
                 self.initiativeList.append(self.unitList[-1])
         self.mapArray = obj["mapArray"]
+        if self.mapArray:
+            if not "x" in self.mapArray[0][0].keys():
+                for y in range(len(self.mapArray)):
+                    for x in range(len(self.mapArray[y])):
+                        self.mapArray[y][x]["x"] = x
+                        self.mapArray[y][x]["y"] = y
         if "lore" in obj:
             self.lore = obj["lore"]
         else:
@@ -177,7 +183,7 @@ class Session(object):
             "initiativeCount": self.initiativeCount,
             "roundCount": self.roundCount,
             "playerList": tmpplayerList,
-            "mapArray": self.mapArray,
+            # "mapArray": self.mapArray,
             "movePath": self.movePath,
             "effects": self.effects
         }  # add visible units from unitlist
@@ -186,11 +192,14 @@ class Session(object):
             playerObject["initiativeList"] = tmpinitiativeList
         else:
             playerObject["initiativeList"] = []
-        tmpMapArray = []
         for i in range(len(self.unitList)):
             if self.unitList[i].controlledBy != "gm" or (
                     self.unitList[i].location != [-1, -1] and self.mapArray[self.unitList[i].location[0]][self.unitList[i].location[1]]["seen"]):
                 playerObject["unitList"].append(self.unitList[i].to_json())
+        return playerObject
+
+    def player_map(self):
+        tmpMapArray = []
         for y in range(len(self.mapArray)):
             tmpMapLine = []
             for x in range(len(self.mapArray[y])):
@@ -200,8 +209,7 @@ class Session(object):
                 if not self.mapArray[y][x]["seen"]:
                     tmpMapLine[x] = {"tile": "unseenTile", "walkable": False}
             tmpMapArray.append(tmpMapLine)
-        playerObject["mapArray"] = tmpMapArray
-        return playerObject
+        return tmpMapArray
 
     def calc_path(self, tmpUnit, end, moveType):
         if not self.mapArray[end[0]][end[1]]["walkable"]:
@@ -231,8 +239,8 @@ class Session(object):
             maxMove = -1
         else:
             tmpUnit.location = end
-            tmpUnit.y = end[1]
-            tmpUnit.x = end[0] #TODO: remove this
+            tmpUnit.x = end[1]
+            tmpUnit.y = end[0]
             return
         if tmpUnit.hasted and not moveType == 0:
             maxMove = min(maxMove * 2, maxMove + 6)
@@ -243,33 +251,39 @@ class Session(object):
             ignoreSeen = True
         else:
             ignoreSeen = False
-        path = astar(self.mapArray, (tmpUnit.x, tmpUnit.y), end, maxMove, ignoreSeen)
+        path = astar(self.mapArray, (tmpUnit.y, tmpUnit.x), end, maxMove, ignoreSeen)
         if path is None:
             return
         tmpUnit.distance += path.pop(0)
         for x in path:
             tmpUnit.movePath.append(x)
         tmpUnit.location = path[-1]
-        tmpUnit.x = path[-1][0] #TODO: remove
-        tmpUnit.y = path[-1][1]
+        tmpUnit.y = path[-1][0]
+        tmpUnit.x = path[-1][1]
         return
 
-    def reveal_map(self, selectedPlayer): # would be nice to return a list of changed tiles.
-        if self.unitList[selectedPlayer].location == [-1, -1]: return
-        x = self.unitList[selectedPlayer].location[0]
-        y = self.unitList[selectedPlayer].location[1]
+    def reveal_map(self, selectedPlayer):
+        mark = False
+        changedTiles = []
+        if self.unitList[selectedPlayer].location == [-1, -1]: return []
+        y = self.unitList[selectedPlayer].location[0]
+        x = self.unitList[selectedPlayer].location[1]
         for xBox in range(-10, 11):
             for yBox in range(-10, 11):
                 cells = raytrace(x, y, max(0, x + xBox), max(0, y + yBox))
                 for distance in range(len(cells)):
                     try:
-                        if self.mapArray[cells[distance][0]][cells[distance][1]]["seen"] == False:
-                            pass #ideally, push the changed tiles onto a list, and return it
-                        self.mapArray[cells[distance][0]][cells[distance][1]]["seen"] = True
-                        if not self.mapArray[cells[distance][0]][cells[distance][1]]["walkable"]:
+                        if self.mapArray[cells[distance][1]][cells[distance][0]]["seen"] == False:
+                            mark = True
+                        self.mapArray[cells[distance][1]][cells[distance][0]]["seen"] = True
+                        if mark:
+                            changedTiles.append(self.mapArray[cells[distance][1]][cells[distance][0]])
+                            mark = False
+                        if not self.mapArray[cells[distance][1]][cells[distance][0]]["walkable"]:
                             break
                     except:
                         break
+        return changedTiles
 
     def send_updates(self):
         emit('gm_update', self.to_json(), room=self.gmRoom)

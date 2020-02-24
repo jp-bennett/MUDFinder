@@ -102,7 +102,13 @@ window.onload = function() {
             socket.emit("error_handle", room, e);
         }
     });
-
+    socket.on('draw_map', function(msg) {
+        drawMap(msg);
+        mapObject = msg;
+    });
+    socket.on('player_map_update', function(msg) {
+        updateMap(msg, mapObject);
+    });
     socket.on('do_update', function(msg) {
         try {
             playerData = undefined;
@@ -110,7 +116,8 @@ window.onload = function() {
             effects = playerData.effects;
             //console.log(playerData);
             document.title = playerData.name
-            updateMap(playerData);
+            //updateMap(playerData);
+            drawUnits(playerData);
             if (playerData.inInit) {
                 selectedUnit = undefined;
             } else {
