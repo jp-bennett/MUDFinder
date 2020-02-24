@@ -327,6 +327,8 @@ function seenOverlayToggle(obj) {
             showSeenOverlay = false;
         }
         drawMap(mapObject);
+        drawUnits(gmData);
+
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
