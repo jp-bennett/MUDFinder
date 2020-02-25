@@ -249,6 +249,12 @@ width:100%;
     border-width: thin;
     border-style: solid;
 }
+
+#mapForm {
+    margin-top: 50px;
+    text-align:center;
+    }
+
 #mapWrapper {
     height: 100%;
 }

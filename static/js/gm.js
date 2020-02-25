@@ -790,7 +790,9 @@ function multiSelectToggle(element) {
         ds.stop();
         ds = undefined;
         multiSelect = false;
-        document.getElementById("mapContainer").className = "dragscroll";
+        if (mapObject.length > 0) {
+            document.getElementById("mapContainer").className = "dragscroll";
+        }
     }
     dragscroll.reset();
 
