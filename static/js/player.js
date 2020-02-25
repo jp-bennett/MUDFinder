@@ -495,6 +495,13 @@ function updatePlayer () {
         player.WIS = document.getElementById("sheetWISScore").value
         player.CHA = document.getElementById("sheetCHAScore").value
 
+        player.STRTemp = document.getElementById("sheetSTRScoreTemp").value
+        player.DEXTemp = document.getElementById("sheetDEXScoreTemp").value
+        player.CONTemp = document.getElementById("sheetCONScoreTemp").value
+        player.INTTemp = document.getElementById("sheetINTScoreTemp").value
+        player.WISTemp = document.getElementById("sheetWISScoreTemp").value
+        player.CHATemp = document.getElementById("sheetCHAScoreTemp").value
+
         player.HP = document.getElementById("sheetHP").value;
         player.maxHP = document.getElementById("sheetMaxHP").value;
         player.DR = document.getElementById("sheetDR").value;
@@ -675,6 +682,13 @@ function setSTRScore(score) {
         STRMod = Math.floor((score - 10) / 2);
         document.getElementById("sheetSTRMod").value = STRMod;
         strElements = document.getElementsByClassName("usesSTRMod");
+        if (document.getElementById("sheetSTRScoreTemp").value != "") {
+            tempScore = parseInt(document.getElementById("sheetSTRScoreTemp").value);
+            STRMod = STRMod - Math.floor((score - tempScore)/2);
+            document.getElementById("sheetSTRModTemp").value = STRMod
+        } else {
+            document.getElementById("sheetSTRModTemp").value = "";
+        }
         for (i=0, len=strElements.length; i<len; i=i+1) {
             strElements[i].value = STRMod;
             if (strElements[i].onchange !== null) {
@@ -689,6 +703,13 @@ function setDEXScore(score) {
     try {
         DEXMod = Math.floor((score - 10) / 2);
         document.getElementById("sheetDEXMod").value = DEXMod;
+        if (document.getElementById("sheetDEXScoreTemp").value != "") {
+            tempScore = parseInt(document.getElementById("sheetDEXScoreTemp").value);
+            DEXMod = DEXMod - Math.floor((score - tempScore)/2);
+            document.getElementById("sheetDEXModTemp").value = DEXMod
+        } else {
+            document.getElementById("sheetDEXModTemp").value = "";
+        }
         dexElements = document.getElementsByClassName("usesDEXMod");
         for (i=0, len=dexElements.length; i<len; i=i+1) {
             dexElements[i].value = DEXMod;
@@ -704,6 +725,13 @@ function setCONScore(score) {
     try {
         CONMod = Math.floor((score - 10) / 2);
         document.getElementById("sheetCONMod").value = CONMod;
+        if (document.getElementById("sheetCONScoreTemp").value != "") {
+            tempScore = parseInt(document.getElementById("sheetCONScoreTemp").value);
+            CONMod = CONMod - Math.floor((score - tempScore)/2);
+            document.getElementById("sheetCONModTemp").value = CONMod
+        } else {
+            document.getElementById("sheetCONModTemp").value = "";
+        }
         conElements = document.getElementsByClassName("usesCONMod");
         for (i=0, len=conElements.length; i<len; i=i+1) {
             conElements[i].value = CONMod;
@@ -719,7 +747,13 @@ function setINTScore(score) {
     try {
         INTMod = Math.floor((score - 10) / 2);
         document.getElementById("sheetINTMod").value = INTMod;
-
+        if (document.getElementById("sheetINTScoreTemp").value != "") {
+            tempScore = parseInt(document.getElementById("sheetINTScoreTemp").value);
+            INTMod = INTMod - Math.floor((score - tempScore)/2);
+            document.getElementById("sheetINTModTemp").value = INTMod
+        } else {
+            document.getElementById("sheetINTModTemp").value = "";
+        }
         intElements = document.getElementsByClassName("usesINTMod");
         for (i=0, len=intElements.length; i<len; i=i+1) {
             intElements[i].value = INTMod;
@@ -735,6 +769,13 @@ function setWISScore(score) {
     try {
         WISMod = Math.floor((score - 10) / 2);
         document.getElementById("sheetWISMod").value = WISMod;
+        if (document.getElementById("sheetWISScoreTemp").value != "") {
+            tempScore = parseInt(document.getElementById("sheetWISScoreTemp").value);
+            WISMod = WISMod - Math.floor((score - tempScore)/2);
+            document.getElementById("sheetWISModTemp").value = WISMod
+        } else {
+            document.getElementById("sheetWISModTemp").value = "";
+        }
         wisElements = document.getElementsByClassName("usesWISMod");
         for (i=0, len=wisElements.length; i<len; i=i+1) {
             wisElements[i].value = WISMod;
@@ -750,6 +791,13 @@ function setCHAScore(score) {
     try {
         CHAMod = Math.floor((score - 10) / 2);
         document.getElementById("sheetCHAMod").value = CHAMod;
+        if (document.getElementById("sheetCHAScoreTemp").value != "") {
+            tempScore = parseInt(document.getElementById("sheetCHAScoreTemp").value);
+            CHAMod = CHAMod - Math.floor((score - tempScore)/2);
+            document.getElementById("sheetCHAModTemp").value = CHAMod
+        } else {
+            document.getElementById("sheetCHAModTemp").value = "";
+        }
         chaElements = document.getElementsByClassName("usesCHAMod");
         for (i=0, len=chaElements.length; i<len; i=i+1) {
             chaElements[i].value = CHAMod;
@@ -950,26 +998,32 @@ function populateSheet (data) {
         document.getElementById("sheetBurrowSpeed").value = data.burrowSpeed;
 
         document.getElementById("sheetSTRScore").value = data.STR;
+        document.getElementById("sheetSTRScoreTemp").value = data.STRTemp;
         if (!isNaN(parseInt(data.STR))) {
             setSTRScore(data.STR);
         }
         document.getElementById("sheetDEXScore").value = data.DEX;
+        document.getElementById("sheetDEXScoreTemp").value = data.DEXTemp;
         if (!isNaN(parseInt(data.DEX))) {
         setDEXScore(data.DEX);
         }
         document.getElementById("sheetCONScore").value = data.CON;
+        document.getElementById("sheetCONScoreTemp").value = data.CONTemp;
         if (!isNaN(parseInt(data.CON))) {
         setCONScore(data.CON);
         }
         document.getElementById("sheetINTScore").value = data.INT;
+        document.getElementById("sheetINTScoreTemp").value = data.INTTemp;
         if (!isNaN(parseInt(data.INT))) {
         setINTScore(data.INT);
         }
         document.getElementById("sheetWISScore").value = data.WIS;
+        document.getElementById("sheetWISScoreTemp").value = data.WISTemp;
         if (!isNaN(parseInt(data.WIS))) {
         setWISScore(data.WIS);
         }
         document.getElementById("sheetCHAScore").value = data.CHA;
+        document.getElementById("sheetCHAScoreTemp").value = data.CHATemp;
         if (!isNaN(parseInt(data.CHA))) {
         setCHAScore(data.CHA);
         }

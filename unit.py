@@ -43,6 +43,12 @@ class Unit(object):
         self.INT = default(unitdict, "INT", "")
         self.WIS = default(unitdict, "WIS", "")
         self.CHA = default(unitdict, "CHA", "")
+        self.STRTemp = default(unitdict, "STRTemp", "")
+        self.DEXTemp = default(unitdict, "DEXTemp", "")
+        self.CONTemp = default(unitdict, "CONTemp", "")
+        self.INTTemp = default(unitdict, "INTTemp", "")
+        self.WISTemp = default(unitdict, "WISTemp", "")
+        self.CHATemp = default(unitdict, "CHATemp", "")
         self.ACArmor = default(unitdict, "ACArmor", "")
         self.ACShield = default(unitdict, "ACShield", "")
         self.ACNatural = default(unitdict, "ACNatural", "")
@@ -104,6 +110,12 @@ class Unit(object):
             "INT": self.INT,
             "WIS": self.WIS,
             "CHA": self.CHA,
+            "STRTemp": self.STRTemp,
+            "DEXTemp": self.DEXTemp,
+            "CONTemp": self.CONTemp,
+            "INTTemp": self.INTTemp,
+            "WISTemp": self.WISTemp,
+            "CHATemp": self.CHATemp,
             "ACArmor": self.ACArmor,
             "ACShield": self.ACShield,
             "ACNatural": self.ACNatural,
