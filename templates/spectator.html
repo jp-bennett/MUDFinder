@@ -72,6 +72,13 @@
         socket.emit("get_lore", room);
         enableTab('mapWrapper');
     });
+        socket.on('draw_map', function(msg) {
+        drawMap(msg);
+        mapObject = msg;
+    });
+    socket.on('player_map_update', function(msg) {
+        updateMap(msg, mapObject);
+    });
     socket.on("showLore", function(msg) {
         updateLore(msg.lore, msg.lore_num);
     });
@@ -80,7 +87,7 @@
       console.log(playerData);
       document.title = playerData.name
       //populate map
-      updateMap(playerData);
+      drawUnits(playerData);
 
       // populate initiative
       document.getElementById("initiativeDiv").innerHTML = "";

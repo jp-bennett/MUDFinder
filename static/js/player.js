@@ -249,31 +249,6 @@ function advanceInit() {
     document.getElementById("activeTabDiv").style.height = "calc(100% - 40px)";
     socket.emit('advance_init', {room: room, charName: charName});
 }
-
-/*function zoomIn(lookingAtX, lookingAtY) {
-    try {
-        lookingAtX = lookingAtX || (document.getElementById("mapContainer").clientWidth/2 + document.getElementById("mapContainer").scrollLeft)/zoomSize
-        lookingAtY = lookingAtY || (document.getElementById("mapContainer").clientHeight/2 + document.getElementById("mapContainer").scrollTop)/zoomSize
-        zoomSize *= 1.5;
-        updateMap(playerData);
-        document.getElementById("mapContainer").scrollLeft = lookingAtX*zoomSize - document.getElementById("mapContainer").clientWidth/2
-        document.getElementById("mapContainer").scrollTop = lookingAtY*zoomSize - document.getElementById("mapContainer").clientHeight/2
-    } catch (e) {
-        socket.emit("error_handle", room, e);
-    }
-}
-function zoomOut(lookingAtX, lookingAtY) {
-    try {
-        lookingAtX = lookingAtX || (document.getElementById("mapContainer").clientWidth/2 + document.getElementById("mapContainer").scrollLeft)/zoomSize
-        lookingAtY = lookingAtY || (document.getElementById("mapContainer").clientHeight/2 + document.getElementById("mapContainer").scrollTop)/zoomSize
-        zoomSize /= 1.5;
-        updateMap(playerData);
-        document.getElementById("mapContainer").scrollLeft = lookingAtX*zoomSize - document.getElementById("mapContainer").clientWidth/2
-        document.getElementById("mapContainer").scrollTop = lookingAtY*zoomSize - document.getElementById("mapContainer").clientHeight/2
-    } catch (e) {
-        socket.emit("error_handle", room, e);
-    }
-}*/
 function sendInit() {
         try {
         console.log('Sending...');

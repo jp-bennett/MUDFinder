@@ -308,6 +308,7 @@ def on_spectator_join(data):
     room = data['room']
     if check_room(room):
         join_room(room)
+        emit('draw_map', ROOMS[room].player_map())
         emit('do_update', ROOMS[room].player_json(), room=room)
     else:
         emit('error', {'error': 'Unable to join room. Room does not exist.'})
