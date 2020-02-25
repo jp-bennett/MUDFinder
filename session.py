@@ -124,6 +124,7 @@ class Session(object):
         self.number_units()
         self.effects = default(obj, "effects", [])
         self.gmRoom = default(obj, "gmRoom", "")
+        self.order_initiative_list()
         return
 
     def order_initiative_list(self):

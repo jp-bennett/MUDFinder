@@ -1380,3 +1380,20 @@ function removeContents(el) {
         el.firstChild.remove();
     }
 }
+
+function drawSelected(data) {
+    nodes = document.getElementsByClassName("selected");
+    while (nodes.length > 0) {
+        nodes[0].classList.remove("selected");
+    }
+    for (i=0; i<selectedUnits.length;i++){
+        if (typeof document.getElementById("unitsDiv").children[selectedUnits[i]] !== "undefined")
+            document.getElementById("unitsDiv").children[selectedUnits[i]].classList.add("selected");
+        if (data.unitList[selectedUnits[i]].x !== -1) {
+            document.getElementById(`tile${data.unitList[selectedUnits[i]].x},${data.unitList[selectedUnits[i]].y}`).classList.add("selected");
+        }
+        if (data.unitList[selectedUnits[i]].initNum != -1) {
+            document.getElementById("initiativeDiv").children[data.unitList[selectedUnits[i]].initNum].classList.add("selected");
+        }
+    }
+}

@@ -7,8 +7,8 @@ var zoomSize = 70;
 var activeCharName = "";
 var playerdata;
 var socket;
-var selectedUnit;
-var selectedInitiative;
+var selectedUnits = [];
+//var selectedInitiative;
 var lookingAtX;
 var lookingAtY;
 var gpTableSavedHTML;
@@ -118,34 +118,14 @@ window.onload = function() {
             document.title = playerData.name
             //updateMap(playerData);
             drawUnits(playerData);
-            if (playerData.inInit) {
-                selectedUnit = undefined;
-            } else {
-                selectedInitiative = undefined;
-            }
             if ((document.getElementById("charWrapper").style.display == "none") | requestedUpdate) { //tracking requestedUpdate may be all that's needed
                 populateSheet(playerData.playerList[charName]);
-                /*if (typeof selectedUnit !== "undefined" && playerData.unitList[selectedUnit].controlledBy == charName) {
-                    populateEditChar(playerData, playerData.unitList[selectedUnit].unitNum)
-                } else if (typeof selectedInitiative !== "undefined" && playerData.initiativeList[selectedInitiative].controlledBy == charName) {
-                    populateEditChar(playerData, playerData.initiativeList[selectedInitiative].unitNum)
-                } else {
-                    populateEditChar(playerData, playerData.playerList[charName].unitNum);
-                    populateSkills(playerData.playerList[charName].skills);
-                }*/
             } else {
                 updateImages(playerData.playerList[charName])
-                /*if (typeof selectedUnit !== "undefined" && playerData.unitList[selectedUnit].controlledBy == charName) {
-                    updateImages(playerData.unitList[selectedUnit])
-                } else if (typeof selectedInitiative !== "undefined" && playerData.initiativeList[selectedInitiative].controlledBy == charName) {
-                    updateImages(playerData.initiativeList[selectedInitiative])
-                } else {
-                    updateImages(playerData.playerList[charName])
-                }*/
             }
             // populate initiative
             document.getElementById("initiativeDiv").innerHTML = "";
-            document.getElementById("unitDiv").innerHTML = "";
+            document.getElementById("unitsDiv").innerHTML = "";
             if (playerData.inInit) {
               if (playerData.initiativeList[playerData.initiativeCount].controlledBy == charName) {
                   //populate the bottom div with all the appropriate options
@@ -161,11 +141,7 @@ window.onload = function() {
               document.getElementById("unitDivContainer").style.display = "none";
               for (var i = 0; i < playerData.initiativeList.length; i++) {
                   tmpHTML = `<div style="display:flex; height:40px;" onclick="selectInitiative(${i})">`
-                  if (typeof selectedInitiative !== "undefined" && i == selectedInitiative) {
-                      tmpHTML += `<div class="selectedInit">`;
-                  } else {
-                      tmpHTML += `<div class="nonSelectedInit">`;
-                  }
+                  tmpHTML += `<div class="InitEntry">`;
                   tmpHTML += '<div style="float:left; padding:7px;">' + playerData.initiativeList[i].charName + '</div><div style="float:right;">' + playerData.initiativeList[i].initiative +
                   '</div></div><div id="activeInit"><-</div></div>';
                   document.getElementById("initiativeDiv").innerHTML += tmpHTML;
@@ -180,29 +156,15 @@ window.onload = function() {
               }
             } else {
               document.getElementById("movementDiv").style.display = "none";
-              //document.getElementById("movement").style.display = "none";
               document.getElementById("initiativeDivContainer").style.display = "none";
               document.getElementById("unitDivContainer").style.display = "block";
               for (var i = 0; i < playerData.unitList.length; i++) {
-                  tmpHTML = `<div style="display:flex; height:40px;" onclick="selectUnit(this, ${playerData.unitList[i].unitNum})"`
-                  if (typeof selectedUnit !== "undefined" && playerData.unitList[i].unitNum == selectedUnit) {
-                      tmpHTML += `class="selected"><div>`;
-                  } else {
-                      tmpHTML += `class="nonSelected"><div>`;
-                  }
+                  tmpHTML = `<div style="display:flex; height:40px;" onclick="selectUnit(this, ${i})"`
+                  tmpHTML += `class="unitListEntry"><div>`;
                   tmpHTML += '<div style="float:left; padding:7px;">' + playerData.unitList[i].charName + '</div></div></div>';
-                  document.getElementById("unitDiv").innerHTML += tmpHTML;
+                  document.getElementById("unitsDiv").innerHTML += tmpHTML;
               }
             }
-
-            //update player list
-            /*document.getElementById("connectedPlayers").innerHTML = "";
-            for (var i = 0; i < Object.keys(playerData.playerList).length; i++) {
-              tmpPlayerName = Object.keys(playerData.playerList)[i];
-              if (playerData.playerList[tmpPlayerName].connected) {
-                document.getElementById("connectedPlayers").innerHTML += tmpPlayerName + "<br >";
-              }
-            }*/
 
             //handle request for init roll
             if (playerData.playerList[charName].requestInit && document.getElementById("promptDiv").innerHTML == "") {
@@ -345,45 +307,36 @@ function mapClick(e, x, y) {
         relative_x = e.offsetY * 16 / zoomSize;
         //console.log(relative_x + ", " + relative_y);
         if (typeof testEffect !== "undefined"){
-
             return;
         }
-
+        if (e.currentTarget.attributes.units != ""){
+            i = parseInt(e.currentTarget.attributes.units.split(" ")[0]);
+            selectUnit(e, i)
+            return;
+        }
         if (playerData.inInit) {
             socket.emit('locate_unit', {requestingPlayer: charName, moveType: document.getElementById("movementSelector").selectedIndex, selectedUnit: playerData.initiativeList[playerData.initiativeCount].unitNum, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room});
         } else {
-            if (typeof selectedInitiative === "undefined" && typeof selectedUnit === "undefined") {
-                socket.emit('locate_unit', {requestingPlayer: charName, selectedUnit: playerData.playerList[charName].unitNum, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room});
-            } else if (typeof selectedInitiative !== "undefined") {
-                socket.emit('locate_unit', {requestingPlayer: charName, selectedUnit: playerData.initiativeList[selectedInitiative].unitNum, xCoord: x, relative_x: relative_x, relative_y: relative_y, yCoord: y, room: room});
-            } else if (typeof selectedUnit !== "undefined") {
-                socket.emit('locate_unit', {requestingPlayer: charName, selectedUnit: selectedUnit, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room});
+            if (typeof selectedUnits[0] !== "undefined") {
+                socket.emit('locate_unit', {requestingPlayer: charName, selectedUnit: selectedUnits[0], xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room});
+            } else {
+            socket.emit('locate_unit', {requestingPlayer: charName, selectedUnit: playerData.playerList[charName].unitNum, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room});
             }
         }
     } catch (error) {
         socket.emit("error_handle", room, error);
     }
 }
+
 function selectInitiative(initiativeNum) {
     try {
-        if (typeof selectedInitiative !== "undefined") {
-            if (initiativeNum == selectedInitiative) {
-                document.getElementById("initiativeDiv").children[initiativeNum].children[0].className = "nonSelectedInit";
-                selectedInitiative = undefined;
-            } else {
-                document.getElementById("initiativeDiv").children[selectedInitiative].children[0].className = "nonSelectedInit";
-                document.getElementById("initiativeDiv").children[initiativeNum].children[0].className = "selectedInit";
-                selectedInitiative = initiativeNum;
+        for (i=0; i<playerData.unitList.length; i++){
+            if (playerData.unitList[i].initNum == initiativeNum) {
+                selectUnit([], i);
+                return;
             }
-        } else {
-            document.getElementById("initiativeDiv").children[initiativeNum].children[0].className = "selectedInit";
-            selectedInitiative = initiativeNum;
         }
-        if (typeof selectedInitiative !== "undefined" && playerData.initiativeList[selectedInitiative].controlledBy == charName) {
-            populateEditChar(playerData, playerData.initiativeList[selectedInitiative].unitNum);
-        } else {
-            populateEditChar(playerData, 0);
-        }
+
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
@@ -414,27 +367,20 @@ function joinGame() {
         socket.emit("error_handle", room, e);
     }
 }
-function selectUnit(e, selectedUnitNum) {
+function selectUnit(e, unitNum) {
     try {
-        if (typeof selectedUnit == "undefined") {
-            e.className = "selected";
-            selectedUnit = selectedUnitNum;
+       if (selectedUnits.length == 0) {
+            selectedUnits = [unitNum];
+        } else if (selectedUnits.includes(unitNum)) {
+            selectedUnits.splice(selectedUnits.indexOf(unitNum), 1)
+        } else if (e.shiftKey) {
+            tmpUnits = selectedUnits;
+            selectedUnits = tmpUnits
+            selectedUnits.push(unitNum);
         } else {
-            for (i=0; i<document.getElementById("unitDiv").children.length; i++) {
-                document.getElementById("unitDiv").children[i].className = "nonSelected";
-            }
-            if (selectedUnit == selectedUnitNum) {
-                selectedUnit = undefined;
-            } else {
-                e.className = "selected";
-                selectedUnit = selectedUnitNum;
-            }
+            selectedUnits = [unitNum];
         }
-        /*if (typeof selectedUnit !== "undefined") {
-            if (playerData.unitList[selectedUnit].controlledBy == charName) {populateEditChar(playerData, selectedUnit)}
-        } else {
-            populateEditChar(playerData, playerData.playerList[charName].unitNum)
-        }*/
+        drawSelected(playerData);
     } catch (error) {
         socket.emit("error_handle", room, error);
     }

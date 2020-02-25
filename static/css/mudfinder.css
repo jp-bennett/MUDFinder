@@ -131,6 +131,12 @@ input {
     overflow: auto;
     width:88%;
 }
+.InitEntry {
+    border-radius: 5px;
+    padding: 3px;
+    overflow: auto;
+    width:88%;
+}
 
 div.activeUnit {
     background: firebrick;
@@ -141,12 +147,13 @@ div.activeUnit {
     padding: 3px;
     overflow: auto;
 }
-
-.selected {
-    background: cornflowerblue;
+.unitListEntry {
     border-radius: 5px;
     padding: 3px;
     overflow: auto;
+}
+div.selected {
+    background: cornflowerblue !important;
 }
 
 #activeInit {

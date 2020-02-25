@@ -1,4 +1,4 @@
-var selectedInitiative;
+//var selectedInitiative;
 var selectedUnits = [];
 var gmData;
 var zoomSize = 70;
@@ -103,6 +103,7 @@ window.onload = function() {
     socket.on('gm_map', function(msg) {
         drawMap(msg);
         mapObject = msg;
+        multiSelectToggle(document.getElementById("multiSelect"));
     });
     socket.on('gm_map_update', function(msg) {
         updateMap(msg, mapObject);
@@ -128,9 +129,11 @@ window.onload = function() {
             // populate units
             document.getElementById("unitsDiv").innerHTML = "";
             if (document.getElementById("units").style.display == "none"){
-                if (typeof selectedInitiative !== "undefined") {
+                /*if (typeof selectedInitiative !== "undefined") {
                     populateEditChar(gmData, gmData.initiativeList[selectedInitiative].unitNum)
-                } else if (typeof selectedUnits[0] !== "undefined") {
+                } else*/
+
+                if (typeof selectedUnits[0] !== "undefined") {
                     populateEditChar(gmData, selectedUnits[0])
                 } else {
                     populateEditChar(gmData, 0)
@@ -141,10 +144,9 @@ window.onload = function() {
                 tmpUnit = `
                   <div style="display:flex;">
                      <div onclick="selectUnit(event, ${i})" `;
+                     tmpUnit += 'class="unitListEntry"'
                        if (selectedUnits.includes(i)) {
-                           tmpUnit += 'class="selected"'
-                       } else {
-                           tmpUnit += 'class="nonSelected"'
+                           tmpUnit += 'class=" selected"'
                        }
                        tmpUnit += `style="width:100%;">
                       <div style="float:left; padding:7px;">  ${gmData.unitList[i].charName}
@@ -168,11 +170,7 @@ window.onload = function() {
                 tmpHTML = `
                   <div style="display:flex;">
                      <div onclick="selectInitiative(${i})"`;
-                     if (typeof selectedInitiative !== "undefined" && selectedInitiative == i) {
-                         tmpHTML += 'class="selectedInit">';
-                     } else {
-                         tmpHTML += 'class="nonSelectedInit">';
-                     }
+                     tmpHTML += 'class="InitEntry">';
                       tmpHTML += `<div style="float:left; padding:7px;">  ${gmData.initiativeList[i].charName}
                       </div>
                       <div style="float:left; padding:7px;">  ${(gmData.initiativeList[i].HP != null) ? gmData.initiativeList[i].HP + "/" + gmData.initiativeList[i].maxHP : "" }
@@ -311,7 +309,7 @@ function mapTool(e, tileName) {
         if (multiSelect) {
             ds.setSelectables(document.getElementsByClassName('selectableTile'));
         }
-        e.target.parentElement.className="selected"
+        e.target.parentElement.classList.add("selected");
         selectedTool = e.target;
     } catch (error) {
         socket.emit("error_handle", room, error);
@@ -502,48 +500,31 @@ function mapClick(e, x, y) {
             return;
         }
         if (typeof testEffect !== "undefined"){
-
             return;
         }
-
-        //console.log("Clicked!" + x + ", " + y);
         relative_y = e.offsetX * 16 / zoomSize;
         relative_x = e.offsetY * 16 / zoomSize;
         if (typeof selectedTool !== "undefined") {
             tiles = [{newTile: selectedTool.id, xCoord: x, yCoord: y}]
             socket.emit('map_edit', {tiles: tiles, room: room, gmKey: gmKey});
-            return
-        } else if (typeof selectedInitiative !== "undefined") {
-            socket.emit('locate_unit', {selectedInit: selectedInitiative, moveType: document.getElementById("movementSelector").selectedIndex, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room, gmKey: gmKey});
-            //return;
-        } else if (typeof selectedUnits[0] !== "undefined" && !e.shiftKey) {
+            return;
+        }
+        if (e.currentTarget.attributes.units != ""){
+            i = parseInt(e.currentTarget.attributes.units.split(" ")[0]);
+            selectUnit(e, i)
+            return;
+        }
+        if (typeof selectedUnits[0] !== "undefined" && !e.shiftKey) {
             socket.emit('locate_unit', {selectedUnit: selectedUnits[0], moveType: document.getElementById("movementSelector").selectedIndex, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room, gmKey: gmKey});
-            //return;
         } else {
             if (gmData.inInit && gmData.initiativeList[gmData.initiativeCount].controlledBy == "gm") {
                 socket.emit('locate_unit', {selectedInit: gmData.initiativeCount, moveType: document.getElementById("movementSelector").selectedIndex, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room, gmKey: gmKey});
-                //return
             }
         }
         if (!e.shiftKey) {
             deselectAll()
             populateEditChar(gmData,0);
         }
-        if (e.currentTarget.attributes.units != ""){
-            i = parseInt(e.currentTarget.attributes.units.split(" ")[0]);
-            selectUnit(e, i)
-            //document.getElementById("unitsDiv").children[i].children[0].className = "selected";
-
-            //selectedUnits.push(i);
-            //populateEditChar(gmData,i);
-        }
-        //for (i=0;i<gmData.unitList.length; i++) {
-        //    if (typeof gmData.unitList[i].x !== "undefined" && gmData.unitList[i].x == x && gmData.unitList[i].y == y){
-        //        document.getElementById("unitsDiv").children[i].children[0].className = "selected";
-        //        selectedUnits.push(i);
-        //        populateEditChar(gmData,i);
-        //    }
-        //}
     } catch (error) {
         socket.emit("error_handle", room, error);
     }
@@ -555,17 +536,11 @@ function changeHP(initnum) {
 
 function deselectAll() {
     try {
-        for(var i = 0; i < document.getElementById("initiativeDiv").children.length; i++){
-            document.getElementById("initiativeDiv").children[i].children[0].className = "nonSelectedInit";
-        }
-        selectedInitiative = undefined;
-        for(var i = 0; i < document.getElementById("unitsDiv").children.length; i++){
-            document.getElementById("unitsDiv").children[i].children[0].className = "nonSelectedInit";
+        nodes = document.getElementsByClassName("selected");
+        while (nodes.length > 0) {
+            nodes[0].classList.remove("selected");
         }
         selectedUnits = [];
-        for(var i = 0; i < document.getElementById("mapTools").children.length; i++){
-            document.getElementById("mapTools").children[i].className = "nonSelected";
-        }
         selectedTool = undefined;
     } catch (e) {
         socket.emit("error_handle", room, e);
@@ -574,26 +549,6 @@ function deselectAll() {
 
 function selectInitiative(initiativeNum) {
     try {
-        /*if (typeof selectedInitiative !== "undefined") {
-            if (initiativeNum == selectedInitiative) {
-                document.getElementById("initiativeDiv").children[initiativeNum].children[0].className = "nonSelectedInit";
-                selectedInitiative = undefined;
-            } else {
-                deselectAll();
-                //document.getElementById("initiativeDiv").children[selectedInitiative].children[0].className = "nonSelectedInit";
-                document.getElementById("initiativeDiv").children[initiativeNum].children[0].className = "selectedInit";
-                selectedInitiative = initiativeNum;
-            }
-        } else {
-            deselectAll();
-            document.getElementById("initiativeDiv").children[initiativeNum].children[0].className = "selectedInit";
-            selectedInitiative = initiativeNum;
-        }
-        if (typeof selectedInitiative !== "undefined") {
-            populateEditChar(gmData, gmData.initiativeList[selectedInitiative].unitNum);
-        } else {
-            populateEditChar(gmData, 0);
-        }*/
         selectUnit([], gmData.initiativeList[initiativeNum].unitNum)
     } catch (e) {
         socket.emit("error_handle", room, e);
@@ -602,43 +557,16 @@ function selectInitiative(initiativeNum) {
 
 function selectUnit(e, unitNum) {
     try {
+        selectedTool = undefined;
         if (selectedUnits.length == 0) {
-            deselectAll();
-            document.getElementById("unitsDiv").children[unitNum].children[0].className = "selected";
-            if (gmData.unitList[unitNum].initNum != -1) {
-                document.getElementById("initiativeDiv").children[gmData.unitList[unitNum].initNum].children[0].className = "selectedInit";
-                selectedInitiative = gmData.unitList[unitNum].initNum;
-            }
             selectedUnits = [unitNum];
         } else if (selectedUnits.includes(unitNum)) {
-            document.getElementById("unitsDiv").children[unitNum].children[0].className = "nonSelected";
-            if (gmData.unitList[unitNum].initNum != -1) {
-                document.getElementById("initiativeDiv").children[gmData.unitList[unitNum].initNum].children[0].className = "nonSelectedInit";
-                selectedInitiative = undefined;
-            }
             selectedUnits.splice(selectedUnits.indexOf(unitNum), 1)
         } else if (e.shiftKey) {
             tmpUnits = selectedUnits;
-            deselectAll()
             selectedUnits = tmpUnits
             selectedUnits.push(unitNum);
-            for (i=0; i<selectedUnits.length;i++) {
-                document.getElementById("unitsDiv").children[selectedUnits[i]].children[0].className = "selected";
-                if (gmData.unitList[unitNum].initNum != -1) {
-                    document.getElementById("initiativeDiv").children[gmData.unitList[i].initNum].children[0].className = "selectedInit";
-                    selectedInitiative = gmData.unitList[unitNum].initNum;
-                }
-            }
         } else {
-            //for (i = 0; i < selectedUnits.length; i++) {
-            //    document.getElementById("unitsDiv").children[selectedUnits[i]].children[0].className = "nonSelected";
-            //}
-            deselectAll()
-            document.getElementById("unitsDiv").children[unitNum].children[0].className = "selected";
-            if (gmData.unitList[unitNum].initNum != -1) {
-                document.getElementById("initiativeDiv").children[gmData.unitList[unitNum].initNum].children[0].className = "selectedInit";
-                selectedInitiative = gmData.unitList[unitNum].initNum;
-            }
             selectedUnits = [unitNum];
         }
         if (typeof selectedUnits[0] !== "undefined") {
@@ -646,6 +574,7 @@ function selectUnit(e, unitNum) {
         } else {
             populateEditChar(gmData, 0);
         }
+        drawSelected(gmData);
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
@@ -785,13 +714,14 @@ function multiSelectToggle(element) {
         area: document.getElementById("mapContainer")
         });
         multiSelect = true;
-        document.getElementById("mapContainer").className = "";
+        document.getElementById("mapContainer").classList.remove("dragscroll");
     } else {
-        ds.stop();
+        if (typeof ds !== "undefined")
+            ds.stop();
         ds = undefined;
         multiSelect = false;
         if (mapObject.length > 0) {
-            document.getElementById("mapContainer").className = "dragscroll";
+            document.getElementById("mapContainer").classList.add("dragscroll");
         }
     }
     dragscroll.reset();
