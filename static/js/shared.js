@@ -208,7 +208,7 @@ function updateMap(newMapArray, mapArray) {
         for (i = 0; i < newMapArray.length; i++) {
             x = newMapArray[i].x;
             y = newMapArray[i].y;
-            mapArray[y][x] = newMapArray[i]
+            mapArray[y][x] = newMapArray[i];
 
             document.getElementById(`tile${x},${y}`).remove();
             newMapTile = document.createElement("div");
@@ -397,8 +397,8 @@ function drawUnits(Data) { //Give every addition a classname, that can be iterat
                 tmpMovDiv.style.width = zoomSize/10 + "px";
                 tmpMovDiv.style.height = zoomSize/10 + "px";
                 tmpMovDiv.style.position = "absolute";
-                tmpMovDiv.style.left = moveLoc[0]*zoomSize+zoomSize/2.2 + "px";
-                tmpMovDiv.style.top = moveLoc[1]*zoomSize+zoomSize/2.2 + "px";
+                tmpMovDiv.style.left = moveLoc[1]*zoomSize+zoomSize/2.2 + "px";
+                tmpMovDiv.style.top = moveLoc[0]*zoomSize+zoomSize/2.2 + "px";
                 tmpMovDiv.style.background = Data.initiativeList[Data.initiativeCount].color;
                 document.getElementById("mapGraphic").appendChild(tmpMovDiv);
             }
@@ -429,7 +429,8 @@ function enableTab(tabName) {
         //hide all of them
         children = document.getElementById("activeTabDiv").children
         for (x = 0; x < children.length; x++) {
-            children[x].style.display = "none";
+            if (children[x].id !== "leftPopButton")
+                children[x].style.display = "none";
         }
         document.getElementById(tabName).style.display="block";
         if (tabName == "inventory") {
@@ -1103,10 +1104,16 @@ function locateEffect(effect, x, y) {
     }
 }
 
-function showEffectControls() { //TODO: add a button to add effect, rather than automatically doing so.
+function showEffectControls() {
+    if (isGM) {
     document.getElementById("activeTabDiv").style.height = "calc(80% - 40px)";
     document.getElementById("bottomDiv").style.display = "block";
     document.getElementById("showEffectDivButton").onclick = hideEffectControls;
+    } else {
+        hideAllBottomDivs();
+        removeContents(document.getElementById("bottomEffectDiv"));
+        document.getElementById("bottomEffectDiv").style.display = "block";
+    }
 
     table = document.createElement("table");
     table.id = "effectTable";
@@ -1128,7 +1135,7 @@ function showEffectControls() { //TODO: add a button to add effect, rather than 
     tr.appendChild(th);
 
     table.appendChild(tr);
-    document.getElementById("bottomDiv").appendChild(table);
+    document.getElementById("bottomEffectDiv").appendChild(table);
 
     for (i=0; i<effects.length; i++) {
         tr = document.createElement("tr");
@@ -1210,6 +1217,15 @@ function showEffectControls() { //TODO: add a button to add effect, rather than 
     td.appendChild(colorSelect)
     tr.appendChild(td);
 
+    td = document.createElement("td");
+    button = document.createElement("button");
+    button.innerText = "Cancel";
+    button.id = "cancelEffect";
+
+
+    td.appendChild(button);
+    tr.appendChild(td);
+
     table.appendChild(tr);
     effectSizeSelect.onchange = function() {deleteEffect(testEffect); testEffect = generateEffect("circle", parseInt(effectSizeSelect.value), colorSelect.value);}
     effectSizeOption = document.createElement("option");
@@ -1244,6 +1260,15 @@ function showEffectControls() { //TODO: add a button to add effect, rather than 
     button.onclick = function () {
         document.getElementById("addEffectRow").style.display = "table-row";
         testEffect = generateEffect("circle", 0, "blueviolet");
+
+        document.getElementById("cancelEffect").onclick = function () {
+            deleteEffect(testEffect);
+            testEffect = undefined;
+            document.getElementById("addEffectRow").style.display = "none";
+            document.getElementById("mapContainer").onmousemove = null;
+            document.getElementById("mapContainer").onclick = null;
+
+        }
 
         document.getElementById("mapContainer").onclick = function(e){
             if (isDragging) {
@@ -1292,12 +1317,11 @@ function hideEffectControls() {
     }
     document.getElementById("mapContainer").onmousemove = null;
     document.getElementById("mapContainer").onclick = null;
-    /*while (document.getElementById("promptDiv").firstChild) {
-        document.getElementById("promptDiv").firstChild.remove();
-    }*/
     document.getElementById("effectTable").remove();
+    if (isGM) {
     document.getElementById("bottomDiv").style.display = "none";
     document.getElementById("activeTabDiv").style.height = "calc(100% - 40px)";
+    }
     document.getElementById("showEffectDivButton").onclick = showEffectControls;
 
 

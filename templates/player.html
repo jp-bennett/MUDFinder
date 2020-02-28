@@ -50,7 +50,7 @@
       <div class="tab" onClick="enableTab('lore')">Lore</div>
     </div>
     <div id="centerDiv" class="centerDiv">
-      <div class="leftDivContainer">
+      <div class="leftDivContainer" id="leftDivContainer">
         <div id="initiativeDivContainer">
           <div style="text-align:center;">Initiative<br></div>
           <div class="leftDiv" id="initiativeDiv"></div>
@@ -60,7 +60,8 @@
           <div style="text-align:center;">Units<br></div>
           <div class="leftDiv" id="unitsDiv"></div>
         </div>
-               <div class="chatContainerDiv">
+          <div class="chatContainerDiv">
+            Chat:
           <div id="chatText" class="chatText"></div>
           <div id="chatInput" class="chatInput">
             <form action="javascript:sendChat()">
@@ -68,33 +69,21 @@
             </form>
           </div>
         </div>
-        <!--<div class="connectedPlayersContainer">Connected Players
-          <div id="connectedPlayers" class="connectedPlayers"><br></div>
-        </div>
-        -->
       </div>
       <div id="activeTabDiv">
+        <div id="leftPopButton">
+            <img src="static/images/up.svg" style="max-height: 100%;">
+          </div>
         <div id="mapWrapper">
-          <div id="mapContainer" class="dragscroll">
+          <div id="mapContainer" class="noScrollBar dragscroll">
             <div id="mapForm">
             </div>
             <div style="display:none;" id='mapGraphic'></div>
           </div>
-          <!--<div id="zoomControls" style="display:none;text-align:center; float:right; font-size: 5em;"> <div id="zoomIn" onclick="zoomIn()"> + </div> <div id="zoomOut" onclick="zoomOut()">-</div></div>-->
-          <div id="mapTools">
-            <button id="showEffectDivButton" onclick="showEffectControls()">Effect</button>
-            <div id="movementDiv">
-              <button id="movementButton" style="float:left;" onclick="resetMovement()">Reset Movement</button>
-              <div style="float:left;" id="movement"></div>
-              <select id="movementSelector" style="float:left;">
-              <option>5 ft step</option>
-              <option selected>Move Action</option>
-              <option>Full Round Move</option>
-              <option>unlimited</option>
-              <option>untracked</option>
-              </select>
-            </div>
+          <div id="bottomPopupButton">
+            <img src="static/images/up.svg">
           </div>
+
         </div><!--mapWrapper-->
         <div id="charWrapper" style="line-height: 1.7; overflow:auto;">
           <div style="width:100%; overflow:auto" id="sheetHeader">
@@ -178,7 +167,7 @@
             </div>
           </div>
 
-          <div style="overflow: auto;height: calc(100% - 200px);position: absolute; width:100%;" id="sheetContent">
+          <div style="overflow: auto;height: calc(100% - 200px);position: absolute; " id="sheetContent">
             <div class="sheetPage" id="sheetPageOne">
               <div style="overflow:auto; width:495px; float:left;" id="sheetLeftColumn">
                 <div style="text-align:center; float:left;     margin-right: 20px;">
@@ -1184,7 +1173,28 @@
         </div><!--lore-->
       </div>
     <div id="bottomDiv" class="bottomDiv">
-      <div id="promptDiv" class="promptDiv"></div>
+      <div id="movementDiv">
+        <button id="movementButton" style="float:left;" onclick="resetMovement()">Reset Movement</button>
+        <div style="float:left;" id="movement"></div>
+        <select id="movementSelector" style="float:left;">
+        <option>5 ft step</option>
+        <option selected>Move Action</option>
+        <option>Full Round Move</option>
+        <option>unlimited</option>
+        <option>untracked</option>
+        </select>
+      </div>
+      <div id="bottomTabsDiv" style="float:left;">
+        <button onclick="showBottomAttackDiv()">Attack</button><br>
+        <button onclick="showBottomItemDiv()">Item</button><br>
+        <button onclick="showBottomSpellDiv()">Spell</button><br>
+        <button id="showEffectDivButton" onclick="showEffectControls()">Effect</button><br>
+      </div>
+      <div id="bottomAttackDiv" style="display:none;float:left;"></div>
+      <div id="bottomItemDiv" style="display:none;float:left;"></div>
+      <div id="bottomSpellDiv" style="display:none;float:left;"></div>
+      <div id="bottomEffectDiv" style="display:none;float:left;"></div>
+      <div id="promptDiv" class="promptDiv" style="dispay:none; float:left;"></div>
     </div>
   </div>
   <script type="text/javascript" src="static/js/socket.io.js"></script>

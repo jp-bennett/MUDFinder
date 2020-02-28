@@ -69,7 +69,7 @@ window.onload = function() {
         alert ("Page initialization failed: " + error);
     }
     try {
-        socket = io.connect(document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
+        socket = io.connect(document.domain + ':5000', {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
     } catch (error) {
         alert("Could not connect to websocket: " + error);
     }
@@ -182,6 +182,7 @@ window.onload = function() {
                 tmpHTML += '</form>';
                 tmpHTML += '<button onclick="sendInit()">Send Initiative</button>';
                 document.getElementById("promptDiv").innerHTML = tmpHTML;
+                document.getElementById("promptDiv").style.display = "block";
             }
         requestedUpdate = false;
 
@@ -219,6 +220,8 @@ window.onload = function() {
         }
     });
     socket.on("update_inventory", populateInventory);
+    hideBottomDiv();
+    showLeftDiv();
 
 } //end onload
 window.onunload = function() {
@@ -264,6 +267,7 @@ function sendInit() {
         }
         document.getElementById("bottomDiv").style.display = "none";
         document.getElementById("activeTabDiv").style.height = "calc(100% - 40px)";
+        document.getElementById("promptDiv").style.display = "none";
         document.getElementById("promptDiv").innerHTML = "";
         socket.emit('send_initiative', {initiative: tmpInit, charName: charName, room: room});
     } catch (e) {
@@ -987,7 +991,7 @@ function populateSheet (data) {
 
         document.getElementById("sheetBAB").value = data.BAB;
         document.getElementById("sheetBAB").onchange();
-            addWeaponForm(true);
+        addWeaponForm(true);
         for (var i = 0; i < data.weapons.length; i++) {
             document.getElementsByClassName("sheetWeaponName")[i].value = data.weapons[i][0];
             document.getElementsByClassName("sheetWeaponAttack")[i].value = data.weapons[i][1];
@@ -1096,8 +1100,6 @@ function addWeaponForm(reset) {
                   <div style="float:left; font-size:0.6em; width:64px;margin-right:5px;margin-left:1px;">Range</div>
                   <div style="float:left; font-size:0.6em; width:64px;">Ammo</div>
                 </div>
-
-
     `;
     box.append(newDiv);
 
@@ -1465,4 +1467,102 @@ function populatePreparedSpells() {
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
+}
+
+function hideBottomDiv() {
+    document.getElementById("mapContainer").style.height = "100%";
+    document.getElementById("activeTabDiv").style.height = "100%";
+    document.getElementById("bottomPopupButton").style.top = "calc(100% - 80px)";
+    document.getElementById("bottomPopupButton").onclick = function() {showBottomDiv();};
+    document.getElementById("bottomPopupButton").children[0].src = "static/images/up.svg";
+    document.getElementById("bottomDiv").style.display="none";
+}
+
+function showBottomDiv() {
+    document.getElementById("mapContainer").style.height = "100%";
+    document.getElementById("activeTabDiv").style.height = "calc(80% - 40px)";
+    document.getElementById("bottomPopupButton").style.top = "calc(100% - 40px)";
+    document.getElementById("bottomPopupButton").onclick = function() {hideBottomDiv();};
+    document.getElementById("bottomPopupButton").children[0].src = "static/images/down.svg";
+    document.getElementById("bottomDiv").style.display="block";
+    showBottomAttackDiv();
+}
+
+function hideLeftDiv() {
+    document.getElementById("activeTabDiv").style.width = "100%";
+    document.getElementById("activeTabDiv").style.left = "0px";
+    document.getElementById("leftPopButton").onclick = function() {showLeftDiv();};
+    document.getElementById("leftPopButton").children[0].src = "static/images/right.svg";
+    document.getElementById("leftDivContainer").style.display="none";
+}
+
+function showLeftDiv() {
+    document.getElementById("activeTabDiv").style.width = "80%";
+    document.getElementById("activeTabDiv").style.left = "20%";
+    document.getElementById("leftPopButton").onclick = function() {hideLeftDiv();};
+    document.getElementById("leftPopButton").children[0].src = "static/images/left.svg";
+    document.getElementById("leftDivContainer").style.display="block";
+}
+
+function hideAllBottomDivs() {
+    document.getElementById("bottomAttackDiv").style.display = "none";
+    document.getElementById("bottomItemDiv").style.display = "none";
+    document.getElementById("bottomSpellDiv").style.display = "none";
+    document.getElementById("bottomEffectDiv").style.display = "none";
+    document.getElementById("promptDiv").style.display = "none";
+}
+
+function showBottomAttackDiv() {
+    hideAllBottomDivs();
+    removeContents(document.getElementById("bottomAttackDiv"));
+    document.getElementById("bottomAttackDiv").style.display = "block";
+    var data = playerData.playerList[charName];
+    for (var i = 0; i < data.weapons.length; i++) {
+        box = document.getElementById("bottomAttackDiv");
+        newDiv = document.createElement("div");
+        newDiv.style.borderStyle = "solid";
+        newDiv.style.borderWidth = "2px";
+        newDiv.style.marginRight = "0px";
+        newDiv.style.float = "left";
+        newDiv.style.marginTop = "2px";
+        newDiv.innerHTML = `
+            <div style="overflow:auto;">
+              <input style="float:left;width:130px;margin:1px;height:22px;margin-right:5px;" class="bottomWeaponName">
+              <input style="float:left;width:60px;margin:1px;height:22px;margin-right:5px;" class="bottomWeaponAttack">
+              <input style="float:left;width:60px;margin:1px;height:22px;" class="bottomWeaponDamage">
+            </div><div style="overflow:auto;">
+              <div style="float:left; font-size:0.6em; width:134px;margin-right:5px;margin-left:1px;">Weapon</div>
+              <div style="float:left; font-size:0.6em; width:64px;margin-right:5px;margin-left:1px;">Attack</div>
+              <div style="float:left; font-size:0.6em; width:64px;margin-left:1px;">Damage</div>
+            </div><div style="overflow:auto;">
+              <input style="float:left;width:60px;margin:1px;height:22px;margin-right:5px;" class="bottomWeaponCrit">
+              <input style="float:left;width:60px;margin:1px;height:22px;margin-right:5px;" class="bottomWeaponType">
+              <input style="float:left;width:60px;margin:1px;height:22px;margin-right:5px;" class="bottomWeaponRange">
+              <input style="float:left;width:60px;margin:1px;height:22px;" class="bottomWeaponAmmo">
+            </div><div style="overflow:auto;">
+              <div style="float:left; font-size:0.6em; width:64px;margin-right:5px;margin-left:1px;">Critical</div>
+              <div style="float:left; font-size:0.6em; width:64px;margin-right:5px;margin-left:1px;">Type</div>
+              <div style="float:left; font-size:0.6em; width:64px;margin-right:5px;margin-left:1px;">Range</div>
+              <div style="float:left; font-size:0.6em; width:64px;">Ammo</div>
+            </div>`;
+        box.append(newDiv);
+
+        document.getElementsByClassName("bottomWeaponName")[i].value = data.weapons[i][0];
+        document.getElementsByClassName("bottomWeaponAttack")[i].value = data.weapons[i][1];
+        document.getElementsByClassName("bottomWeaponDamage")[i].value = data.weapons[i][2];
+        document.getElementsByClassName("bottomWeaponCrit")[i].value = data.weapons[i][3];
+        document.getElementsByClassName("bottomWeaponType")[i].value = data.weapons[i][4];
+        document.getElementsByClassName("bottomWeaponRange")[i].value = data.weapons[i][5];
+        document.getElementsByClassName("bottomWeaponAmmo")[i].value = data.weapons[i][6];
+    }
+
+}
+function showBottomItemDiv() {
+    hideAllBottomDivs();
+    document.getElementById("bottomItemDiv").style.display = "block";
+}
+function showBottomSpellDiv() {
+    hideAllBottomDivs();
+    document.getElementById("bottomSpellDiv").style.display = "block";
+
 }

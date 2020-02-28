@@ -22,19 +22,16 @@
       <div id="activeTabDiv">
         <div id="mapWrapper">
           <div id="mapContainer" class="dragscroll">
-            <div id="mapForm">
-
-            </div>
+            <div id="mapForm"></div>
             <div style="display:none;" id='mapGraphic' ></div>
           </div>
-          <!--<div id="zoomControls" style="text-align:center; float:right; font-size: 5em;"> <div id="zoomIn" onclick="zoomIn()"> + </div> <div id="zoomOut" onclick="zoomOut()">-</div></div>-->
           <div id="mapTools">
             <div id="movementDiv">
               <div style="float:left;" id="movement"></div>
             </div>
           </div>
         </div>
-                <div id="lore">
+        <div id="lore">
           <div id="lorePage" class="lorePage"></div>
           <div id="loreTabs"></div>
         </div>
@@ -47,12 +44,11 @@
           <div id="connectedPlayers" class="connectedPlayers"></br></div>
         </div>
       </div>
-    <div id="bottomDiv" class="bottomDiv">
+      <div id="bottomDiv" class="bottomDiv"></div>
     </div>
   </div>
-<!--  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js" integrity="sha256-yr4fRk/GU1ehYJPAs8P4JlTgu0Hdsp4ZKrx8bDEDC3I=" crossorigin="anonymous"></script>-->
-  <script type="text/javascript" src="static/js/socket.io.js"></script>
 
+  <script type="text/javascript" src="static/js/socket.io.js"></script>
   <script type="text/javascript" charset="utf-8">
     url_ob = new URL(window.location.href);
     var room = url_ob.searchParams.get("room");
@@ -62,7 +58,7 @@
     var isGM = false;
     var charName = "";
     window.onload = function() {
-      socket = io.connect(document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
+      socket = io.connect(document.domain + ':5000', {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
     
     // verify our websocket connection is established
     socket.on('connect', function() {
@@ -176,6 +172,6 @@
 }
   </script>
   <script type="text/javascript" src="static/js/shared.js?time={{ current_time }}"></script>
-    <script type="text/javascript" src="static/js/dragscroll.js"></script>
+  <script type="text/javascript" src="static/js/dragscroll.js"></script>
 </body>
 </html>

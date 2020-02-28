@@ -246,7 +246,7 @@ class Session(object):
         if tmpUnit.hasted and not moveType == 0:
             maxMove = min(maxMove * 2, maxMove + 6)
         maxMove -= tmpUnit.distance
-        if maxMove < 0:
+        if maxMove < 0 and moveType != 3:
             maxMove = 0
         if tmpUnit.controlledBy == "gm":
             ignoreSeen = True

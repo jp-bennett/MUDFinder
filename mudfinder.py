@@ -82,7 +82,7 @@ def roll_dice(input_roll_string):
 
 # initialize Flask
 app = Flask(__name__)
-socketio = SocketIO(app, async_mode="eventlet")
+socketio = SocketIO(app, async_mode="eventlet", cors_allowed_origins="*")
 ROOMS = {}  # dict to track active rooms
 thread = None
 thread_lock = Lock()
@@ -692,10 +692,12 @@ def on_reset_movement(data):
     room = data['room']
     if check_room(room):
         tmpUnit = ROOMS[room].initiativeList[data['selectedInit']]
+        if tmpUnit.movePath == []:
+            return
         if "gmKey" in data.keys():
             if ROOMS[room].gmKey == data['gmKey']:
-                tmpUnit.x = tmpUnit.movePath[0][0]
-                tmpUnit.y = tmpUnit.movePath[0][1]
+                tmpUnit.x = tmpUnit.movePath[0][1]
+                tmpUnit.y = tmpUnit.movePath[0][0]
                 tmpUnit.location = [tmpUnit.movePath[0][0], tmpUnit.movePath[0][1]]
                 tmpUnit.movePath = []
                 tmpUnit.distance = 0
@@ -703,8 +705,8 @@ def on_reset_movement(data):
                 return
         else:
             if tmpUnit.controlledBy != "gm":
-                tmpUnit.x = tmpUnit.movePath[0][0]
-                tmpUnit.y = tmpUnit.movePath[0][1]
+                tmpUnit.x = tmpUnit.movePath[0][1]
+                tmpUnit.y = tmpUnit.movePath[0][0]
                 tmpUnit.location = [tmpUnit.movePath[0][0], tmpUnit.movePath[0][1]]
                 tmpUnit.movePath = []
                 tmpUnit.distance = 0
@@ -764,7 +766,7 @@ def on_locate_unit(data):
     elif ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] \
             and ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["seen"] \
             and ROOMS[room].unitList[data['selectedUnit']].controlledBy == data["requestingPlayer"]:
-        ROOMS[room].calc_path(tmpUnit, (data["yCoord"], data["xCoord"]), 5)
+        ROOMS[room].calc_path(tmpUnit, (data["yCoord"], data["xCoord"]), 3)
         if tmpUnit.revealsMap:
             revealedTiles = ROOMS[room].reveal_map(data['selectedUnit'])  # only some controlled units should do this
             emit('gm_map_update', revealedTiles, room=ROOMS[room].gmRoom)
