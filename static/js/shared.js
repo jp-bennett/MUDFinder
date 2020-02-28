@@ -1105,15 +1105,7 @@ function locateEffect(effect, x, y) {
 }
 
 function showEffectControls() {
-    if (isGM) {
-    document.getElementById("activeTabDiv").style.height = "calc(80% - 40px)";
-    document.getElementById("bottomDiv").style.display = "block";
-    document.getElementById("showEffectDivButton").onclick = hideEffectControls;
-    } else {
-        hideAllBottomDivs();
-        removeContents(document.getElementById("bottomEffectDiv"));
-        document.getElementById("bottomEffectDiv").style.display = "block";
-    }
+
 
     table = document.createElement("table");
     table.id = "effectTable";
@@ -1135,7 +1127,18 @@ function showEffectControls() {
     tr.appendChild(th);
 
     table.appendChild(tr);
-    document.getElementById("bottomEffectDiv").appendChild(table);
+        if (isGM) {
+    document.getElementById("activeTabDiv").style.height = "calc(80% - 40px)";
+    document.getElementById("bottomDiv").style.display = "block";
+    document.getElementById("showEffectDivButton").onclick = hideEffectControls;
+    document.getElementById("bottomDiv").appendChild(table);
+    } else {
+        hideAllBottomDivs();
+        removeContents(document.getElementById("bottomEffectDiv"));
+        document.getElementById("bottomEffectDiv").style.display = "block";
+        document.getElementById("bottomEffectDiv").appendChild(table);
+    }
+
 
     for (i=0; i<effects.length; i++) {
         tr = document.createElement("tr");

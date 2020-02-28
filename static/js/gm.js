@@ -108,7 +108,8 @@ window.onload = function() {
     });
     socket.on('gm_map_update', function(msg) {
         updateMap(msg, mapObject);
-        ds.addSelectables(document.getElementsByClassName('selectableTile'));
+        if (multiSelect)
+            ds.addSelectables(document.getElementsByClassName('selectableTile'));
     });
     socket.on('gm_update', function(msg) {
         try {
