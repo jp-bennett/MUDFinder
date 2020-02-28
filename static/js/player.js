@@ -130,10 +130,11 @@ window.onload = function() {
               if (playerData.initiativeList[playerData.initiativeCount].controlledBy == charName) {
                   //populate the bottom div with all the appropriate options
                   //Tab system?
-                  document.getElementById("movementDiv").style.display = "block";
-                  document.getElementById("activeTabDiv").style.height = "calc(80% - 40px)";
-                  document.getElementById("bottomDiv").style.display = "block";
+                  //document.getElementById("movementDiv").style.display = "block";
+                  //document.getElementById("activeTabDiv").style.height = "calc(80% - 40px)";
+                  //document.getElementById("bottomDiv").style.display = "block";
                   //document.getElementById("movement").style.display = "block";
+                  showBottomDiv();
               } else {
                 document.getElementById("movementDiv").style.display = "none";
               }
