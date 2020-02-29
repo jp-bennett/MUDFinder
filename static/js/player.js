@@ -135,6 +135,7 @@ window.onload = function() {
                   //document.getElementById("bottomDiv").style.display = "block";
                   //document.getElementById("movement").style.display = "block";
                   showBottomDiv();
+                  document.getElementById("movementDiv").style.display = "block";
               } else {
                 document.getElementById("movementDiv").style.display = "none";
               }
@@ -249,8 +250,7 @@ function deleteItem(invNum) {
     socket.emit('delete_item', room, charName, selectedInventory, invNum);
 }
 function advanceInit() {
-    document.getElementById("bottomDiv").style.display = "none";
-    document.getElementById("activeTabDiv").style.height = "calc(100% - 40px)";
+    hideBottomDiv();
     socket.emit('advance_init', {room: room, charName: charName});
 }
 function sendInit() {

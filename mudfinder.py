@@ -747,6 +747,10 @@ def on_locate_unit(data):
 
     # If a player controls, and the unit doesn't have a location, use the player's location as starting location.
     if ROOMS[room].inInit:
+        if ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["tile"] == "doorClosed" \
+                and not ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["locked"]:
+            ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["tile"] = "doorOpen"
+            ROOMS[room].send_updates()
         if ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] \
                 and ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["seen"] \
                 and ROOMS[room].unitList[data['selectedUnit']].controlledBy == data["requestingPlayer"] \
@@ -763,10 +767,17 @@ def on_locate_unit(data):
                 emit('player_map_update', revealedTiles, room=room)
             ROOMS[room].send_updates()
 
-    elif ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] \
-            and ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["seen"] \
-            and ROOMS[room].unitList[data['selectedUnit']].controlledBy == data["requestingPlayer"]:
-        ROOMS[room].calc_path(tmpUnit, (data["yCoord"], data["xCoord"]), 3)
+    else:
+        if ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["tile"] == "doorClosed" \
+                and not ("locked" in ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]] and ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["locked"]):
+            ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["tile"] = "doorOpen"
+            ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] = True
+            emit('gm_map_update', [ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]], room=ROOMS[room].gmRoom)
+            emit('player_map_update', [ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]], room=room)
+        if ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] \
+                and ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["seen"] \
+                and ROOMS[room].unitList[data['selectedUnit']].controlledBy == data["requestingPlayer"]:
+            ROOMS[room].calc_path(tmpUnit, (data["yCoord"], data["xCoord"]), 3)
         if tmpUnit.revealsMap:
             revealedTiles = ROOMS[room].reveal_map(data['selectedUnit'])  # only some controlled units should do this
             emit('gm_map_update', revealedTiles, room=ROOMS[room].gmRoom)
@@ -845,9 +856,14 @@ def on_map_edit(data_pack):
         for data in data_pack["tiles"]:
             if "Tile" in data["newTile"] or "door" in data["newTile"]:
                 ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["tile"] = data["newTile"]
+                if data["newTile"] in ["doorLocked"]:
+                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["locked"] = True
+                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] = False
+                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["tile"] = "doorClosed";
                 if data["newTile"] in ["doorClosed", "doorTileB"]:
                     ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["secret"] = False
-                if data["newTile"] in ["wallTile", "wallTileA", "wallTileB", "wallTileC", "doorClosed", "doorTileB"]:
+                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["locked"] = False
+                if data["newTile"] in ["wallTile", "wallTileA", "wallTileB", "wallTileC", "doorClosed", "doorTileB", "doorLocked"]:
                     ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] = False
                 else:
                     ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] = True
@@ -874,7 +890,6 @@ def on_map_edit(data_pack):
             elif y["secret"]:
                 y = {"tile": "wallTile", "walkable": False}
         emit('player_map_update', tmpUpdatedTiles, room=room)
-        #ROOMS[room].send_updates()
 
 
 @socketio.on('map_upload')

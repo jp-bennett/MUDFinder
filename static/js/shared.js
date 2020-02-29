@@ -133,9 +133,17 @@ function drawMap(mapArray) {
                     }
                 } else if (mapArray[y][x].tile == "doorClosed") {
                     if ((typeof mapArray[y+1] !== "undefined" && mapArray[y+1][x].walkable) || (typeof mapArray[y-1] !== "undefined" && mapArray[y-1][x].walkable)) {
-                        newMapTile.classList.add("doorTileA");
+                        if (mapArray[y][x].locked) {
+                            newMapTile.classList.add("doorTileALocked");
+                        } else {
+                            newMapTile.classList.add("doorTileA");
+                        }
                     } else {
-                        newMapTile.classList.add("doorTileB");
+                        if (mapArray[y][x].locked) {
+                            newMapTile.classList.add("doorTileBLocked");
+                        } else {
+                            newMapTile.classList.add("doorTileB");
+                        }
                     }
                 } else if (mapArray[y][x].tile == "stairsUp") {
                     try {
@@ -246,9 +254,17 @@ function updateMap(newMapArray, mapArray) {
                 }
             } else if (mapArray[y][x].tile == "doorClosed") {
                 if ((typeof mapArray[y+1] !== "undefined" && mapArray[y+1][x].walkable) || (typeof mapArray[y-1] !== "undefined" && mapArray[y-1][x].walkable)) {
-                    newMapTile.classList.add("doorTileA");
+                    if (mapArray[y][x].locked) {
+                            newMapTile.classList.add("doorTileALocked");
+                        } else {
+                            newMapTile.classList.add("doorTileA");
+                        }
                 } else {
-                    newMapTile.classList.add("doorTileB");
+                    if (mapArray[y][x].locked) {
+                            newMapTile.classList.add("doorTileBLocked");
+                        } else {
+                            newMapTile.classList.add("doorTileB");
+                        }
                 }
             } else if (mapArray[y][x].tile == "stairsUp") {
                 try {
@@ -1262,11 +1278,13 @@ function showEffectControls() {
 
     button.onclick = function () {
         document.getElementById("addEffectRow").style.display = "table-row";
+        button.style.display = "none";
         testEffect = generateEffect("circle", 0, "blueviolet");
 
         document.getElementById("cancelEffect").onclick = function () {
             deleteEffect(testEffect);
             testEffect = undefined;
+            button.style.display = "block";
             document.getElementById("addEffectRow").style.display = "none";
             document.getElementById("mapContainer").onmousemove = null;
             document.getElementById("mapContainer").onclick = null;
