@@ -133,13 +133,13 @@ function drawMap(mapArray) {
                     }
                 } else if (mapArray[y][x].tile == "doorClosed") {
                     if ((typeof mapArray[y+1] !== "undefined" && mapArray[y+1][x].walkable) || (typeof mapArray[y-1] !== "undefined" && mapArray[y-1][x].walkable)) {
-                        if (mapArray[y][x].locked) {
+                        if (isGM && mapArray[y][x].locked) {
                             newMapTile.classList.add("doorTileALocked");
                         } else {
                             newMapTile.classList.add("doorTileA");
                         }
                     } else {
-                        if (mapArray[y][x].locked) {
+                        if (isGM && mapArray[y][x].locked) {
                             newMapTile.classList.add("doorTileBLocked");
                         } else {
                             newMapTile.classList.add("doorTileB");
@@ -254,13 +254,13 @@ function updateMap(newMapArray, mapArray) {
                 }
             } else if (mapArray[y][x].tile == "doorClosed") {
                 if ((typeof mapArray[y+1] !== "undefined" && mapArray[y+1][x].walkable) || (typeof mapArray[y-1] !== "undefined" && mapArray[y-1][x].walkable)) {
-                    if (mapArray[y][x].locked) {
+                    if (isGM && mapArray[y][x].locked) {
                             newMapTile.classList.add("doorTileALocked");
                         } else {
                             newMapTile.classList.add("doorTileA");
                         }
                 } else {
-                    if (mapArray[y][x].locked) {
+                    if (isGM && mapArray[y][x].locked) {
                             newMapTile.classList.add("doorTileBLocked");
                         } else {
                             newMapTile.classList.add("doorTileB");
