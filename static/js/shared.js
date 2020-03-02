@@ -1558,6 +1558,9 @@ async function chooseCreature() {
 
 async function selectAddUnit (owner) {
     unitToAdd = await chooseCreature();
+    if (typeof unitToAdd == "undefined") {
+        return;
+    }
     var unit = {};
     unit.charName = unitToAdd.Name;
     unit.color = "black";
