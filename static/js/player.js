@@ -127,13 +127,9 @@ window.onload = function() {
             document.getElementById("initiativeDiv").innerHTML = "";
             document.getElementById("unitsDiv").innerHTML = "";
             if (playerData.inInit) {
+                inInit = true;
+                currentRound = playerData.roundCount;
               if (playerData.initiativeList[playerData.initiativeCount].controlledBy == charName) {
-                  //populate the bottom div with all the appropriate options
-                  //Tab system?
-                  //document.getElementById("movementDiv").style.display = "block";
-                  //document.getElementById("activeTabDiv").style.height = "calc(80% - 40px)";
-                  //document.getElementById("bottomDiv").style.display = "block";
-                  //document.getElementById("movement").style.display = "block";
                   showBottomDiv();
                   document.getElementById("movementDiv").style.display = "block";
               } else {
@@ -157,6 +153,8 @@ window.onload = function() {
                 document.getElementById("advanceInit").style.display = "none";
               }
             } else {
+                inInit = false;
+                currentRound = -1;
               document.getElementById("movementDiv").style.display = "none";
               document.getElementById("initiativeDivContainer").style.display = "none";
               document.getElementById("unitDivContainer").style.display = "block";
@@ -298,7 +296,8 @@ function mapClick(e, x, y) {
             socket.emit('locate_unit', {requestingPlayer: charName, moveType: document.getElementById("movementSelector").selectedIndex, selectedUnit: playerData.initiativeList[playerData.initiativeCount].unitNum, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room});
         } else {
             if (typeof selectedUnits[0] !== "undefined") {
-                socket.emit('locate_unit', {requestingPlayer: charName, selectedUnit: selectedUnits[0], xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room});
+                socket.emit('locate_unit', {requestingPlayer: charName, selectedUnit: playerData.unitList[selectedUnits[0]].unitNum, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room});
+                deselectAll();
             } else {
             socket.emit('locate_unit', {requestingPlayer: charName, selectedUnit: playerData.playerList[charName].unitNum, xCoord: x, yCoord: y, relative_x: relative_x, relative_y: relative_y, room: room});
             }
@@ -1035,10 +1034,47 @@ function populateSheet (data) {
             }
         }
         populateSkills(data.skills);
+        populateQuickDiv(data);
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
 }
+
+function populateQuickDiv(data) {
+    removeContents(document.getElementById("bottomInfoDiv"))
+    div = document.createElement("div");
+    div.innerText = "HP: " + data.HP + "/" + data.maxHP;
+    document.getElementById("bottomInfoDiv").appendChild(div);
+    if (playerData.inInit && playerData.playerList[charName].flatFooted){
+        div = document.createElement("div");
+        div.innerText = "AC: " + document.getElementById("sheetFFAC").value;
+        document.getElementById("bottomInfoDiv").appendChild(div);
+
+        div = document.createElement("div");
+        div.innerText = "Touch AC: " + (parseInt(document.getElementById("sheetTouchAC").value) - parseInt(document.getElementById("sheetDEXMod").value));
+        document.getElementById("bottomInfoDiv").appendChild(div);
+    } else {
+        div = document.createElement("div");
+        div.innerText = "AC: " + document.getElementById("sheetACTotal").value;
+        document.getElementById("bottomInfoDiv").appendChild(div);
+
+        div = document.createElement("div");
+        div.innerText = "Touch AC: " + document.getElementById("sheetTouchAC").value;
+        document.getElementById("bottomInfoDiv").appendChild(div);
+    }
+    div = document.createElement("div");
+    div.innerText = "Fortitude Save: " + document.getElementById("sheetFortTotal").value;
+    document.getElementById("bottomInfoDiv").appendChild(div);
+
+    div = document.createElement("div");
+    div.innerText = "Reflex Save: " + document.getElementById("sheetReflexTotal").value;
+    document.getElementById("bottomInfoDiv").appendChild(div);
+
+    div = document.createElement("div");
+    div.innerText = "Will Save: " + document.getElementById("sheetWillTotal").value;
+    document.getElementById("bottomInfoDiv").appendChild(div);
+}
+
 function sizeUpdate() {
     size = document.getElementById("sheetSize").value;
     switch(size) {
@@ -1310,7 +1346,8 @@ function populateSpellList(results) {
 function highlightSpell(spellNumber) {
     spellText = savedSpellList[spellNumber].name;
     spellText += savedSpellList[spellNumber].description_formated;
-    document.getElementById("highlightedSpell").innerHTML = formatSpell(savedSpellList[spellNumber]);
+    removeContents(document.getElementById("highlightedSpell"));
+    document.getElementById("highlightedSpell").appendChild(formatSpellObj(savedSpellList[spellNumber]));
 
 }
 function addSingleSpellToSpellbook(spellNumber) {

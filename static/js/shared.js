@@ -11,6 +11,11 @@ var testEffect;
 var effects;
 var defaultBackground = true;
 var mapObject;
+var inInit;
+var currentRound;
+var crNumbers = ["1/8", "1/6", "1/4", "1/3", "1/2", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+                    "10", "11", "12", "13", "14", "15", "16", "17", "18", "19",
+                    "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "35", "37", "39"];
 const colors = ["blueviolet","darkorange","dodgerblue","forestgreen","hotpink","lightcoral","mediumspringgreen",
             "olivedrab","salmon","sienna","skyblue","steelblue","tomato"]
 
@@ -813,44 +818,6 @@ function showSheetPage(pageName) {
 function get_spells (casterClass, level, callback) {
     socket.emit("database_spells", casterClass, level, callback)
 }
-function formatSpell(spell, showPrepare) { //probably obsolete
-    try {
-        //console.log("Warning, using obsolete formatSpell()")
-        spellText = "<div class='spellBlock'>";
-        spellText += "<div class='spellName'>";
-        spellText += spell.name;
-        if (showPrepare) {
-            spellText += ` <button onclick="prepareSpellDaily('${spell.name}')">Prepare</button>`;
-        }
-        spellText += "</div>";
-        spellText += "<b>School:</b> " + spell.school;
-        if (spell.subschool != "") {
-            spellText += " (" + spell.subschool + ")";
-        }
-        if (spell.descriptor != "") {
-            spellText += " [" + spell.descriptor + "]";
-        }
-
-        spellText += "<p><b>Casting Time:</b> "+ spell.casting_time;
-        spellText += "<br><b>Components:</b> "+ spell.components;
-
-        spellText += "<p><b>Range:</b> "+ spell.range;
-        if (spell.area != "") {
-            spellText += "<br><b>Area:</b> "+ spell.area;
-        }
-        if (spell.targets != "") {
-            spellText += "<br><b>Targets:</b> "+ spell.targets;
-        }
-        spellText += "<br><b>Duration:</b> "+ spell.duration;
-        spellText += "<br><b>Saving Throw:</b> "+ spell.saving_throw;
-        spellText += " <b>Spell Resistance:</b> "+ spell.spell_resistence;
-        spellText += spell.description_formated;
-        spellText += "</div>";
-        return spellText
-    } catch (e) {
-        socket.emit("error_handle", room, e);
-    }
-}
 
 
 function formatSpellObj(spell, showPrepare) {
@@ -1168,7 +1135,17 @@ function showEffectControls() {
         td.innerText = effects[i].size;
         tr.appendChild(td);
         td = document.createElement("td");
-        td.innerText = effects[i].duration;
+        if (effects[i].duration == "instantaneous") {
+            td.innerText = effects[i].duration;
+        } else if (effects[i].duration > 14400){
+            td.innerText = Math.floor(effects[i].duration / 14400) + " days";
+        } else if (effects[i].duration > 600){
+            td.innerText = Math.floor(effects[i].duration / 600) + " hours";
+        } else if (effects[i].duration > 10){
+            td.innerText = Math.floor(effects[i].duration / 10) + " minutes";
+        } else {
+            td.innerText = effects[i].duration + " rounds";
+        }
         tr.appendChild(td);
         td = document.createElement("td");
         td.innerText = effects[i].color;
@@ -1216,9 +1193,33 @@ function showEffectControls() {
     tr.appendChild(td);
 
     td = document.createElement("td");
+    durationInput = document.createElement("input");
+    durationInput.id = "effectDurationInput";
+    durationInput.style.display = "none";
+    td.appendChild(durationInput);
+
     durationSpinner = document.createElement("select");
+    durationSpinner.onclick = function() {
+        if (durationSpinner.value == "instantaneous") {
+            durationInput.style.display = "none";
+        } else {
+            durationInput.style.display = "block";
+        }
+    }
     durationOption = document.createElement("option");
     durationOption.innerText = "instantaneous";
+    durationSpinner.append(durationOption);
+    durationOption = document.createElement("option");
+    durationOption.innerText = "rounds";
+    durationSpinner.append(durationOption);
+    durationOption = document.createElement("option");
+    durationOption.innerText = "minutes";
+    durationSpinner.append(durationOption);
+    durationOption = document.createElement("option");
+    durationOption.innerText = "hours";
+    durationSpinner.append(durationOption);
+    durationOption = document.createElement("option");
+    durationOption.innerText = "days";
     durationSpinner.append(durationOption);
     td.appendChild(durationSpinner);
     tr.appendChild(td);
@@ -1298,7 +1299,20 @@ function showEffectControls() {
             e.preventDefault();
             e.stopPropagation();
             testEffect.title = input.value;
-            testEffect.duration = durationSpinner.value;
+            if (durationSpinner.value == "instantaneous" || isNaN(parseInt(durationInput.value))) {
+                testEffect.duration = "instantaneous";
+            } else if (durationSpinner.value == "rounds") {
+                testEffect.duration = parseInt(durationInput.value);
+            } else if (durationSpinner.value == "minutes") {
+                testEffect.duration = parseInt(durationInput.value) * 10;
+            } else if (durationSpinner.value == "hours") {
+                testEffect.duration = parseInt(durationInput.value) * 10 * 60;
+            } else if (durationSpinner.value == "days") {
+                testEffect.duration = parseInt(durationInput.value) * 10 * 60 * 24;
+            }
+
+            testEffect.round = currentRound;
+
             updateEffects(true);
             hideEffectControls();
 
@@ -1440,5 +1454,136 @@ function drawSelected(data) {
         if (data.unitList[selectedUnits[i]].initNum != -1) {
             document.getElementById("initiativeDiv").children[data.unitList[selectedUnits[i]].initNum].classList.add("selected");
         }
+    }
+}
+
+async function chooseCreature() {
+    var choice = await new Promise(async function(resolve) {
+        var modalBackground = document.createElement("div");
+        modalBackground.id = "modalBackground";
+        modalBackground.className = "modal";
+        modalBackground.onclick = function () {document.getElementById('modalBackground').remove(); resolve(undefined)};
+
+        var modaldiv = document.createElement("div");
+        modaldiv.style.width = "80%";
+        modaldiv.style.height = "90%";
+        modaldiv.style.position = "absolute";
+        modaldiv.style.right = "10%";
+        modaldiv.style.top = "5%";
+        modaldiv.style.background = "white";
+        modaldiv.style.border = "black";
+        modaldiv.style.borderStyle = "solid";
+        modaldiv.style.borderRadius = "25px";
+        modaldiv.style.textAlign = "center";
+        modaldiv.onclick = function () {event.stopPropagation()}
+        document.body.appendChild(modalBackground);
+        document.getElementById("modalBackground").appendChild(modaldiv);
+        modaldiv.innerText = "CR:";
+        crSelect = document.createElement("select");
+
+        for (i=0;i<crNumbers.length;i++) {
+            crOption = document.createElement("option");
+            crOption.innerText = crNumbers[i];
+            crSelect.appendChild(crOption);
+        }
+
+        crSelect.onchange = function () {
+            populateCreatures(this.value);
+        }
+        modaldiv.appendChild(crSelect);
+        creatureListDiv = document.createElement("div");
+        creatureListDiv.style.height = "50%";
+        creatureListDiv.style.overflow = "auto";
+        creatureListDiv.style.width = "90%";
+        creatureListDiv.style.margin = "auto";
+        modaldiv.appendChild(creatureListDiv);
+
+        creatureTable = document.createElement("table");
+        creatureTable.style.minWidth = "80%";
+        creatureTable.style.margin = "auto";
+        creatureListDiv.appendChild(creatureTable);
+
+        creatureDetailDiv = document.createElement("div");
+        creatureDetailDiv.style.height = "40%";
+        creatureDetailDiv.style.overflow = "auto";
+        creatureDetailDiv.style.width = "90%";
+        creatureDetailDiv.style.margin = "auto";
+        modaldiv.appendChild(creatureDetailDiv);
+        populateCreatures(crSelect.value);
+
+        async function populateCreatures(CR) {
+            removeContents(creatureTable);
+            removeContents(creatureDetailDiv);
+            msg = await new Promise((resolve, reject) =>  {
+                socket.emit("database_creatures", {"cr": CR});
+                socket.on("database_creatures_response", function (data) {resolve(data)});
+            });
+
+            for (i=0;i<msg.length;i++) {
+                var tableRow = document.createElement("tr");
+
+                var tableData = document.createElement("td");
+                tableData.innerText = msg[i].Name;
+                tableRow.appendChild(tableData);
+                var tableData = document.createElement("td");
+                tableData.innerText = msg[i].Type;
+                tableRow.appendChild(tableData);
+                var tableData = document.createElement("td");
+                tableData.innerText = msg[i].Size;
+                tableRow.appendChild(tableData);
+                var tableData = document.createElement("td");
+                var button = document.createElement("button");
+                button.innerText = "select";
+                button.onclick = (function (i) { return function () {
+                    document.getElementById('modalBackground').remove();
+                    resolve(msg[i]);
+                }})(i);
+                tableData.appendChild(button);
+                tableRow.appendChild(tableData);
+                tableRow.onclick = (function (i) { return function () {
+                    //show the details of the selected creature here
+                    removeContents(creatureDetailDiv);
+                    creatureDetailDiv.innerText = msg[i].Name;
+                    creatureDetailDiv.innerHTML += "<br>";
+                    creatureDetailDiv.innerText += msg[i].Description;
+                }})(i);
+                creatureTable.appendChild(tableRow);
+            }
+        }
+
+
+    })
+    return choice;
+}
+
+async function selectAddUnit (owner) {
+    unitToAdd = await chooseCreature();
+    var unit = {};
+    unit.charName = unitToAdd.Name;
+    unit.color = "black";
+    unit.HP = unitToAdd.HP
+    unit.maxHP = unit.HP;
+    unit.movementSpeed = parseInt(unitToAdd.Speed);
+    if (isGM) {
+        unit.controlledBy = "gm";
+        unit.type = "Mob";
+        socket.emit('add_unit', {addToInitiative: false ,unit: unit, room: room, gmKey: gmKey});
+    } else {
+        unit.type = "Summon";
+        unit.controlledBy = charName;
+        socket.emit('add_unit', {addToInitiative: inInit ,unit: unit, room: room, charName: charName});
+    }
+}
+
+function deselectAll() {
+    try {
+        nodes = document.getElementsByClassName("selected");
+        while (nodes.length > 0) {
+            nodes[0].classList.remove("selected");
+        }
+        selectedUnits = [];
+        selectedTool = undefined;
+    } catch (e) {
+        socket.emit("error_handle", room, e);
     }
 }

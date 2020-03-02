@@ -223,6 +223,11 @@ class Session(object):
                 return
             if not self.mapArray[end[0]-1][end[1]+1]["walkable"]:
                 return
+        if tmpUnit.location == [-1, -1]:
+            tmpUnit.location = end
+            tmpUnit.x = end[1]
+            tmpUnit.y = end[0]
+            return
         for unit in self.unitList:
             if unit == tmpUnit:
                 continue

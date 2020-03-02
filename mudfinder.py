@@ -358,6 +358,7 @@ def on_initiative(data):
                 if tmpInit != "":
                     x.initiative = tmpInit
                     x.inInit = True
+                    x.flatFooted = True
                     x.movePath = []
                     x.distance = 0
                     ROOMS[room].insert_initiative(x)
@@ -371,6 +372,7 @@ def on_begin_init(data):
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         ROOMS[room].inInit = True
         ROOMS[room].initiativeCount = 0
+        ROOMS[room].roundCount = 1
         ROOMS[room].send_updates()
 
 
@@ -381,8 +383,13 @@ def on_advance_init(data):
         if ("gmKey" in data and ROOMS[room].gmKey == data['gmKey']) or \
                 ROOMS[room].initiativeList[ROOMS[room].initiativeCount].controlledBy == data["charName"]:
             ROOMS[room].initiativeCount += 1
+            for effect in ROOMS[room].effects:
+                if effect["duration"] == "instantaneous":
+                    ROOMS[room].effects.remove(effect)
             if ROOMS[room].initiativeCount >= len(ROOMS[room].initiativeList):
                 ROOMS[room].initiativeCount = 0
+                ROOMS[room].roundCount += 1
+            ROOMS[room].initiativeList[ROOMS[room].initiativeCount].flatFooted = False
             ROOMS[room].initiativeList[ROOMS[room].initiativeCount].movePath = []
             ROOMS[room].initiativeList[ROOMS[room].initiativeCount].distance = 0
             ROOMS[room].send_updates()
@@ -491,14 +498,23 @@ def on_clear_map(data):
 @socketio.on('add_unit')
 def on_add_unit(data):
     room = data['room']
-    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
-        unit = Unit(data['unit'])
-        ROOMS[room].unitList.append(unit)
-        if data["addToInitiative"]:
-            ROOMS[room].insert_initiative(ROOMS[room].unitList[-1])
-            ROOMS[room].unitList[-1].inInit = True
-        ROOMS[room].number_units()
-        ROOMS[room].send_updates()
+    if check_room(room):
+        if "gmKey" in data.keys() and ROOMS[room].gmKey == data['gmKey']:
+            unit = Unit(data['unit'])
+            ROOMS[room].unitList.append(unit)
+            if data["addToInitiative"]:
+                ROOMS[room].insert_initiative(ROOMS[room].unitList[-1])
+                ROOMS[room].unitList[-1].inInit = True
+                ROOMS[room].unitList[-1].flatFooted = True
+            ROOMS[room].number_units()
+            ROOMS[room].send_updates()
+        else:
+            unit = Unit(data['unit'])
+            if ROOMS[room].inInit:
+                unit.initiative = ROOMS[room].playerList[data["charName"]].initiative
+            ROOMS[room].unitList.append(unit)
+            ROOMS[room].number_units()
+            ROOMS[room].send_updates()
 
 
 @socketio.on('update_unit')
@@ -669,6 +685,7 @@ def on_add_to_initiative(data):
                 ROOMS[room].unitList[x].requestInit = True
             elif ROOMS[room].unitList[x].controlledBy == "gm":
                 ROOMS[room].unitList[x].inInit = True
+                ROOMS[room].unitList[x].flatFooted = True
                 ROOMS[room].unitList[x].movePath = []
                 ROOMS[room].unitList[x].distance = 0
                 ROOMS[room].insert_initiative(ROOMS[room].unitList[x])
@@ -766,7 +783,6 @@ def on_locate_unit(data):
                 emit('gm_map_update', revealedTiles, room=ROOMS[room].gmRoom)
                 emit('player_map_update', revealedTiles, room=room)
             ROOMS[room].send_updates()
-
     else:
         if ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["tile"] == "doorClosed" \
                 and not ("locked" in ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]] and ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["locked"]):
@@ -1114,6 +1130,15 @@ def database_spells(casterClass, level):
         i["level"] = level
     return result
 
+@socketio.on('database_creatures')
+def database_spells(data):
+    conn = sqlite3.connect("mudfinder.sql")
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    q = (data["cr"], )
+    c.execute("select * from creatures where %s = ?" % "cr", q)
+    result = [dict(row) for row in c.fetchall()]
+    emit("database_creatures_response", result)
 
 @socketio.on('request_images')
 def request_images(room):

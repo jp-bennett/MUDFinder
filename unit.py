@@ -1,3 +1,6 @@
+import uuid
+
+
 class Unit(object):
     def __init__(self, unitdict):
         self.charName = unitdict["charName"]
@@ -33,8 +36,9 @@ class Unit(object):
         self.token = default(unitdict, "token", "")
         self.hasted = default(unitdict, "hasted", False)
         self.distance = default(unitdict, "distance", 0)  # distance traveled already
-        self.movePath = default(unitdict, "movePath", 0)
+        self.movePath = default(unitdict, "movePath", [])
         self.skills = default(unitdict, "skills", [])
+        self.uuid = default(unitdict, "uuid", str(uuid.uuid4()))
 
         # ability scores:
         self.STR = default(unitdict, "STR", "")
@@ -60,6 +64,7 @@ class Unit(object):
         self.ER = default(unitdict, "ER", "")
         self.weapons = default(unitdict, "weapons", [])
         self.spellcasting = default(unitdict, "spellcasting", [])
+        self.flatFooted = default(unitdict, "flatFooted", True)
 
         if self.location != [-1, -1] and self.occupied_tiles == []:
             self.occupied_tiles.append(self.location)
@@ -125,7 +130,9 @@ class Unit(object):
             "SR": self.SR,
             "ER": self.ER,
             "weapons": self.weapons,
-            "spellcasting": self.spellcasting
+            "spellcasting": self.spellcasting,
+            "flatFooted": self.flatFooted,
+            "uuid": self.uuid
         }
 
 

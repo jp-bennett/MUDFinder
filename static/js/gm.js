@@ -184,15 +184,19 @@ window.onload = function() {
                   </div>`;
                 document.getElementById("initiativeDiv").innerHTML += tmpHTML;
             }
-            if (gmData.inInit) { activeInitiative(gmData.initiativeCount)} //this value counts from 1
             // Initiative controls
             if (gmData.inInit) {
+                inInit = true;
+                currentRound = gmData.initiativeCount;
+                activeInitiative(gmData.initiativeCount)
                 document.getElementById("movementButton").style.display = "block";
                 document.getElementById("movementDiv").style.display = "block";
                 document.getElementById("beginInit").style.display = "none";
                 document.getElementById("advanceInit").style.display = "block";
                 document.getElementById("endInit").style.display = "block";
             } else {
+                inInit = false;
+                currentRound = -1;
                 document.getElementById("movementButton").style.display = "none";
                 document.getElementById("movementDiv").style.display = "none";
                 document.getElementById("advanceInit").style.display = "none";
@@ -514,7 +518,7 @@ function changeHP(initnum) {
     socket.emit('change_hp', {changeHP: document.getElementById(`hpChange${initnum}`).value, room: room, gmKey: gmKey, initCount: initnum});
 }
 
-function deselectAll() {
+/*function deselectAll() {
     try {
         nodes = document.getElementsByClassName("selected");
         while (nodes.length > 0) {
@@ -525,7 +529,7 @@ function deselectAll() {
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
-}
+}*/
 
 function selectInitiative(initiativeNum) {
     try {
