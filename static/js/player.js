@@ -69,7 +69,7 @@ window.onload = function() {
         alert ("Page initialization failed: " + error);
     }
     try {
-        socket = io.connect(document.domain + ':5000', {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
+        socket = io.connect(document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
     } catch (error) {
         alert("Could not connect to websocket: " + error);
     }
@@ -129,6 +129,7 @@ window.onload = function() {
             if (playerData.inInit) {
                 inInit = true;
                 currentRound = playerData.roundCount;
+                currentInit = playerData.initiativeCount;
               if (playerData.initiativeList[playerData.initiativeCount].controlledBy == charName) {
                   showBottomDiv();
                   document.getElementById("movementDiv").style.display = "block";
@@ -155,6 +156,7 @@ window.onload = function() {
             } else {
                 inInit = false;
                 currentRound = -1;
+                currentInit = -1;
               document.getElementById("movementDiv").style.display = "none";
               document.getElementById("initiativeDivContainer").style.display = "none";
               document.getElementById("unitDivContainer").style.display = "block";
@@ -1508,7 +1510,7 @@ function populatePreparedSpells() {
 }
 
 function hideBottomDiv() {
-    document.getElementById("mapContainer").style.height = "100%";
+    document.getElementById("mapContainer").style.height = "calc(100% - 40px)";
     document.getElementById("activeTabDiv").style.height = "100%";
     document.getElementById("bottomPopupButton").style.top = "calc(100% - 80px)";
     document.getElementById("bottomPopupButton").onclick = function() {showBottomDiv();};

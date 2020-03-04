@@ -12,7 +12,8 @@ var effects;
 var defaultBackground = true;
 var mapObject;
 var inInit;
-var currentRound;
+var currentRound = -1;
+var currentInit = -1;
 var crNumbers = ["1/8", "1/6", "1/4", "1/3", "1/2", "1", "2", "3", "4", "5", "6", "7", "8", "9",
                     "10", "11", "12", "13", "14", "15", "16", "17", "18", "19",
                     "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "35", "37", "39"];
@@ -121,7 +122,7 @@ function drawMap(mapArray) {
                         newMapTile.style.opacity = ".9";
                     }
                 }
-                if (mapArray[y][x].secret) {
+                if (isGM && mapArray[y][x].secret) {
                     newMapTile.style.borderColor = "red";
                 }
                 newMapTile.className = "mapTile selectableTile";
@@ -242,7 +243,7 @@ function updateMap(newMapArray, mapArray) {
                     newMapTile.style.opacity = ".9";
                 }
             }
-            if (mapArray[y][x].secret) {
+            if (isGM && mapArray[y][x].secret) {
                 newMapTile.style.borderColor = "red";
             }
             newMapTile.className = "mapTile selectableTile";
@@ -251,6 +252,8 @@ function updateMap(newMapArray, mapArray) {
             }
             if (mapArray[y][x].tile == "unseenTile" && defaultBackground) {
                 newMapTile.classList.add("unseenTileTransparent");
+            } else if (!isGM && mapArray[y][x].secret) {
+                newMapTile.classList.add("wallTile");
             } else if (mapArray[y][x].tile == "doorOpen") {
                 if ((typeof mapArray[y+1] !== "undefined" && mapArray[y+1][x].walkable) || (typeof mapArray[y-1] !== "undefined" && mapArray[y-1][x].walkable)) {
                     newMapTile.classList.add("doorTileAOpen");
@@ -1311,7 +1314,7 @@ function showEffectControls() {
                 testEffect.duration = parseInt(durationInput.value) * 10 * 60 * 24;
             }
 
-            testEffect.round = currentRound;
+
 
             updateEffects(true);
             hideEffectControls();
@@ -1425,6 +1428,8 @@ function updateEffects(addnew) {
         } else {
         tempEffect.owner = charName;
         }
+        tempEffect.round = currentRound;
+        tempEffect.init = currentInit;
         effects.push(tempEffect);
     }
     if (isGM) {
@@ -1567,6 +1572,9 @@ async function selectAddUnit (owner) {
     unit.HP = unitToAdd.HP
     unit.maxHP = unit.HP;
     unit.movementSpeed = parseInt(unitToAdd.Speed);
+    if (isNaN(unit.movementSpeed)) {
+        unit.movementSpeed = 30;
+    }
     if (isGM) {
         unit.controlledBy = "gm";
         unit.type = "Mob";

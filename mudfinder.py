@@ -383,12 +383,19 @@ def on_advance_init(data):
         if ("gmKey" in data and ROOMS[room].gmKey == data['gmKey']) or \
                 ROOMS[room].initiativeList[ROOMS[room].initiativeCount].controlledBy == data["charName"]:
             ROOMS[room].initiativeCount += 1
-            for effect in ROOMS[room].effects:
-                if effect["duration"] == "instantaneous":
-                    ROOMS[room].effects.remove(effect)
             if ROOMS[room].initiativeCount >= len(ROOMS[room].initiativeList):
                 ROOMS[room].initiativeCount = 0
                 ROOMS[room].roundCount += 1
+            for effect in ROOMS[room].effects[:]:
+                if effect["duration"] == "instantaneous":
+                    ROOMS[room].effects.remove(effect)
+                    continue
+                if ROOMS[room].initiativeCount == effect["init"]:
+                    effect["duration"] -= 1
+                elif ROOMS[room].initiativeCount == 0 and (effect["init"] == -1 or effect["init"] >= len(ROOMS[room].initiativeList)):
+                    effect["duration"] -= 1
+                if effect["duration"] < 1:
+                    ROOMS[room].effects.remove(effect)
             ROOMS[room].initiativeList[ROOMS[room].initiativeCount].flatFooted = False
             ROOMS[room].initiativeList[ROOMS[room].initiativeCount].movePath = []
             ROOMS[room].initiativeList[ROOMS[room].initiativeCount].distance = 0
@@ -407,6 +414,8 @@ def on_end_init(data):
             x.distance = 0
             if x.type == "player":
                 x.initiative = ""
+        for effect in ROOMS[room].effects:
+            effect["init"] = -1
         ROOMS[room].initiativeCount = 0
         ROOMS[room].initiativeList = []
         ROOMS[room].send_updates()
@@ -830,6 +839,9 @@ def on_remove_init(data):
             for x in ROOMS[room].initiativeList:
                 x.initNum = initNum
                 initNum += 1
+            for effect in ROOMS[room].effects:
+                if effect["init"] < data['initCount']:
+                    effect["init"] -= 1
         ROOMS[room].send_updates()
 
 

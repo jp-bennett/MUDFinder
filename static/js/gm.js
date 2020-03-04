@@ -66,7 +66,7 @@ document.getElementById("mapContainer").onwheel = function(e){
 
 window.onload = function() {
     try {
-        socket = io.connect(document.domain + ':' + "5000", {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
+        socket = io.connect(document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
     } catch (e) {
         alert("Could not connect to websocket");
     }
@@ -188,6 +188,7 @@ window.onload = function() {
             if (gmData.inInit) {
                 inInit = true;
                 currentRound = gmData.initiativeCount;
+                currentInit = gmData.initiativeCount;
                 activeInitiative(gmData.initiativeCount)
                 document.getElementById("movementButton").style.display = "block";
                 document.getElementById("movementDiv").style.display = "block";
@@ -197,6 +198,7 @@ window.onload = function() {
             } else {
                 inInit = false;
                 currentRound = -1;
+                currentInit = -1;
                 document.getElementById("movementButton").style.display = "none";
                 document.getElementById("movementDiv").style.display = "none";
                 document.getElementById("advanceInit").style.display = "none";

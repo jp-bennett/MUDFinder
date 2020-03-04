@@ -58,7 +58,7 @@
     var isGM = false;
     var charName = "";
     window.onload = function() {
-      socket = io.connect(document.domain + ':5000', {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
+      socket = io.connect(document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
     
     // verify our websocket connection is established
     socket.on('connect', function() {
