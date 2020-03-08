@@ -9,6 +9,8 @@ var isDragging = false;
 var images = new Object();
 var testEffect;
 var effects;
+var effectCanvas;
+var effectCTX;
 var defaultBackground = true;
 var mapObject;
 var inInit;
@@ -19,21 +21,21 @@ var crNumbers = ["1/8", "1/6", "1/4", "1/3", "1/2", "1", "2", "3", "4", "5", "6"
                     "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "35", "37", "39"];
 const colors = ["blueviolet","darkorange","dodgerblue","forestgreen","hotpink","lightcoral","mediumspringgreen",
             "olivedrab","salmon","sienna","skyblue","steelblue","tomato"]
+if (!('toJSON' in Error.prototype)) {
+    Object.defineProperty(Error.prototype, 'toJSON', {
+        value: function () {
+            var alt = {};
 
-if (!('toJSON' in Error.prototype))
-Object.defineProperty(Error.prototype, 'toJSON', {
-    value: function () {
-        var alt = {};
+            Object.getOwnPropertyNames(this).forEach(function (key) {
+                alt[key] = this[key];
+            }, this);
 
-        Object.getOwnPropertyNames(this).forEach(function (key) {
-            alt[key] = this[key];
-        }, this);
-
-        return alt;
-    },
-    configurable: true,
-    writable: true
-});
+            return alt;
+        },
+        configurable: true,
+        writable: true
+    });
+}
 document.getElementById("mapContainer").ontouchstart = function(e){
     try {
         if (e.touches.length > 1) {
@@ -92,7 +94,6 @@ document.getElementById("mapContainer").ontouchend = function(e){
     }
 
 }
-
 function drawMap(mapArray) {
     try {
         if (typeof mapArray[0] === "undefined" ) {
@@ -101,7 +102,7 @@ function drawMap(mapArray) {
             document.getElementById("mapGraphic").style.display = "none";
             return;
         }
-        removeContents(document.getElementById("mapGraphic")); //TODO: eventually make needed changes only
+        removeContents(document.getElementById("mapGraphic"));
         for (y = 0; y < mapArray.length; y++) {
             for (x = 0; x < mapArray[y].length; x++) {
                 newMapTile = document.createElement("div");
@@ -212,11 +213,18 @@ function drawMap(mapArray) {
             backgroundDiv.style.backgroundImage = "url(static/images/mapbackground.jpg)";
             document.getElementById("mapGraphic").appendChild(backgroundDiv);
         }
+        effectCanvas = document.createElement("canvas");
+        effectCanvas.style.position = "absolute";
+        effectCanvas.style.top = 0;
+        effectCanvas.style.pointerEvents = "none";
+        document.getElementById("mapGraphic").appendChild(effectCanvas);
+        effectCanvas.width = mapArray[0].length*70;
+        effectCanvas.height = mapArray.length*70;
+        effectCTX = effectCanvas.getContext("2d");
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function updateMap(newMapArray, mapArray) {
     try {
         for (i = 0; i < newMapArray.length; i++) {
@@ -325,7 +333,6 @@ function updateMap(newMapArray, mapArray) {
         socket.emit("error_handle", room, e);
     }
 }
-
 function drawUnits(Data) { //Give every addition a classname, that can be iterated through, to remove this stuff.
         //iterate through selectableUnit, remove attributes.units
         nodes = document.getElementsByClassName("selectableUnit");
@@ -409,9 +416,18 @@ function drawUnits(Data) { //Give every addition a classname, that can be iterat
                 }
             }
         }
+        if (typeof effectCTX != "undefined") {
+            effectCTX.clearRect(0, 0, effectCanvas.width, effectCanvas.height);
+        }
         for (var i = 0; i < Data.effects.length; i++) {
             tmpEffect = generateEffect(Data.effects[i].shape, Data.effects[i].size, Data.effects[i].color);
-            locateEffect(tmpEffect, Data.effects[i].origin.x, Data.effects[i].origin.y);
+            if (tmpEffect.shape == "circle") {
+                locateEffect(tmpEffect, Data.effects[i].origin.x, Data.effects[i].origin.y);
+            } else if (tmpEffect.shape == "line") {
+                tmpEffect.end = Data.effects[i].end;
+                tmpEffect.origin = Data.effects[i].origin;
+                locateEffect(tmpEffect, Data.effects[i].end.x, Data.effects[i].end.y);
+            }
         }
         if (Data.inInit) {
             for (i = 0; i<Data.initiativeList[Data.initiativeCount].movePath.length - 1;i++) {
@@ -447,7 +463,6 @@ function drawUnits(Data) { //Give every addition a classname, that can be iterat
             document.getElementById("movement").innerText = Math.floor(Data.initiativeList[Data.initiativeCount].distance) * 5
         }
 }
-
 function enableTab(tabName) {
     try {
         //hide all of them
@@ -818,11 +833,6 @@ function showSheetPage(pageName) {
     }
     document.getElementById(pageName).style.display = "block";
 }
-function get_spells (casterClass, level, callback) {
-    socket.emit("database_spells", casterClass, level, callback)
-}
-
-
 function formatSpellObj(spell, showPrepare) {
     try {
         var spellObj = document.createElement("div");
@@ -870,10 +880,6 @@ function formatSpellObj(spell, showPrepare) {
         socket.emit("error_handle", room, e);
     }
 }
-
-
-
-
 function castPreparedSpell (spellLvl, spellNum, empowered) {
     if (empowered) {
         spellcasting[0].currentPoints -= 1;
@@ -894,11 +900,6 @@ function castPreparedSpell (spellLvl, spellNum, empowered) {
     }
    updatePlayer();
 }
-
-function requestImages() {
-    socket.emit("request_images", room);
-}
-
 function generateEffect(effectShape, size, color){
     var effect = {};
     effect.origin = {};
@@ -908,14 +909,10 @@ function generateEffect(effectShape, size, color){
         effect.size = size;
         if (effect.size == 0) {
             effect.numSquares = 1;
-        } else if (effect.size == 5) {
+        } else if (effect.size == 5){
             effect.numSquares = 4;
-        } else if (effect.size == 10) {
-            effect.numSquares = 12;
-        } else if (effect.size == 15) {
-            effect.numSquares = 24;
-        } else if (effect.size == 20) {
-            effect.numSquares = 44;
+        } else {
+            effect.numSquares = 0;
         }
         effect.divs = [];
         for (i = 0; i< effect.numSquares; i++){
@@ -928,171 +925,188 @@ function generateEffect(effectShape, size, color){
             effect.divs[i].style.position = "absolute";
             effect.divs[i].style.pointerEvents = "none";
         }
+    } else if (effectShape == "line") {
+        effect.end = {};
+        effect.shape = "line";
+        effect.size = size;
     }
     return effect;
 }
-
 function deleteEffect(effect) {
-    for (i = 0; i< effect.numSquares; i++){
-        effect.divs[i].remove();
+    if (effect.shape == "circle") {
+        for (i = 0; i< effect.numSquares; i++){
+            effect.divs[i].remove();
+        }
+    } else if (effect.shape == "line") {
+        effectCTX.clearRect(0, 0, effectCanvas.width, effectCanvas.height)
     }
 }
+function raytrace(x0, y0, x1, y1, maximum) {  // https://playtechs.blogspot.com/2007/03/raytracing-on-grid.html
+    var distance = 0;
+    var cells = [];
+    var dx = Math.abs(x1 - x0);
+    var dy = Math.abs(y1 - y0);
+    var x = x0;
+    var y = y0;
+    var n = 1 + dx + dy;
 
+    if (x1 > x0) {
+        x_inc = 1;
+    } else {
+        x_inc = -1;
+    }
+    if (y1 > y0) {
+        y_inc = 1;
+    } else {
+        y_inc = -1;
+    }
+    var error = dx - dy;
+    dx *= 2;
+    dy *= 2;
+    for (i=n; i>0; i--){
+        if (Math.max(Math.abs(x0-x), Math.abs(y0-y)) + Math.round(.5 * Math.min(Math.abs(x0-x), Math.abs(y0-y))) > maximum)
+            return cells;
+        cells.push([x, y]);
+        if (error > 0) {
+            x += x_inc;
+            error -= dy;
+        } else {
+            y += y_inc;
+            error += dx;
+        }
+    }
+    return cells
+}
 function locateEffect(effect, x, y) {
-    if (effect.shape == "circle"){
+    if (effect.shape == "circle") {
+        if ( effect.origin.x == x && effect.origin.y == y) {
+        return;
+        }
         effect.origin.x = x;
         effect.origin.y = y;
         if (effect.size == 0) {
             effect.divs[0].style.top = y * 70 + "px";
             effect.divs[0].style.left = x * 70 + "px";
-        } else {
+        } else if (effect.size == 5){ // calculate a box, raytrace to each point at the edge of the box... may have to raytrace from 4 squares
             effect.divs[0].style.top = y * 70 + "px";
             effect.divs[0].style.left = x * 70 + "px";
-
             effect.divs[1].style.top = (y -1) * 70 + "px";
             effect.divs[1].style.left = x * 70 + "px";
-
             effect.divs[2].style.top = y * 70 + "px";
             effect.divs[2].style.left = (x -1) * 70 + "px";
-
             effect.divs[3].style.top = (y-1) * 70 + "px";
             effect.divs[3].style.left = (x-1) * 70 + "px";
-            if (effect.size > 5) {
-                effect.divs[4].style.top = (y+1) * 70 + "px";
-                effect.divs[4].style.left = (x) * 70 + "px";
-
-                effect.divs[5].style.top = (y) * 70 + "px";
-                effect.divs[5].style.left = (x+1) * 70 + "px";
-
-                effect.divs[6].style.top = (y-1) * 70 + "px";
-                effect.divs[6].style.left = (x+1) * 70 + "px";
-
-                effect.divs[7].style.top = (y+1) * 70 + "px";
-                effect.divs[7].style.left = (x-1) * 70 + "px";
-
-                effect.divs[8].style.top = (y-2) * 70 + "px";
-                effect.divs[8].style.left = (x) * 70 + "px";
-
-                effect.divs[9].style.top = (y) * 70 + "px";
-                effect.divs[9].style.left = (x-2) * 70 + "px";
-
-                effect.divs[10].style.top = (y-1) * 70 + "px";
-                effect.divs[10].style.left = (x-2) * 70 + "px";
-
-                effect.divs[11].style.top = (y-2) * 70 + "px";
-                effect.divs[11].style.left = (x-1) * 70 + "px";
+        } else {
+            squares = effect.size / 5;
+            var cells = [];
+            for (xBox= -1*squares; xBox<squares+1;xBox++) {
+                for (yBox= -1*squares; yBox<squares+1; yBox++) {
+                    if ((xBox != -1*squares && xBox != squares) && (yBox != -1*squares && yBox != squares)) {
+                        continue;
+                    }
+                    tmpCells = raytrace(effect.origin.x, effect.origin.y, effect.origin.x + xBox, effect.origin.y + yBox, squares-1)
+                    for (i=0; i<tmpCells.length; i++) {
+                        if (!cells.some(cell => cell[0] == tmpCells[i][0] && cell[1] == tmpCells[i][1])) {
+                            cells.push(tmpCells[i]);
+                        }
+                    }
+                    tmpCells = raytrace(effect.origin.x, effect.origin.y-1, effect.origin.x + xBox, effect.origin.y-1 + yBox, squares-1)
+                    for (i=0; i<tmpCells.length; i++) {
+                        if (!cells.some(cell => cell[0] == tmpCells[i][0] && cell[1] == tmpCells[i][1])) {
+                            cells.push(tmpCells[i]);
+                        }
+                    }
+                    tmpCells = raytrace(effect.origin.x-1, effect.origin.y, effect.origin.x-1 + xBox, effect.origin.y + yBox, squares-1)
+                    for (i=0; i<tmpCells.length; i++) {
+                        if (!cells.some(cell => cell[0] == tmpCells[i][0] && cell[1] == tmpCells[i][1])) {
+                            cells.push(tmpCells[i]);
+                        }
+                    }
+                    tmpCells = raytrace(effect.origin.x-1, effect.origin.y-1, effect.origin.x-1 + xBox, effect.origin.y-1 + yBox, squares-1)
+                    for (i=0; i<tmpCells.length; i++) {
+                        if (!cells.some(cell => cell[0] == tmpCells[i][0] && cell[1] == tmpCells[i][1])) {
+                            cells.push(tmpCells[i]);
+                        }
+                    }
+                }
             }
-            if (effect.size > 10) {
-                effect.divs[12].style.top = (y+1) * 70 + "px";
-                effect.divs[12].style.left = (x+1) * 70 + "px";
-
-                effect.divs[13].style.top = (y-2) * 70 + "px";
-                effect.divs[13].style.left = (x+1) * 70 + "px";
-
-                effect.divs[14].style.top = (y-2) * 70 + "px";
-                effect.divs[14].style.left = (x-2) * 70 + "px";
-
-                effect.divs[15].style.top = (y+1) * 70 + "px";
-                effect.divs[15].style.left = (x-2) * 70 + "px";
-
-                effect.divs[16].style.top = (y+2) * 70 + "px";
-                effect.divs[16].style.left = (x) * 70 + "px";
-
-                effect.divs[17].style.top = (y) * 70 + "px";
-                effect.divs[17].style.left = (x+2) * 70 + "px";
-
-                effect.divs[18].style.top = (y-1) * 70 + "px";
-                effect.divs[18].style.left = (x+2) * 70 + "px";
-
-                effect.divs[19].style.top = (y+2) * 70 + "px";
-                effect.divs[19].style.left = (x-1) * 70 + "px";
-
-                effect.divs[20].style.top = (y-3) * 70 + "px";
-                effect.divs[20].style.left = (x) * 70 + "px";
-
-                effect.divs[21].style.top = (y) * 70 + "px";
-                effect.divs[21].style.left = (x-3) * 70 + "px";
-
-                effect.divs[22].style.top = (y-1) * 70 + "px";
-                effect.divs[22].style.left = (x-3) * 70 + "px";
-
-                effect.divs[23].style.top = (y-3) * 70 + "px";
-                effect.divs[23].style.left = (x-1) * 70 + "px";
-            }
-            if (effect.size > 15) {
-                effect.divs[24].style.top = (y-4) * 70 + "px";
-                effect.divs[24].style.left = (x) * 70 + "px";
-
-                effect.divs[25].style.top = (y-3) * 70 + "px";
-                effect.divs[25].style.left = (x+1) * 70 + "px";
-
-                effect.divs[26].style.top = (y-3) * 70 + "px";
-                effect.divs[26].style.left = (x+2) * 70 + "px";
-
-                effect.divs[27].style.top = (y-2) * 70 + "px";
-                effect.divs[27].style.left = (x+2) * 70 + "px";
-
-                effect.divs[28].style.top = (y-1) * 70 + "px";
-                effect.divs[28].style.left = (x+3) * 70 + "px";
-
-                effect.divs[29].style.top = (y) * 70 + "px";
-                effect.divs[29].style.left = (x+3) * 70 + "px";
-
-                effect.divs[30].style.top = (y+1) * 70 + "px";
-                effect.divs[30].style.left = (x+2) * 70 + "px";
-
-                effect.divs[31].style.top = (y+2) * 70 + "px";
-                effect.divs[31].style.left = (x+2) * 70 + "px";
-
-                effect.divs[32].style.top = (y+2) * 70 + "px";
-                effect.divs[32].style.left = (x+1) * 70 + "px";
-
-                effect.divs[33].style.top = (y+3) * 70 + "px";
-                effect.divs[33].style.left = (x) * 70 + "px";
-
-                effect.divs[34].style.top = (y+3) * 70 + "px";
-                effect.divs[34].style.left = (x-1) * 70 + "px";
-
-                effect.divs[35].style.top = (y+2) * 70 + "px";
-                effect.divs[35].style.left = (x-2) * 70 + "px";
-
-                effect.divs[36].style.top = (y+2) * 70 + "px";
-                effect.divs[36].style.left = (x-3) * 70 + "px";
-
-                effect.divs[37].style.top = (y+1) * 70 + "px";
-                effect.divs[37].style.left = (x-3) * 70 + "px";
-
-                effect.divs[38].style.top = (y) * 70 + "px";
-                effect.divs[38].style.left = (x-4) * 70 + "px";
-
-                effect.divs[39].style.top = (y-1) * 70 + "px";
-                effect.divs[39].style.left = (x-4) * 70 + "px";
-
-                effect.divs[40].style.top = (y-2) * 70 + "px";
-                effect.divs[40].style.left = (x-3) * 70 + "px";
-
-                effect.divs[41].style.top = (y-3) * 70 + "px";
-                effect.divs[41].style.left = (x-3) * 70 + "px";
-
-                effect.divs[42].style.top = (y-3) * 70 + "px";
-                effect.divs[42].style.left = (x-2) * 70 + "px";
-
-                effect.divs[43].style.top = (y-4) * 70 + "px";
-                effect.divs[43].style.left = (x-1) * 70 + "px";
-
+            for (i=0; i<cells.length; i++) {
+                //try {
+                    if (effect.divs.length < i+1) {
+                        effect.numSquares += 1;
+                        effect.divs[i] = document.createElement("div");
+                        effect.divs[i].classList.add("effectDiv");
+                        effect.divs[i].style.background = effect.color;
+                        effect.divs[i].style.opacity = 0.5;
+                        effect.divs[i].style.width = zoomSize + "px";
+                        effect.divs[i].style.height = zoomSize + "px";
+                        effect.divs[i].style.position = "absolute";
+                        effect.divs[i].style.pointerEvents = "none";
+                    }
+                    if (cells[i][1] < 0 || cells[i][0] < 0) {
+                        effect.divs[i].style.display = "none";
+                    } else {
+                        effect.divs[i].style.display = "block";
+                        effect.divs[i].style.top = cells[i][1] * 70 + "px";
+                        effect.divs[i].style.left = cells[i][0] * 70 + "px";
+                    }
+                //} catch (e) {
+                //    console.log("oops");
+                //}
             }
         }
+    } else if (effect.shape = "line") {
+        if (effect.origin && typeof effect.origin.x !== "undefined") {
+            playerX = effect.origin.x;
+            playerY = effect.origin.y;
+        } else {
+            if (isGM) {
+                if (typeof selectedUnits[0] !== "undefined" && gmData.unitList[selectedUnits[0]].x !== -1) {
+                    playerX = gmData.unitList[selectedUnits[0]].x * 70 + 35
+                    playerY = gmData.unitList[selectedUnits[0]].y * 70 + 35
+                    effect.origin.x = playerX;
+                    effect.origin.y = playerY;
+                } else if (inInit) {
+                    playerX = gmData.initiativeList[gmData.initiativeCount].x * 70 + 35
+                    playerY = gmData.initiativeList[gmData.initiativeCount].y * 70 + 35
+                    effect.origin.x = playerX;
+                    effect.origin.y = playerY;
+                } else {
+                    return;
+                }
+            } else {
+                playerX = playerData.playerList[charName].x * 70 + 35
+                playerY = playerData.playerList[charName].y * 70 + 35
+                effect.origin.x = playerX;
+                effect.origin.y = playerY;
+            }
+        }
+
+        angle = Math.atan2(y - playerY, x - playerX) * 180 / Math.PI;
+        newPoint = findNewPoint(playerX, playerY, angle, 70 * effect.size / 5);
+        if (typeof effectCTX == "undefined") {
+            effectCTX = effectCanvas.getContext("2d");
+        }
+        //effectCTX.clearRect(0, 0, effectCanvas.width, effectCanvas.height);
+
+        effectCTX.beginPath();
+        effectCTX.moveTo(playerX, playerY);
+        effectCTX.lineTo(newPoint.x, newPoint.y)
+        effect.end.x = newPoint.x;
+        effect.end.y = newPoint.y;
+        effectCTX.lineWidth = 10;
+        effectCTX.strokeStyle = effect.color;
+        //console.log(newPoint);
+        //console.log (playerY);
+        effectCTX.stroke();
     }
-    if (effect.divs[0].parentNode == null) {
+    if (effect.divs && effect.divs[0].parentNode == null) {
         for (i = 0; i< effect.numSquares; i++){
             document.getElementById("mapGraphic").appendChild(effect.divs[i]);
         }
     }
 }
-
 function showEffectControls() {
-
-
     table = document.createElement("table");
     table.id = "effectTable";
     tr = document.createElement("tr");
@@ -1138,16 +1152,29 @@ function showEffectControls() {
         td.innerText = effects[i].size;
         tr.appendChild(td);
         td = document.createElement("td");
+        td.innerText = "";
         if (effects[i].duration == "instantaneous") {
             td.innerText = effects[i].duration;
-        } else if (effects[i].duration > 14400){
-            td.innerText = Math.floor(effects[i].duration / 14400) + " days";
-        } else if (effects[i].duration > 600){
-            td.innerText = Math.floor(effects[i].duration / 600) + " hours";
-        } else if (effects[i].duration > 10){
-            td.innerText = Math.floor(effects[i].duration / 10) + " minutes";
         } else {
-            td.innerText = effects[i].duration + " rounds";
+            tmpDuration = effects[i].duration;
+            if (tmpDuration > 14400){
+                tmpNum = Math.floor(tmpDuration / 14400);
+                td.innerText += tmpNum + " days ";
+                tmpDuration -= tmpNum * 14400;
+            } if (tmpDuration > 600){
+                tmpNum = Math.floor(tmpDuration / 600);
+                td.innerText += tmpNum + " hours ";
+                tmpDuration -= tmpNum * 600;
+            } if (tmpDuration > 10){
+                tmpNum = Math.floor(tmpDuration / 10);
+                td.innerText += tmpNum + " minutes ";
+                tmpDuration -= tmpNum * 10;
+            } if (tmpDuration > 0){
+                if (inInit)
+                    td.innerText += tmpDuration + " rounds";
+                else
+                    td.innerText += tmpDuration * 6 + " seconds";
+            }
         }
         tr.appendChild(td);
         td = document.createElement("td");
@@ -1162,33 +1189,25 @@ function showEffectControls() {
         }
         tr.appendChild(td);
         table.appendChild(tr);
-
-
     }
-
-
     tr = document.createElement("tr");
     tr.style.display = "none";
     tr.id = "addEffectRow";
     td = document.createElement("td");
     input = document.createElement("input");
     td.appendChild(input);
-    //td.innerText = "test";
     tr.appendChild(td);
     td = document.createElement("td");
     effectShapeSelect = document.createElement("select");
     effectShapeOption = document.createElement("option");
     effectShapeOption.innerText = "Circle";
     effectShapeSelect.appendChild(effectShapeOption);
-    /*effectShapeOption = document.createElement("option");
+    effectShapeOption = document.createElement("option");
     effectShapeOption.innerText = "Line";
-    effectShapeSelect.appendChild(effectShapeOption);*/
+    effectShapeSelect.appendChild(effectShapeOption);
+    effectShapeSelect.onchange = function() {deleteEffect(testEffect); testEffect = generateEffect(effectShapeSelect.value.toLowerCase(), parseInt(effectSizeSelect.value), colorSelect.value);};
     td.appendChild(effectShapeSelect);
-
     tr.appendChild(td);
-
-
-
 
     td = document.createElement("td");
     effectSizeSelect = document.createElement("select");
@@ -1230,7 +1249,7 @@ function showEffectControls() {
     td = document.createElement("td");
     colorSelect = document.createElement("select");
     colorSelect.id = "effectColorPicker";
-    colorSelect.onchange = function() {deleteEffect(testEffect); testEffect = generateEffect("circle", parseInt(effectSizeSelect.value), colorSelect.value);}
+    colorSelect.onchange = function() {deleteEffect(testEffect); testEffect = generateEffect(effectShapeSelect.value.toLowerCase(), parseInt(effectSizeSelect.value), colorSelect.value);}
     for (i=0;i<colors.length; i++) {
         colorOption = document.createElement("option");
         colorOption.innerText = colors[i];
@@ -1245,32 +1264,16 @@ function showEffectControls() {
     button.innerText = "Cancel";
     button.id = "cancelEffect";
 
-
     td.appendChild(button);
     tr.appendChild(td);
 
     table.appendChild(tr);
-    effectSizeSelect.onchange = function() {deleteEffect(testEffect); testEffect = generateEffect("circle", parseInt(effectSizeSelect.value), colorSelect.value);}
-    effectSizeOption = document.createElement("option");
-    effectSizeOption.innerText = "0";
-    effectSizeSelect.appendChild(effectSizeOption);
-
-    effectSizeOption = document.createElement("option");
-    effectSizeOption.innerText = "5";
-    effectSizeSelect.appendChild(effectSizeOption);
-
-    effectSizeOption = document.createElement("option");
-    effectSizeOption.innerText = "10";
-    effectSizeSelect.appendChild(effectSizeOption);
-
-    effectSizeOption = document.createElement("option");
-    effectSizeOption.innerText = "15";
-    effectSizeSelect.appendChild(effectSizeOption);
-
-    effectSizeOption = document.createElement("option");
-    effectSizeOption.innerText = "20";
-    effectSizeSelect.appendChild(effectSizeOption);
-
+    effectSizeSelect.onchange = function() {deleteEffect(testEffect); testEffect = generateEffect(effectShapeSelect.value.toLowerCase(), parseInt(effectSizeSelect.value), colorSelect.value);}
+    for (size=0; size<61;size+=5) {
+        effectSizeOption = document.createElement("option");
+        effectSizeOption.innerText = size;
+        effectSizeSelect.appendChild(effectSizeOption);
+    }
 
     tr = document.createElement("tr");
     td = document.createElement("td");
@@ -1279,22 +1282,23 @@ function showEffectControls() {
     td.appendChild(button);
     tr.appendChild(td);
     table.appendChild(tr);
-
     button.onclick = function () {
         document.getElementById("addEffectRow").style.display = "table-row";
         button.style.display = "none";
-        testEffect = generateEffect("circle", 0, "blueviolet");
+        if (document.getElementById("passTimeRow"))
+            document.getElementById("passTimeRow").style.display = "none";
+        testEffect = generateEffect(effectShapeSelect.value.toLowerCase(), 0, "blueviolet");
 
         document.getElementById("cancelEffect").onclick = function () {
             deleteEffect(testEffect);
             testEffect = undefined;
             button.style.display = "block";
+            if (document.getElementById("passTimeRow"))
+                document.getElementById("passTimeRow").style.display = "table-row";
             document.getElementById("addEffectRow").style.display = "none";
             document.getElementById("mapContainer").onmousemove = null;
             document.getElementById("mapContainer").onclick = null;
-
         }
-
         document.getElementById("mapContainer").onclick = function(e){
             if (isDragging) {
                 return;
@@ -1313,12 +1317,9 @@ function showEffectControls() {
             } else if (durationSpinner.value == "days") {
                 testEffect.duration = parseInt(durationInput.value) * 10 * 60 * 24;
             }
-
-
-
             updateEffects(true);
+            deleteEffect(testEffect);
             hideEffectControls();
-
         }
 
         document.getElementById("mapContainer").onmousemove = function(e){
@@ -1332,21 +1333,85 @@ function showEffectControls() {
                 mouseY -= document.getElementById("mapContainer").getBoundingClientRect().y
                 mouseY += document.getElementById("mapContainer").scrollTop;
                 mouseY /= zoom;
-                if (testEffect.shape == "circle" && testEffect.size == 0) {
-                mouseX = Math.floor(mouseX/70)
-                mouseY = Math.floor(mouseY/70)
+
+                if (testEffect.shape == "circle") {
+                    if (testEffect.size == 0) {
+                        mouseX = Math.floor(mouseX/70)
+                        mouseY = Math.floor(mouseY/70)
+                    } else {
+                        mouseX = Math.round(mouseX/70)
+                        mouseY = Math.round(mouseY/70)
+                    }
                 } else {
-                mouseX = Math.round(mouseX/70)
-                mouseY = Math.round(mouseY/70)
+                    effectCTX.clearRect(0, 0, effectCanvas.width, effectCanvas.height);
+                    for (var i = 0; i < effects.length; i++) {
+                        var tmpEffect = generateEffect(effects[i].shape, effects[i].size, effects[i].color);
+                        if (tmpEffect.shape == "line") {
+                            tmpEffect.end = effects[i].end;
+                            tmpEffect.origin = effects[i].origin;
+                            locateEffect(tmpEffect, effects[i].end.x, effects[i].end.y);
+                        }
+                    }
                 }
+
                 locateEffect(testEffect, mouseX, mouseY);
             } catch (e) {
                 socket.emit("error_handle", room, e);
             }
         }
     }
-}
 
+    tr = document.createElement("tr");
+    tr.id = "passTimeRow";
+    td = document.createElement("td");
+    timeButton = document.createElement("button");
+    timeButton.innerText = "Pass Time";
+    td.appendChild(timeButton);
+    tr.appendChild(td);
+    td = document.createElement("td");
+    timeInput = document.createElement("input");
+    td.appendChild(timeInput);
+    tr.appendChild(td);
+    td = document.createElement("td");
+    timeSpinner = document.createElement("select");
+
+    timeOption = document.createElement("option");
+    timeOption.innerText = "rounds";
+    timeSpinner.append(timeOption);
+    timeOption = document.createElement("option");
+    timeOption.innerText = "minutes";
+    timeSpinner.append(timeOption);
+    timeOption = document.createElement("option");
+    timeOption.innerText = "hours";
+    timeSpinner.append(timeOption);
+    timeOption = document.createElement("option");
+    timeOption.innerText = "days";
+    timeSpinner.append(timeOption);
+
+
+
+    td.appendChild(timeSpinner);
+    tr.appendChild(td);
+    if (isGM)
+        table.appendChild(tr);
+    timeButton.onclick = function () {
+        timeAdvance = parseInt(timeInput.value);
+        if (!isNaN(timeAdvance)) {
+            if (timeSpinner.value == "minutes") {
+                timeAdvance *= 10;
+            } else if (timeSpinner.value == "hours") {
+                timeAdvance *= 10 * 60;
+            } else if (timeSpinner.value == "days") {
+                timeAdvance *= 10 * 60 * 24;
+            }
+            //updateEffects(true);
+            hideEffectControls();
+            socket.emit("advance_time", room, timeAdvance, gmKey);
+            console.log(timeAdvance);
+        }
+
+    }
+}
 function hideEffectControls() {
     if (typeof testEffect !== "undefined"){
 
@@ -1361,50 +1426,7 @@ function hideEffectControls() {
     document.getElementById("activeTabDiv").style.height = "calc(100% - 40px)";
     }
     document.getElementById("showEffectDivButton").onclick = showEffectControls;
-
-
-
-    /*
-    var effectCanvas = document.createElement("canvas")
-    effectCanvas.style.position = "absolute"
-    effectCanvas.style.top = 0
-    effectCanvas.style.pointerEvents = "none";
-    document.getElementById("mapGraphic").appendChild(effectCanvas);
-    effectCanvas.width = playerData.mapArray[0].length*70
-    effectCanvas.height = playerData.mapArray.length*70
-    var ctx = effectCanvas.getContext("2d");
-
-    document.getElementById("mapContainer").onmousemove = function(e){
-        mouseX = (e.clientX)
-        mouseX -= document.getElementById("mapContainer").getBoundingClientRect().x
-        mouseX += document.getElementById("mapContainer").scrollLeft;
-        mouseX /= zoom;
-
-        mouseY = (e.clientY)
-        mouseY -= document.getElementById("mapContainer").getBoundingClientRect().y
-        mouseY += document.getElementById("mapContainer").scrollTop;
-        mouseY /= zoom;
-
-        //need to get the point in the middle of the player. Will simplify for now.
-        playerX = playerData.playerList[charName].x * 70 + 35
-        playerY = playerData.playerList[charName].y * 70 + 35
-
-        angle = Math.atan2(mouseY - playerX, mouseX - playerY) * 180 / Math.PI;
-        newPoint = findNewPoint(playerY, playerX, angle, 70*6);
-        ctx.clearRect(0, 0, effectCanvas.width, effectCanvas.height)
-        ctx.beginPath();
-        ctx.moveTo(playerY, playerX);
-        ctx.lineTo(newPoint.x, newPoint.y)
-        ctx.lineWidth = 10;
-        //console.log(newPoint);
-        //console.log (playerY);
-        ctx.stroke();
-    }*/
-
-
-
 }
-
 function findNewPoint(x, y, angle, distance) { //https://stackoverflow.com/questions/17456783/javascript-figure-out-point-y-by-angle-and-distance
     var result = {};
 
@@ -1413,9 +1435,8 @@ function findNewPoint(x, y, angle, distance) { //https://stackoverflow.com/quest
 
     return result;
 }
-
 function updateEffects(addnew) {
-    if (addnew && typeof testEffect !== "undefined"){
+    if (addnew && typeof testEffect !== "undefined") {
         tempEffect = {};
         tempEffect.shape = testEffect.shape;
         tempEffect.size = testEffect.size;
@@ -1423,10 +1444,13 @@ function updateEffects(addnew) {
         tempEffect.title = testEffect.title;
         tempEffect.color = testEffect.color;
         tempEffect.duration = testEffect.duration;
+        if (tempEffect.shape == "line") {
+            tempEffect.end = testEffect.end;
+        }
         if (isGM) {
-        tempEffect.owner = 0;
+            tempEffect.owner = 0;
         } else {
-        tempEffect.owner = charName;
+            tempEffect.owner = charName;
         }
         tempEffect.round = currentRound;
         tempEffect.init = currentInit;
@@ -1438,13 +1462,11 @@ function updateEffects(addnew) {
         socket.emit("update_effects", room, effects, "");
     }
 }
-
 function removeContents(el) {
     while(el.firstChild) {
         el.firstChild.remove();
     }
 }
-
 function drawSelected(data) {
     nodes = document.getElementsByClassName("selected");
     while (nodes.length > 0) {
@@ -1461,7 +1483,6 @@ function drawSelected(data) {
         }
     }
 }
-
 async function chooseCreature() {
     var choice = await new Promise(async function(resolve) {
         var modalBackground = document.createElement("div");
@@ -1560,7 +1581,6 @@ async function chooseCreature() {
     })
     return choice;
 }
-
 async function selectAddUnit (owner) {
     unitToAdd = await chooseCreature();
     if (typeof unitToAdd == "undefined") {
@@ -1585,7 +1605,6 @@ async function selectAddUnit (owner) {
         socket.emit('add_unit', {addToInitiative: inInit ,unit: unit, room: room, charName: charName});
     }
 }
-
 function deselectAll() {
     try {
         nodes = document.getElementsByClassName("selected");

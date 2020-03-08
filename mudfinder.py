@@ -402,6 +402,19 @@ def on_advance_init(data):
             ROOMS[room].send_updates()
 
 
+@socketio.on('advance_time')
+def on_advance_time(room, timeAdvance, gmKey):
+    if check_room(room) and ROOMS[room].gmKey == gmKey:
+        for effect in ROOMS[room].effects[:]:
+            if effect["duration"] == "instantaneous":
+                ROOMS[room].effects.remove(effect)
+                continue
+            effect["duration"] -= timeAdvance
+            if effect["duration"] < 1:
+                ROOMS[room].effects.remove(effect)
+        ROOMS[room].send_updates()
+
+
 @socketio.on('end_init')
 def on_end_init(data):
     room = data['room']

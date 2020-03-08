@@ -1,6 +1,7 @@
 from unit import Unit
 from player import Player
 from flask_socketio import emit
+from math import floor
 
 
 
@@ -276,7 +277,9 @@ class Session(object):
         x = self.unitList[selectedPlayer].location[1]
         for xBox in range(-10, 11):
             for yBox in range(-10, 11):
-                cells = raytrace(x, y, max(0, x + xBox), max(0, y + yBox))
+                if xBox not in [-10, 10] and yBox not in [-10, 10]:
+                    continue
+                cells = raytrace(x, y, max(0, x + xBox), max(0, y + yBox), 6)
                 for distance in range(len(cells)):
                     try:
                         if self.mapArray[cells[distance][1]][cells[distance][0]]["seen"] == False:
@@ -295,13 +298,15 @@ class Session(object):
         emit('gm_update', self.to_json(), room=self.gmRoom)
         emit('do_update', self.player_json(), room=self.room)
 
-def raytrace(x0, y0, x1, y1):  # https://playtechs.blogspot.com/2007/03/raytracing-on-grid.html
+def raytrace(x0, y0, x1, y1, maximum):  # https://playtechs.blogspot.com/2007/03/raytracing-on-grid.html
+    distance = 0
     cells = []
     dx = abs(x1 - x0)
     dy = abs(y1 - y0)
     x = x0
     y = y0
     n = 1 + dx + dy
+
     if x1 > x0:
         x_inc = 1
     else:
@@ -314,6 +319,8 @@ def raytrace(x0, y0, x1, y1):  # https://playtechs.blogspot.com/2007/03/raytraci
     dx *= 2
     dy *= 2
     for i in range(n, 0, -1):
+        if max(abs(x0-x), abs(y0-y)) + floor(.5 * min(abs(x0-x), abs(y0-y))) > maximum:
+            return cells
         cells.append([x, y])
         if error > 0:
             x += x_inc

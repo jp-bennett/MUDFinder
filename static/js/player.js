@@ -114,9 +114,7 @@ window.onload = function() {
             playerData = undefined;
             playerData = msg;
             effects = playerData.effects;
-            //console.log(playerData);
             document.title = playerData.name
-            //updateMap(playerData);
             drawUnits(playerData);
             if ((document.getElementById("charWrapper").style.display == "none") | requestedUpdate) { //tracking requestedUpdate may be all that's needed
                 populateSheet(playerData.playerList[charName]);
@@ -1259,7 +1257,7 @@ function addSpell(selectionSource, destination) {
     div.onclick = function () {event.stopPropagation()}
     if (selectionSource == "class") {
         div.innerHTML = `
-        Spell Level: <select id="spellLevelSelect" onchange="get_spells('${spellcasting[0].class}', this.selectedIndex, populateSpellList);">
+        Spell Level: <select id="spellLevelSelect" onchange="socket.emit('database_spells', '${spellcasting[0].class}', this.selectedIndex, populateSpellList);">
         <option>0</option>
         <option>1</option>
         <option>2</option>
@@ -1277,7 +1275,7 @@ function addSpell(selectionSource, destination) {
         document.body.appendChild(modalBackground);
         document.getElementById("modalBackground").appendChild(div);
         document.getElementById("spellLevelSelect").selectedIndex = destination[1]
-        get_spells(spellcasting[0].class, destination[1], populateSpellList);
+        socket.emit("database_spells", spellcasting[0].class, destination[1], populateSpellList);
     } else if (selectionSource == "spellbook") {
         div.innerHTML = `
         Spell Level: <select id="spellLevelSelect" onchange="populateSpellList(spellcasting[0].spellbook[this.selectedIndex]);">
