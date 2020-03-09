@@ -356,7 +356,7 @@ function drawUnits(Data) { //Give every addition a classname, that can be iterat
         }
         nodes = document.getElementsByClassName("tokenImg");
         for (var i=nodes.length-1; i >= 0; i-=1) {
-            if (!(unitsByUUID[nodes[i].uuid] && unitsByUUID[nodes[i].uuid].x != -1)) {
+            if (!(unitsByUUID[nodes[i].attributes.uuid] && unitsByUUID[nodes[i].attributes.uuid].x != -1)) {
                 nodes[i].remove();
             }
         }
@@ -393,7 +393,7 @@ function drawUnits(Data) { //Give every addition a classname, that can be iterat
                     tokenDiv2 = null;
                     nodes = document.getElementsByClassName("tokenImg");
                     for (var x=0; x<nodes.length; x++) {
-                        if (nodes[x].uuid == Data.unitList[i].uuid) {
+                        if (nodes[x].attributes.uuid == Data.unitList[i].uuid) {
                             tokenDiv2 = nodes[x];
                             break;
                         }
