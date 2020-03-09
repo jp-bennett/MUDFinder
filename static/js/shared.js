@@ -16,6 +16,7 @@ var mapObject;
 var inInit;
 var currentRound = -1;
 var currentInit = -1;
+var unitsByUUID;
 var crNumbers = ["1/8", "1/6", "1/4", "1/3", "1/2", "1", "2", "3", "4", "5", "6", "7", "8", "9",
                     "10", "11", "12", "13", "14", "15", "16", "17", "18", "19",
                     "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "35", "37", "39"];
@@ -354,26 +355,28 @@ function drawUnits(Data) { //Give every addition a classname, that can be iterat
             nodes[0].remove();
         }
         nodes = document.getElementsByClassName("tokenImg");
-        while (nodes.length > 0) {
-            nodes[0].remove();
+        for (var i=nodes.length-1; i >= 0; i-=1) {
+            if (!(unitsByUUID[nodes[i].uuid] && unitsByUUID[nodes[i].uuid].x != -1)) {
+                nodes[i].remove();
+            }
         }
         nodes = document.getElementsByClassName("activeUnit");
         while (nodes.length > 0) {
             nodes[0].classList.remove("activeUnit");
         }
         //move the firebrock background into a class
+
         for (var i = 0; i < Data.unitList.length; i++) {
-            if (typeof Data.unitList[i].x !== "undefined" && document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`) !== null) {
+            if (Data.unitList[i].x !== -1 && document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`) !== null) {
                 document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).classList.add("selectableUnit");
                 document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).attributes.units += i + " ";
                 if (typeof Data.unitList[i].size !== "undefined" && Data.unitList[i].size == "large") {
-
-                document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).classList.add("selectableUnit");
-                    document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).attributes.units += i + " ";
-                document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).classList.add("selectableUnit");
-                    document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).attributes.units += i + " ";
-                document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).classList.add("selectableUnit");
-                    document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).attributes.units += i + " ";
+                    document.getElementById(`tile${Data.unitList[i].x+1},${Data.unitList[i].y}`).classList.add("selectableUnit");
+                    document.getElementById(`tile${Data.unitList[i].x+1},${Data.unitList[i].y}`).attributes.units += i + " ";
+                    document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y-1}`).classList.add("selectableUnit");
+                    document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y-1}`).attributes.units += i + " ";
+                    document.getElementById(`tile${Data.unitList[i].x+1},${Data.unitList[i].y-1}`).classList.add("selectableUnit");
+                    document.getElementById(`tile${Data.unitList[i].x+1},${Data.unitList[i].y-1}`).attributes.units += i + " ";
                 }
                 if (typeof Data.unitList[i].token === "undefined" || Data.unitList[i].token == "") {
                     tmpSpan = document.createElement("span");
@@ -382,37 +385,54 @@ function drawUnits(Data) { //Give every addition a classname, that can be iterat
                     tmpSpan.innerText = Data.unitList[i].charName;
                     document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y}`).appendChild(tmpSpan);
                     if (typeof Data.unitList[i].size !== "undefined" && Data.unitList[i].size == "large") {
-                        document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y}`).appendChild(tmpSpan);
-                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y+1}`).appendChild(tmpSpan);
-                        document.getElementById(`tile${Data.unitList[i].x-1},${Data.unitList[i].y+1}`).appendChild(tmpSpan);
+                        document.getElementById(`tile${Data.unitList[i].x+1},${Data.unitList[i].y}`).appendChild(tmpSpan.cloneNode(true));
+                        document.getElementById(`tile${Data.unitList[i].x},${Data.unitList[i].y-1}`).appendChild(tmpSpan.cloneNode(true));
+                        document.getElementById(`tile${Data.unitList[i].x+1},${Data.unitList[i].y-1}`).appendChild(tmpSpan.cloneNode(true));
                     }
                 } else {
-                    tokenDiv2 = document.createElement("img");
-                    tokenDiv2.classList.add("tokenImg");
-                    tokenDiv2.src = Data.unitList[i].token;
-                    tokenDiv2.style.pointerEvents = "none"
+                    tokenDiv2 = null;
+                    nodes = document.getElementsByClassName("tokenImg");
+                    for (var x=0; x<nodes.length; x++) {
+                        if (nodes[x].uuid == Data.unitList[i].uuid) {
+                            tokenDiv2 = nodes[x];
+                            break;
+                        }
+                    }
+                    if (tokenDiv2 == null) {
+                        tokenDiv2 = document.createElement("img");
+                        tokenDiv2.classList.add("tokenImg");
+                        tokenDiv2.src = Data.unitList[i].token;
+                        tokenDiv2.style.pointerEvents = "none"
+                        tokenDiv2.attributes.uuid = Data.unitList[i].uuid;
+                        if (Data.unitList[i].size == "large") {
+                            tokenDiv2.style.width = zoomSize*2 - 8 + "px";
+                            tokenDiv2.style.height = zoomSize*2  - 8+ "px";
+                            tokenDiv2.style.position = "absolute";
+                        } else {
+                            tokenDiv2.style.width = zoomSize - 8 + "px";
+                            tokenDiv2.style.height = zoomSize  - 8 + "px";
+                            tokenDiv2.style.position = "absolute";
+                        }
+                        if (Data.inInit && Data.unitList[i].initNum == Data.initiativeCount) {
+                            tokenDiv2.style.borderWidth = "5px";
+                            tokenDiv2.style.borderStyle = "solid";
+                            tokenDiv2.style.borderImage = "radial-gradient(red, transparent)10";
+                        }
+                        document.getElementById("mapGraphic").appendChild(tokenDiv2);
+                    }
+                    //position the tokens
+
                     position_top = Data.unitList[i].y*zoomSize + 4;
                     position_left = Data.unitList[i].x*zoomSize + 4;
                     if (Data.unitList[i].size == "large") {
                         position_top -= zoomSize;
-                        tokenDiv2.style.width = zoomSize*2 - 8 + "px";
-                        tokenDiv2.style.height = zoomSize*2  - 8+ "px";
-                        tokenDiv2.style.position = "absolute";
-                    } else {
-                        tokenDiv2.style.width = zoomSize - 8 + "px";
-                        tokenDiv2.style.height = zoomSize  - 8 + "px";
-                        tokenDiv2.style.position = "absolute";
                     }
                     if (Data.inInit && Data.unitList[i].initNum == Data.initiativeCount) {
-                        tokenDiv2.style.borderWidth = "5px";
-                        tokenDiv2.style.borderStyle = "solid";
-                        tokenDiv2.style.borderImage = "radial-gradient(red, transparent)10";
                         position_top -= 5;
                         position_left -= 5;
                     }
                     tokenDiv2.style.top = position_top + "px";
                     tokenDiv2.style.left = position_left + "px";
-                    document.getElementById("mapGraphic").appendChild(tokenDiv2);
                 }
             }
         }
@@ -445,18 +465,18 @@ function drawUnits(Data) { //Give every addition a classname, that can be iterat
             if (Data.initiativeList[Data.initiativeCount].x != -1) {
                 document.getElementById("tile" + Data.initiativeList[Data.initiativeCount].x + "," + Data.initiativeList[Data.initiativeCount].y).classList.add("activeUnit");
                 if (Data.initiativeList[Data.initiativeCount].size == "large") {
-                    document.getElementById("tile" + (Data.initiativeList[Data.initiativeCount].x - 1) + "," + Data.initiativeList[Data.initiativeCount].y).classList.add("activeUnit");
-                    document.getElementById("tile" + Data.initiativeList[Data.initiativeCount].x + "," + (Data.initiativeList[Data.initiativeCount].y + 1)).classList.add("activeUnit");
-                    document.getElementById("tile" + (Data.initiativeList[Data.initiativeCount].x - 1) + "," + (Data.initiativeList[Data.initiativeCount].y + 1)).classList.add("activeUnit");
+                    document.getElementById("tile" + (Data.initiativeList[Data.initiativeCount].x+1) + "," + Data.initiativeList[Data.initiativeCount].y).classList.add("activeUnit");
+                    document.getElementById("tile" + Data.initiativeList[Data.initiativeCount].x + "," + (Data.initiativeList[Data.initiativeCount].y-1)).classList.add("activeUnit");
+                    document.getElementById("tile" + (Data.initiativeList[Data.initiativeCount].x+1) + "," + (Data.initiativeList[Data.initiativeCount].y-1)).classList.add("activeUnit");
                 }
             }
             if (typeof selectedUnits !== "undefined") { //selectedUnit
                 for (u=0; u> selectedUnits.length; u++){
                     document.getElementById("tile" + Data.unitList[selectedUnits[u]].x + "," + Data.unitList[selectedUnits[u]].y).classList.add("activeUnit");
                     if (Data.initiativeList[Data.initiativeCount].size == "large") {
-                        document.getElementById("tile" + (Data.unitList[selectedUnits[u]].x - 1) + "," + Data.unitList[selectedUnits[u]].y).classList.add("activeUnit");
-                        document.getElementById("tile" + Data.unitList[selectedUnits[u]].x + "," + (Data.unitList[selectedUnits[u]].y + 1)).classList.add("activeUnit");
-                        document.getElementById("tile" + (Data.unitList[selectedUnits[u]].x - 1) + "," + (Data.unitList[selectedUnits[u]].y + 1)).classList.add("activeUnit");
+                        document.getElementById("tile" + (Data.unitList[selectedUnits[u]].x+1) + "," + Data.unitList[selectedUnits[u]].y).classList.add("activeUnit");
+                        document.getElementById("tile" + Data.unitList[selectedUnits[u]].x + "," + (Data.unitList[selectedUnits[u]].y-1)).classList.add("activeUnit");
+                        document.getElementById("tile" + (Data.unitList[selectedUnits[u]].x+1) + "," + (Data.unitList[selectedUnits[u]].y-1)).classList.add("activeUnit");
                     }
                 }
             }
@@ -1477,6 +1497,11 @@ function drawSelected(data) {
             document.getElementById("unitsDiv").children[selectedUnits[i]].classList.add("selected");
         if (data.unitList[selectedUnits[i]].x !== -1) {
             document.getElementById(`tile${data.unitList[selectedUnits[i]].x},${data.unitList[selectedUnits[i]].y}`).classList.add("selected");
+            if (data.unitList[selectedUnits[i]].size == "large") {
+                document.getElementById(`tile${data.unitList[selectedUnits[i]].x+1},${data.unitList[selectedUnits[i]].y-1}`).classList.add("selected");
+                document.getElementById(`tile${data.unitList[selectedUnits[i]].x},${data.unitList[selectedUnits[i]].y-1}`).classList.add("selected");
+                document.getElementById(`tile${data.unitList[selectedUnits[i]].x+1},${data.unitList[selectedUnits[i]].y}`).classList.add("selected");
+            }
         }
         if (data.unitList[selectedUnits[i]].initNum != -1) {
             document.getElementById("initiativeDiv").children[data.unitList[selectedUnits[i]].initNum].classList.add("selected");

@@ -115,6 +115,10 @@ window.onload = function() {
         try {
             gmData = msg;
             document.title = gmData.name
+            unitsByUUID = {};
+            for (var i = 0; i < msg.unitList.length; i++) {
+                unitsByUUID[msg.unitList[i].uuid] = msg.unitList[i];
+            }
             effects = gmData.effects;
             drawUnits(gmData);
             if (multiSelect) {
@@ -393,33 +397,6 @@ function css_getclass(name) {
     }
 }
 
-/*function zoomIn(lookingAtX, lookingAtY) {
-    try {
-        lookingAtX = lookingAtX || (document.getElementById("mapContainer").clientWidth/2 + document.getElementById("mapContainer").scrollLeft)/zoomSize
-        lookingAtY = lookingAtY || (document.getElementById("mapContainer").clientHeight/2 + document.getElementById("mapContainer").scrollTop)/zoomSize
-        //console.log("x:" + lookingAtX + " Y:" + lookingAtY);
-        zoomSize *= 1.5;
-        updateMap(gmData);
-        document.getElementById("mapContainer").scrollLeft = lookingAtX*zoomSize - document.getElementById("mapContainer").clientWidth/2
-        document.getElementById("mapContainer").scrollTop = lookingAtY*zoomSize - document.getElementById("mapContainer").clientHeight/2
-    } catch (e) {
-        socket.emit("error_handle", room, e);
-    }
-}
-
-function zoomOut(lookingAtX, lookingAtY) {
-    try {
-        lookingAtX = lookingAtX || (document.getElementById("mapContainer").clientWidth/2 + document.getElementById("mapContainer").scrollLeft)/zoomSize
-        lookingAtY = lookingAtY || (document.getElementById("mapContainer").clientHeight/2 + document.getElementById("mapContainer").scrollTop)/zoomSize
-        zoomSize /= 1.5;
-        updateMap(gmData);
-        document.getElementById("mapContainer").scrollLeft = lookingAtX*zoomSize - document.getElementById("mapContainer").clientWidth/2
-        document.getElementById("mapContainer").scrollTop = lookingAtY*zoomSize - document.getElementById("mapContainer").clientHeight/2
-    } catch (e) {
-        socket.emit("error_handle", room, e);
-    }
-}*/
-
 function beginInit() {
     socket.emit('begin_init', {room: room, gmKey: gmKey});
 }
@@ -488,8 +465,8 @@ function mapClick(e, x, y) {
         if (typeof testEffect !== "undefined"){
             return;
         }
-        relative_y = e.offsetX * 16 / zoomSize;
-        relative_x = e.offsetY * 16 / zoomSize;
+        relative_y = e.offsetY * 16 / zoomSize;
+        relative_x = e.offsetX * 16 / zoomSize;
         if (typeof selectedTool !== "undefined") {
             tiles = [{newTile: selectedTool.id, xCoord: x, yCoord: y}]
             socket.emit('map_edit', {tiles: tiles, room: room, gmKey: gmKey});

@@ -113,6 +113,10 @@ window.onload = function() {
         try {
             playerData = undefined;
             playerData = msg;
+            unitsByUUID = {};
+            for (var i = 0; i < msg.unitList.length; i++) {
+                unitsByUUID[msg.unitList[i].uuid] = msg.unitList[i];
+            }
             effects = playerData.effects;
             document.title = playerData.name
             drawUnits(playerData);
@@ -281,8 +285,8 @@ function mapClick(e, x, y) {
             return;
         }
         //console.log("Clicked!" + x + ", " + y);
-        relative_y = e.offsetX * 16 / zoomSize;
-        relative_x = e.offsetY * 16 / zoomSize;
+        relative_y = e.offsetY * 16 / zoomSize;
+        relative_x = e.offsetX * 16 / zoomSize;
         //console.log(relative_x + ", " + relative_y);
         if (typeof testEffect !== "undefined"){
             return;
