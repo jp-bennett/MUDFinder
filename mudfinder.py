@@ -900,7 +900,7 @@ def on_map_edit(data_pack):
                 if data["newTile"] in ["doorLocked"]:
                     ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["locked"] = True
                     ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] = False
-                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["tile"] = "doorClosed";
+                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["tile"] = "doorClosed"
                 if data["newTile"] in ["doorClosed", "doorTileB"]:
                     ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["secret"] = False
                     ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["locked"] = False
@@ -925,12 +925,15 @@ def on_map_edit(data_pack):
             updatedTiles.append(ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]])
         emit('gm_map_update', updatedTiles)
         tmpUpdatedTiles = copy.deepcopy(updatedTiles)
-        for y in tmpUpdatedTiles:
+        for index, y in enumerate(tmpUpdatedTiles):
             if not y["seen"]:
-                y = {"tile": "unseenTile", "walkable": False}
+                tmpUpdatedTiles[index]["tile"] = "unseenTile"
+                tmpUpdatedTiles[index]["walkable"] = False
             elif y["secret"]:
-                y = {"tile": "wallTile", "walkable": False}
-        emit('player_map_update', tmpUpdatedTiles, room=room)
+                tmpUpdatedTiles[index]["tile"] = "wallTile"
+                tmpUpdatedTiles[index]["walkable"] = False
+        if len(tmpUpdatedTiles) > 0:
+            emit('player_map_update', tmpUpdatedTiles, room=room)
 
 
 @socketio.on('map_upload')

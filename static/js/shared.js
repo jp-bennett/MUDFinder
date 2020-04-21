@@ -419,6 +419,10 @@ function drawUnits(Data) { //Give every addition a classname, that can be iterat
                             tokenDiv2.style.borderImage = "radial-gradient(red, transparent)10";
                         }
                         document.getElementById("mapGraphic").appendChild(tokenDiv2);
+                    } else {
+                        if (tokenDiv2.src !== Data.unitList[i].token) {
+                            tokenDiv2.src = Data.unitList[i].token;
+                        }
                     }
                     //position the tokens
 
