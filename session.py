@@ -275,8 +275,8 @@ class Session(object):
         if self.unitList[selectedPlayer].location == [-1, -1]: return []
         y = self.unitList[selectedPlayer].location[0]
         x = self.unitList[selectedPlayer].location[1]
-        for xBox in range(-12, 13):
-            for yBox in range(-12, 13):
+        for xBox in range(-12, 14):
+            for yBox in range(-12, 14):
                 if xBox not in [-12, 13] and yBox not in [-12, 13]:
                     continue
                 cells = raytrace(x, y, max(0, x + xBox), max(0, y + yBox), 12)

@@ -107,9 +107,10 @@ window.onload = function() {
         mapObject = msg;
     });
     socket.on('player_map_update', function(msg) {
+        console.log(msg);
         updateMap(msg, mapObject);
     });
-    socket.on('do_update', function(msg) {
+    socket.on('do_update', function(msg) { // somehow check for updated images here
         try {
             playerData = undefined;
             playerData = msg;
