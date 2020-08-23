@@ -350,9 +350,10 @@ width:100%;
     cursor: crosshair;
     height: 20px;
     width: 20px;
-    border-width: .1px;
+    border-width: 1px;
     border-style: solid;
     text-align: center;
+    z-index:2
 }
 
 .wallTile {

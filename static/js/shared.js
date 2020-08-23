@@ -114,8 +114,8 @@ function drawMap(mapArray) {
                 newMapTile.attributes.x = x;
                 newMapTile.attributes.y = y;
                 newMapTile.attributes.units = "";
-                newMapTile.style.width = zoomSize + "px";
-                newMapTile.style.height = zoomSize + "px";
+                newMapTile.style.width = zoomSize - 2 + "px";
+                newMapTile.style.height = zoomSize - 2 + "px";
                 newMapTile.style.position = "absolute";
                 newMapTile.style.top = y * zoomSize + "px";
                 newMapTile.style.left = x * zoomSize + "px";
@@ -242,8 +242,8 @@ function updateMap(newMapArray, mapArray) {
             newMapTile.attributes.x = x;
             newMapTile.attributes.y = y;
             newMapTile.attributes.units = "";
-            newMapTile.style.width = zoomSize + "px";
-            newMapTile.style.height = zoomSize + "px";
+            newMapTile.style.width = zoomSize - 2 + "px";
+            newMapTile.style.height = zoomSize  - 2 + "px";
             newMapTile.style.position = "absolute";
             newMapTile.style.top = y * zoomSize + "px";
             newMapTile.style.left = x * zoomSize + "px";
@@ -402,7 +402,8 @@ function drawUnits(Data) { //Give every addition a classname, that can be iterat
                         tokenDiv2 = document.createElement("img");
                         tokenDiv2.classList.add("tokenImg");
                         tokenDiv2.src = Data.unitList[i].token;
-                        tokenDiv2.style.pointerEvents = "none"
+                        tokenDiv2.style.pointerEvents = "none";
+                        tokenDiv2.style.zIndex = "3";
                         tokenDiv2.attributes.uuid = Data.unitList[i].uuid;
                         if (Data.unitList[i].size == "large") {
                             tokenDiv2.style.width = zoomSize*2 - 8 + "px";
@@ -413,11 +414,11 @@ function drawUnits(Data) { //Give every addition a classname, that can be iterat
                             tokenDiv2.style.height = zoomSize  - 8 + "px";
                             tokenDiv2.style.position = "absolute";
                         }
-                        if (Data.inInit && Data.unitList[i].initNum == Data.initiativeCount) {
-                            tokenDiv2.style.borderWidth = "5px";
+                        /*if (Data.inInit && Data.unitList[i].initNum == Data.initiativeCount) {
+                            tokenDiv2.style.borderWidth = "4px";
                             tokenDiv2.style.borderStyle = "solid";
                             tokenDiv2.style.borderImage = "radial-gradient(red, transparent)10";
-                        }
+                        }*/
                         document.getElementById("mapGraphic").appendChild(tokenDiv2);
                     } else {
                         if (tokenDiv2.src !== Data.unitList[i].token) {
@@ -432,8 +433,8 @@ function drawUnits(Data) { //Give every addition a classname, that can be iterat
                         position_top -= zoomSize;
                     }
                     if (Data.inInit && Data.unitList[i].initNum == Data.initiativeCount) {
-                        position_top -= 5;
-                        position_left -= 5;
+                        //position_top -= 4;
+                        //position_left -= 4;
                     }
                     tokenDiv2.style.top = position_top + "px";
                     tokenDiv2.style.left = position_left + "px";
