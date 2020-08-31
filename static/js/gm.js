@@ -13,6 +13,7 @@ var ds; /* = new DragSelect({
 });*/
 const isGM = true;
 showSeenOverlay = true;
+mapBackground = "static/images/mapbackground.jpg";
 
 
 document.getElementById("mapContainer").onwheel = function(e){
@@ -285,6 +286,8 @@ function mapGenerate() {
         socket.emit("error_handle", room, e);
     }
 }
+function showMapBackgroundSelect() {
+}
 function mapTool(e, tileName) {
     try {
         if (typeof selectedTool !== "undefined" && selectedTool == e.target) {
@@ -316,6 +319,24 @@ function seenOverlayToggle(obj) {
         }
         drawMap(mapObject);
         drawUnits(gmData);
+
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
+function featuresToggle(obj) {
+    try {
+        //console.log(obj);
+        if(obj.checked) {
+            css_getclass(".fullyTransparent").style.opacity = "";
+            css_getclass(".floorTile").style.background = "";
+        } else {
+            css_getclass(".fullyTransparent").style.opacity = "0";
+            css_getclass(".floorTile").style.background = "white";
+        }
+        //drawMap(mapObject);
+        //drawUnits(gmData);
 
     } catch (e) {
         socket.emit("error_handle", room, e);
@@ -469,7 +490,7 @@ function mapClick(e, x, y) {
         relative_x = e.offsetX * 16 / zoomSize;
         if (typeof selectedTool !== "undefined") {
             tiles = [{newTile: selectedTool.id, xCoord: x, yCoord: y}]
-            socket.emit('map_edit', {tiles: tiles, room: room, gmKey: gmKey});
+            socket.emit('map_edit', {tiles: tiles, room: room, gmKey: gmKey, relative_x: relative_x, relative_y: relative_y});
             return;
         }
         if (e.currentTarget.attributes.units != ""){
@@ -496,19 +517,6 @@ function mapClick(e, x, y) {
 function changeHP(initnum) {
     socket.emit('change_hp', {changeHP: document.getElementById(`hpChange${initnum}`).value, room: room, gmKey: gmKey, initCount: initnum});
 }
-
-/*function deselectAll() {
-    try {
-        nodes = document.getElementsByClassName("selected");
-        while (nodes.length > 0) {
-            nodes[0].classList.remove("selected");
-        }
-        selectedUnits = [];
-        selectedTool = undefined;
-    } catch (e) {
-        socket.emit("error_handle", room, e);
-    }
-}*/
 
 function selectInitiative(initiativeNum) {
     try {
@@ -684,8 +692,10 @@ function multiSelectToggle(element) {
             ds.stop();
         ds = undefined;
         multiSelect = false;
-        if (mapObject.length > 0) {
+        if (mapObject.mapArray.length > 0) {
             document.getElementById("mapContainer").classList.add("dragscroll");
+        } else {
+            document.getElementById("mapContainer").classList.remove("dragscroll");
         }
     }
     dragscroll.reset();

@@ -252,6 +252,14 @@ def on_image_upload(room, image, title, owner):
             ROOMS[room].unitList[int(owner)].token = image
         if title == "loreImage":
             return image
+        if title == "mapBackground":
+            ROOMS[room].mapData["mapBackground"] = image
+            tmpMapData = {}
+            tmpMapData["showBackground"] = ROOMS[room].mapData["showBackground"]
+            tmpMapData["mapBackground"] = ROOMS[room].mapData["mapBackground"]
+            tmpMapData["mapArray"] = []
+            emit('gm_map_update', tmpMapData, room=ROOMS[room].gmRoom)
+            emit('player_map_update', tmpMapData, room=room)
         emit('do_update', ROOMS[room].player_json(), room=room)
 
 
@@ -330,7 +338,7 @@ def on_join_gm(data):
         if ROOMS[room].gmRoom == "":
             ROOMS[room].gmRoom = request.sid
         join_room(ROOMS[room].gmRoom)
-        emit('gm_map', ROOMS[room].mapArray)
+        emit('gm_map', ROOMS[room].mapData)
         emit('gm_update', ROOMS[room].to_json())
     else:
         emit('error', {'error': 'Unable to join room. Room does not exist.'})
@@ -439,7 +447,7 @@ def on_save_encounter(data):
     room = data['room']
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         ROOMS[room].savedEncounters[data['encounterName']] = {}
-        ROOMS[room].savedEncounters[data['encounterName']]["mapArray"] = copy.deepcopy(ROOMS[room].mapArray)
+        ROOMS[room].savedEncounters[data['encounterName']]["mapData"] = copy.deepcopy(ROOMS[room].mapData)
         ROOMS[room].savedEncounters[data['encounterName']]["unitList"] = []
         for x in ROOMS[room].unitList:
             if x.controlledBy == "gm":
@@ -459,7 +467,7 @@ def on_remove_encounter(data):
 def on_load_encounter(data):
     room = data['room']
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
-        ROOMS[room].mapArray = copy.deepcopy(ROOMS[room].savedEncounters[data['encounterName']]["mapArray"])
+        ROOMS[room].mapData = copy.deepcopy(ROOMS[room].savedEncounters[data['encounterName']]["mapData"])
         for x in reversed(ROOMS[room].unitList):
             if x.controlledBy == "gm":
                 ROOMS[room].unitList.remove(x)
@@ -471,12 +479,7 @@ def on_load_encounter(data):
         for x in ROOMS[room].savedEncounters[data['encounterName']]["unitList"]:
             ROOMS[room].unitList.append(Unit(copy.deepcopy(x)))
         ROOMS[room].number_units()
-        if not ROOMS[room].mapArray[0][0]["x"]:
-            for y in range(len(ROOMS[room].mapArray)):
-                for x in range(len(ROOMS[room].mapArray[y])):
-                    ROOMS[room].mapArray[y][x]["x"] = x
-                    ROOMS[room].mapArray[y][x]["y"] = y
-        emit('gm_map', ROOMS[room].mapArray)
+        emit('gm_map', ROOMS[room].mapData)
         emit('draw_map', ROOMS[room].player_map(), room=room)
         ROOMS[room].send_updates()
 
@@ -498,7 +501,8 @@ def on_add_player_unit(data):
 def on_clear_map(data):
     room = data['room']
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
-        ROOMS[room].mapArray = []
+        ROOMS[room].mapData["mapArray"] = []
+        ROOMS[room].mapData["mapBackground"] = "static/images/mapbackground.jpg"
         ROOMS[room].inInit = False
         for x in reversed(ROOMS[room].unitList):  # since we're removing elements, have to walk it backwards
             if x.controlledBy == "gm":
@@ -512,7 +516,7 @@ def on_clear_map(data):
         ROOMS[room].initiativeCount = 0
         ROOMS[room].initiativeList = []
         ROOMS[room].number_units()
-        emit('gm_map', ROOMS[room].mapArray)
+        emit('gm_map', ROOMS[room].mapData)
         emit('draw_map', ROOMS[room].player_map(), room=room)
         ROOMS[room].send_updates()
 
@@ -779,19 +783,23 @@ def on_locate_unit(data):
         if tmpUnit.revealsMap:
             revealedTiles = ROOMS[room].reveal_map(tmpUnit.unitNum)
             if revealedTiles:
-                emit('gm_map_update', revealedTiles, room=ROOMS[room].gmRoom)
-                emit('player_map_update', revealedTiles, room=room)
+                tmpMapData = {}
+                tmpMapData["showBackground"] = ROOMS[room].mapData["showBackground"]
+                tmpMapData["mapBackground"] = ROOMS[room].mapData["mapBackground"]
+                tmpMapData["mapArray"] = revealedTiles
+                emit('gm_map_update', tmpMapData, room=ROOMS[room].gmRoom)
+                emit('player_map_update', tmpMapData, room=room)
         ROOMS[room].send_updates()
         return
 
     # If a player controls, and the unit doesn't have a location, use the player's location as starting location.
     if ROOMS[room].inInit:
-        if ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["tile"] == "doorClosed" \
-                and not ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["locked"]:
-            ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["tile"] = "doorOpen"
+        if ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["tile"] == "doorClosed" \
+                and not ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["locked"]:
+            ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["tile"] = "doorOpen"
             ROOMS[room].send_updates()
-        if ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] \
-                and ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["seen"] \
+        if ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["walkable"] \
+                and ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["seen"] \
                 and ROOMS[room].unitList[data['selectedUnit']].controlledBy == data["requestingPlayer"] \
                 and ROOMS[room].unitList[data['selectedUnit']].initiative \
                 and ROOMS[room].unitList[data['selectedUnit']].initiative == \
@@ -802,24 +810,33 @@ def on_locate_unit(data):
                 ROOMS[room].calc_path(tmpUnit, (data["yCoord"], data["xCoord"]), 5)
             if tmpUnit.revealsMap:
                 revealedTiles = ROOMS[room].reveal_map(data['selectedUnit'])  # only some controlled units should do this
-                emit('gm_map_update', revealedTiles, room=ROOMS[room].gmRoom)
-                emit('player_map_update', revealedTiles, room=room)
+                tmpMapData = {}
+                tmpMapData["showBackground"] = ROOMS[room].mapData["showBackground"]
+                tmpMapData["mapBackground"] = ROOMS[room].mapData["mapBackground"]
+                tmpMapData["mapArray"] = revealedTiles
+                emit('gm_map_update', tmpMapData, room=ROOMS[room].gmRoom)
+                emit('player_map_update', tmpMapData, room=room)
             ROOMS[room].send_updates()
     else:
-        if ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["tile"] == "doorClosed" \
-                and not ("locked" in ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]] and ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["locked"]):
-            ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["tile"] = "doorOpen"
-            ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] = True
-            emit('gm_map_update', [ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]], room=ROOMS[room].gmRoom)
-            emit('player_map_update', [ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]], room=room)
-        if ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] \
-                and ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["seen"] \
+        tmpMapData = {}
+        tmpMapData["showBackground"] = ROOMS[room].mapData["showBackground"]
+        tmpMapData["mapBackground"] = ROOMS[room].mapData["mapBackground"]
+        if ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["tile"] == "doorClosed" \
+                and not ("locked" in ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]] and ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["locked"]):
+            ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["tile"] = "doorOpen"
+            ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["walkable"] = True
+            tmpMapData["mapArray"] = [ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]]
+            emit('gm_map_update', tmpMapData, room=ROOMS[room].gmRoom)
+            emit('player_map_update', tmpMapData, room=room)
+        if ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["walkable"] \
+                and ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["seen"] \
                 and ROOMS[room].unitList[data['selectedUnit']].controlledBy == data["requestingPlayer"]:
             ROOMS[room].calc_path(tmpUnit, (data["yCoord"], data["xCoord"]), 3)
         if tmpUnit.revealsMap:
             revealedTiles = ROOMS[room].reveal_map(data['selectedUnit'])  # only some controlled units should do this
-            emit('gm_map_update', revealedTiles, room=ROOMS[room].gmRoom)
-            emit('player_map_update', revealedTiles, room=room)
+            tmpMapData["mapArray"] = revealedTiles
+            emit('gm_map_update', tmpMapData, room=ROOMS[room].gmRoom)
+            emit('player_map_update', tmpMapData, room=room)
         ROOMS[room].send_updates()
 
 
@@ -877,53 +894,99 @@ def on_del_init(data):
 def on_map_generate(data):
     room = data['room']
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
-        ROOMS[room].mapArray = []
+        ROOMS[room].mapData["mapArray"] = []
+        ROOMS[room].mapData["mapBackground"] = "static/images/mapbackground.jpg"
         map_line_list = []
         for y in range(data["mapHeight"]):
             for x in range(data["mapWidth"]):
                 map_line_list.append(
                     {"tile": "floorTile", "walkable": True, "seen": data["discovered"], "secret": False, "x": x, "y": y})
-            ROOMS[room].mapArray.append(map_line_list)
+            ROOMS[room].mapData["mapArray"].append(map_line_list)
             map_line_list = []
+        emit('gm_map', ROOMS[room].mapData)
+        emit('draw_map', ROOMS[room].player_map(), room=room)
         ROOMS[room].send_updates()
+
+
+def toggleWall(tile, wall_side):
+    if "walls" not in tile:
+        tile["walls"] = []
+    if wall_side in tile["walls"]:
+        tile["walls"].remove(wall_side)
+    else:
+        tile["walls"].append(wall_side)
 
 
 @socketio.on('map_edit')
 def on_map_edit(data_pack):
     room = data_pack['room']
     if check_room(room) and ROOMS[room].gmKey == data_pack['gmKey']:
+        updatedMap = {}
+        updatedMap["showBackground"] = ROOMS[room].mapData["showBackground"]
+        updatedMap["mapBackground"] = ROOMS[room].mapData["mapBackground"]
         updatedTiles = []
         # print(data_pack)
         for data in data_pack["tiles"]:
-            if "Tile" in data["newTile"] or "door" in data["newTile"]:
-                ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["tile"] = data["newTile"]
+            if "thinWallTile" in data["newTile"]:
+                print(data_pack)
+                #find which wall is closest
+                wall_side = "left"
+                wall_distance = data_pack["relative_x"]
+                if data_pack["relative_x"] > 8:
+                    wall_side = "right"
+                    wall_distance = 16 - data_pack["relative_x"]
+                if data_pack["relative_y"] < wall_distance:
+                    wall_side = "top"
+                    wall_distance = data_pack["relative_y"]
+                elif 16 - data_pack["relative_y"] < wall_distance:
+                    wall_side = "bottom"
+                print(wall_side)
+                print(ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]])
+                toggleWall(ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]], wall_side)
+
+                if wall_side == "left" and ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"] - 1]:
+                    toggleWall(ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"] - 1], "right")
+                    updatedTiles.append(ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"] - 1])
+                if wall_side == "right" and ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"] + 1]:
+                    toggleWall(ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"] + 1], "left")
+                    updatedTiles.append(ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"] + 1])
+                if wall_side == "top" and ROOMS[room].mapData["mapArray"][data["yCoord"] - 1][data["xCoord"]]:
+                    toggleWall(ROOMS[room].mapData["mapArray"][data["yCoord"] - 1][data["xCoord"]], "bottom")
+                    updatedTiles.append(ROOMS[room].mapData["mapArray"][data["yCoord"] - 1][data["xCoord"]])
+                if wall_side == "bottom" and ROOMS[room].mapData["mapArray"][data["yCoord"] + 1][data["xCoord"]]:
+                    toggleWall(ROOMS[room].mapData["mapArray"][data["yCoord"] + 1][data["xCoord"]], "top")
+                    updatedTiles.append(ROOMS[room].mapData["mapArray"][data["yCoord"] + 1][data["xCoord"]])
+
+            elif "Tile" in data["newTile"] or "door" in data["newTile"]:
+                ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["tile"] = data["newTile"]
                 if data["newTile"] in ["doorLocked"]:
-                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["locked"] = True
-                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] = False
-                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["tile"] = "doorClosed"
+                    ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["locked"] = True
+                    ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["walkable"] = False
+                    ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["tile"] = "doorClosed"
                 if data["newTile"] in ["doorClosed", "doorTileB"]:
-                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["secret"] = False
-                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["locked"] = False
+                    ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["secret"] = False
+                    ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["locked"] = False
                 if data["newTile"] in ["wallTile", "wallTileA", "wallTileB", "wallTileC", "doorClosed", "doorTileB", "doorLocked"]:
-                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] = False
+                    ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["walkable"] = False
                 else:
-                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] = True
+                    ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["walkable"] = True
             elif "stairs" in data["newTile"]:
-                ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["tile"] = data["newTile"]
-                ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["secret"] = False
-                ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["walkable"] = True
+                ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["tile"] = data["newTile"]
+                ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["secret"] = False
+                ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["walkable"] = True
             elif data["newTile"] == "secret":
-                ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["secret"] = not \
-                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["secret"]
+                ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["secret"] = not \
+                    ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["secret"]
             elif data["newTile"] == "seen":
-                ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["seen"] = not \
-                    ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]]["seen"]
+                ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["seen"] = not \
+                    ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["seen"]
             if data["newTile"] in ["doorOpen", "doorTileAOpen", "doorTileBOpen"]:
                 for players in ROOMS[room].playerList.keys():
                     revealedTiles = ROOMS[room].reveal_map(ROOMS[room].playerList[players].unitNum)
                     updatedTiles.extend(revealedTiles)
-            updatedTiles.append(ROOMS[room].mapArray[data["yCoord"]][data["xCoord"]])
-        emit('gm_map_update', updatedTiles)
+            updatedTiles.append(ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]])
+        updatedMap["mapArray"] = updatedTiles
+        emit('gm_map_update', updatedMap)
         tmpUpdatedTiles = copy.deepcopy(updatedTiles)
         for index, y in enumerate(tmpUpdatedTiles):
             if not y["seen"]:
@@ -933,14 +996,16 @@ def on_map_edit(data_pack):
                 tmpUpdatedTiles[index]["tile"] = "wallTile"
                 tmpUpdatedTiles[index]["walkable"] = False
         if len(tmpUpdatedTiles) > 0:
-            emit('player_map_update', tmpUpdatedTiles, room=room)
+            updatedMap["mapArray"] = tmpUpdatedTiles
+            emit('player_map_update', updatedMap, room=room)
 
 
 @socketio.on('map_upload')
 def on_map_upload(data):
     room = data['room']
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
-        ROOMS[room].mapArray = []
+        ROOMS[room].mapData["mapArray"] = []
+        ROOMS[room].mapData["mapBackground"] = "static/images/mapbackground.jpg"
         mapText = data['mapText']
         mapLines = mapText.split("\n")
         for y in range(len(mapLines)):
@@ -964,7 +1029,7 @@ def on_map_upload(data):
                 map_line_list[x]["y"] = y
                 if "secret" not in map_line_list[x].keys():
                     map_line_list[x]["secret"] = False
-            ROOMS[room].mapArray.append(map_line_list)
+            ROOMS[room].mapData["mapArray"].append(map_line_list)
         ROOMS[room].send_updates()
 
 

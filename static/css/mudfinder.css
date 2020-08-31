@@ -359,6 +359,18 @@ width:100%;
 .wallTile {
     background: black;
 }
+.wallTileRight {
+  background: linear-gradient(to right, transparent calc(80%), black calc(80%) calc(100%));
+}
+.wallTileLeft {
+  background: linear-gradient(to left, transparent calc(80%), black calc(80%) calc(100%));
+}
+.wallTileTop {
+  background: linear-gradient(to top, transparent calc(80%), black calc(80%) calc(100%));
+}
+.wallTileBottom {
+  background: linear-gradient(to bottom, transparent calc(80%), black calc(80%) calc(100%));
+}
 .unseenTile {
     background: darkslategray;
 }
@@ -369,6 +381,11 @@ width:100%;
 .slightlyTransparent {
     opacity: 0.6;
 }
+
+.fullyTransparent {
+    opacity: 0.0;
+}
+
 .stairTileLeft {
     background: repeating-linear-gradient(to left, white calc(10%), black calc(20%));
 }

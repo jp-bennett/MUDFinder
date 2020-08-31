@@ -141,6 +141,9 @@
             <div id="wallTile" onclick="mapTool(event, 'wall')" style="margin:5px;" class="mapTile wallTile tooltip"><span class="tooltiptext">Wall Tile</span></div>
           </div>
           <div class="nonSelected" style="float:left;">
+            <div id="thinWallTile" onclick="mapTool(event, 'wall')" style="margin:5px;" class="mapTile wallTileRight tooltip"><span class="tooltiptext">Thin Wall</span></div>
+          </div>
+          <div class="nonSelected" style="float:left;">
             <div id="doorClosed" onclick="mapTool(event, 'wall')" style="margin:5px;" class="mapTile doorTileA tooltip"><span class="tooltiptext">Closed Door</span></div>
           </div>
           <div class="nonSelected" style="float:left;">
@@ -179,8 +182,10 @@
           </select>
           </div>
           <div style="float:right;padding-right:100px;padding-top:10px;">Show discovered overlay: <input type="checkbox" id="seenOverlay" value="seenOverlay" onchange="seenOverlayToggle(this)" checked></div>
+            <div style="float:right;padding-right:100px;padding-top:10px;">Show Features: <input type="checkbox" id="showFeatures" value="showFeatures" onchange="featuresToggle(this)"></div>
             <div style="float:right;padding-right:100px;padding-top:10px;">MultiSelect: <input type="checkbox" id="multiSelect" value="multiSelect" onchange="multiSelectToggle(this)"></div>
           <button id="showEffectDivButton" onclick="showEffectControls()">Effect</button>
+          <button id="SelectMapBackgroundButton" onclick="imageUpload(this, 'mapBackground', '')">Background</button>
           </div>
         </div>
         <div id="units" style="display:none;">

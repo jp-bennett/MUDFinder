@@ -19,6 +19,8 @@ var spellcasting;
 var savedSpellList;
 var spellSelectionDestination = ["", 0, 0];
 var effects;
+mapBackground = "static/images/mapbackground.jpg";
+
 const isGM = false;
 window.addEventListener("resize", hackSizes);
 window.onload = function() {

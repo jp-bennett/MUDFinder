@@ -1,3 +1,4 @@
+import copy
 from unit import Unit
 from player import Player
 from flask_socketio import emit
@@ -19,7 +20,10 @@ class Session(object):
         self.unitList = []  # new master list, start removing all the rest.
         self.initiativeList = []
         self.savedEncounters = {}
-        self.mapArray = []  # make this a list of lists of dicts
+        self.mapData = {}
+        self.mapData["mapArray"] = []
+        self.mapData["showBackground"] = True
+        self.mapData["mapBackground"] = "static/images/mapbackground.jpg"
         self.movePath = []
         self.lore = []
         self.loreFiles = {}
@@ -54,7 +58,6 @@ class Session(object):
             "playerList": tmpplayerList,
             "unitList": tmpunitList,
             "initiativeList": tmpinitiativeList,
-            #"mapArray": self.mapArray,
             "movePath": self.movePath,
             "savedEncounters": keyNames,
             "effects": self.effects
@@ -84,7 +87,7 @@ class Session(object):
             "playerList": tmpplayerList,
             "unitList": tmpunitList,
             "initiativeList": tmpinitiativeList,
-            "mapArray": self.mapArray,
+            "mapData": self.mapData,
             "movePath": self.movePath,
             "savedEncounters": self.savedEncounters,
             "lore": self.lore,
@@ -106,17 +109,15 @@ class Session(object):
                 self.unitList.append(Unit(x))
             if self.unitList[-1].inInit:
                 self.initiativeList.append(self.unitList[-1])
-        self.mapArray = obj["mapArray"]
-        if self.mapArray:
-            if not "x" in self.mapArray[0][0].keys():
-                for y in range(len(self.mapArray)):
-                    for x in range(len(self.mapArray[y])):
-                        self.mapArray[y][x]["x"] = x
-                        self.mapArray[y][x]["y"] = y
-        if "lore" in obj:
-            self.lore = obj["lore"]
+        if "mapData" in obj:
+            self.mapData = obj["mapData"]
         else:
-            self.lore = []
+            self.mapData["mapArray"] = obj["mapArray"]
+        if "showBackground" not in self.mapData:
+            self.mapData["showBackground"] = True
+        if "mapBackground" not in self.mapData:
+            self.mapData["mapBackground"] = "static/images/mapbackground.jpg"
+        self.lore = obj["lore"]
         if "loreFiles" in obj.keys():
             for x in obj["loreFiles"]:
                 self.loreFiles[int(x)] = obj["loreFiles"][x]
@@ -196,33 +197,39 @@ class Session(object):
             playerObject["initiativeList"] = []
         for i in range(len(self.unitList)):
             if self.unitList[i].controlledBy != "gm" or (
-                    self.unitList[i].location != [-1, -1] and self.mapArray[self.unitList[i].location[0]][self.unitList[i].location[1]]["seen"]):
+                    self.unitList[i].location != [-1, -1] and self.mapData["mapArray"][self.unitList[i].location[0]][self.unitList[i].location[1]]["seen"]):
                 playerObject["unitList"].append(self.unitList[i].to_json())
         return playerObject
 
     def player_map(self):
-        tmpMapArray = []
-        for y in range(len(self.mapArray)):
+        tmpMapData = {}
+        tmpMapData["mapBackground"] = self.mapData["mapBackground"]
+        tmpMapData["showBackground"] = self.mapData["showBackground"]
+        tmpMapData["mapArray"] = []
+
+        for y in range(len(self.mapData["mapArray"])):
             tmpMapLine = []
-            for x in range(len(self.mapArray[y])):
-                tmpMapLine.append({"tile": self.mapArray[y][x]["tile"], "walkable": self.mapArray[y][x]["walkable"]})
-                if self.mapArray[y][x]["secret"]:
+            for x in range(len(self.mapData["mapArray"][y])):
+                tmpMapLine.append({"tile": self.mapData["mapArray"][y][x]["tile"], "walkable": self.mapData["mapArray"][y][x]["walkable"]})
+                if "walls" in self.mapData["mapArray"][y][x]:
+                    tmpMapLine[x]["walls"]  = self.mapData["mapArray"][y][x]["walls"]
+                if self.mapData["mapArray"][y][x]["secret"]:
                     tmpMapLine[x] = {"tile": "wallTile", "walkable": False}
-                if not self.mapArray[y][x]["seen"]:
+                if not self.mapData["mapArray"][y][x]["seen"]:
                     tmpMapLine[x] = {"tile": "unseenTile", "walkable": False}
-            tmpMapArray.append(tmpMapLine)
-        return tmpMapArray
+            tmpMapData["mapArray"].append(tmpMapLine)
+        return tmpMapData
 
     def calc_path(self, tmpUnit, end, moveType):
-        if not self.mapArray[end[0]][end[1]]["walkable"]:
+        if not self.mapData["mapArray"][end[0]][end[1]]["walkable"]:
             return
         tmpUnit.movementSpeed = int(tmpUnit.movementSpeed)
         if tmpUnit.size == "large":
-            if not self.mapArray[end[0]-1][end[1]]["walkable"]:
+            if not self.mapData["mapArray"][end[0]-1][end[1]]["walkable"]:
                 return
-            if not self.mapArray[end[0]][end[1]+1]["walkable"]:
+            if not self.mapData["mapArray"][end[0]][end[1]+1]["walkable"]:
                 return
-            if not self.mapArray[end[0]-1][end[1]+1]["walkable"]:
+            if not self.mapData["mapArray"][end[0]-1][end[1]+1]["walkable"]:
                 return
         if tmpUnit.location == [-1, -1]:
             tmpUnit.location = end
@@ -258,7 +265,7 @@ class Session(object):
             ignoreSeen = True
         else:
             ignoreSeen = False
-        path = astar(self.mapArray, (tmpUnit.y, tmpUnit.x), end, maxMove, ignoreSeen)
+        path = astar(self.mapData["mapArray"], (tmpUnit.y, tmpUnit.x), end, maxMove, ignoreSeen)
         if path is None:
             return
         tmpUnit.distance += path.pop(0)
@@ -282,13 +289,13 @@ class Session(object):
                 cells = raytrace(x, y, max(0, x + xBox), max(0, y + yBox), 12)
                 for distance in range(len(cells)):
                     try:
-                        if self.mapArray[cells[distance][1]][cells[distance][0]]["seen"] == False:
+                        if self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]["seen"] == False:
                             mark = True
-                        self.mapArray[cells[distance][1]][cells[distance][0]]["seen"] = True
+                        self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]["seen"] = True
                         if mark:
-                            changedTiles.append(self.mapArray[cells[distance][1]][cells[distance][0]])
+                            changedTiles.append(self.mapData["mapArray"][cells[distance][1]][cells[distance][0]])
                             mark = False
-                        if not self.mapArray[cells[distance][1]][cells[distance][0]]["walkable"]:
+                        if not self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]["walkable"]:
                             break
                     except:
                         break
@@ -404,15 +411,7 @@ def astar(maze, start, end, maxMove, ignoreSeen):
                     len(maze[node_position[0]]) - 1) or node_position[1] < 0:
                 continue
 
-            # test diagonal step
-            if new_position[0] != 0 and new_position[1] != 0:
-                if not maze[current_node.position[0]][node_position[1]]["walkable"] or not \
-                        maze[node_position[0]][current_node.position[1]]["walkable"]:
-                    continue
-
-            # Make sure walkable terrain
-            if not maze[node_position[0]][node_position[1]]["walkable"] \
-                    or (not maze[node_position[0]][node_position[1]]["seen"] and not ignoreSeen):
+            if not testStep(maze, current_node, new_position, node_position, ignoreSeen):
                 continue
 
             # Create new node
@@ -440,6 +439,45 @@ def astar(maze, start, end, maxMove, ignoreSeen):
                         break
                 else:
                     open_list.append(child)
+
+
+def testStep(maze, current_node, new_position, node_position, ignoreSeen):
+
+    # test diagonal step
+    if new_position[0] != 0 and new_position[1] != 0:
+        if not maze[current_node.position[0]][node_position[1]]["walkable"]:
+            return False
+        if not maze[node_position[0]][current_node.position[1]]["walkable"]:
+            return False
+        #Need to test for walls on the target position, in the case of a diagonal step
+        if "walls" in maze[node_position[0]][node_position[1]]:
+            if new_position[1] == -1 and "right" in maze[node_position[0]][node_position[1]]["walls"]:
+                return False
+            if new_position[1] == 1 and "left" in maze[node_position[0]][node_position[1]]["walls"]:
+                return False
+            if new_position[0] == -1 and "bottom" in maze[node_position[0]][node_position[1]]["walls"]:
+                return False
+            if new_position[0] == 1 and "top" in maze[node_position[0]][node_position[1]]["walls"]:
+                return False
+
+
+    #test next step for unwalkable
+    if not maze[node_position[0]][node_position[1]]["walkable"]:
+        return False
+
+    #test next step for unseen terrain
+    if not maze[node_position[0]][node_position[1]]["seen"] and not ignoreSeen:
+        return False
+    if "walls" in maze[current_node.position[0]][current_node.position[1]]:
+        if new_position[1] == -1 and "left" in maze[current_node.position[0]][current_node.position[1]]["walls"]:
+            return False
+        if new_position[1] == 1 and "right" in maze[current_node.position[0]][current_node.position[1]]["walls"]:
+            return False
+        if new_position[0] == -1 and "top" in maze[current_node.position[0]][current_node.position[1]]["walls"]:
+            return False
+        if new_position[0] == 1 and "bottom" in maze[current_node.position[0]][current_node.position[1]]["walls"]:
+            return False
+    return True
 
 
 def default(local_dict, key, local_default):
