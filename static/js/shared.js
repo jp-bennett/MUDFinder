@@ -173,11 +173,6 @@ function drawSingleTile(mapData, x, y) {
     newMapTile.style.position = "absolute";
     newMapTile.style.top = y * zoomSize + "px";
     newMapTile.style.left = x * zoomSize + "px";
-    if (typeof mapArray[y][x].seen !== "undefined") {
-        if (isGM && !mapArray[y][x].seen && showSeenOverlay) {
-            newMapTile.style.opacity = ".9";
-        }
-    }
     if (isGM && mapArray[y][x].secret) {
         newMapTile.style.borderColor = "red";
     }
@@ -189,7 +184,7 @@ function drawSingleTile(mapData, x, y) {
         newMapTile.classList.add("fullyTransparent");
     }
     if (mapArray[y][x].tile == "unseenTile" && mapData.showBackground) {
-        newMapTile.classList.add("unseenTileTransparent");
+        newMapTile.classList.add("unseenTile");
     } else if (mapArray[y][x].tile == "doorOpen") {
         if ((typeof mapArray[y+1] !== "undefined" && mapArray[y+1][x].walkable) || (typeof mapArray[y-1] !== "undefined" && mapArray[y-1][x].walkable)) {
             newMapTile.classList.add("doorTileAOpen");
@@ -257,20 +252,26 @@ function drawSingleTile(mapData, x, y) {
     }
     if (mapArray[y][x].walls) {
         if (mapArray[y][x].walls.includes("left")) {
-            if (newMapTile.style.background != "") {newMapTile.style.background += ",linear-gradient(to left, white calc(80%), black calc(80%) calc(100%))";}
-            else {newMapTile.style.background = "linear-gradient(to left, white calc(80%), black calc(80%) calc(100%))";}
+            if (newMapTile.style.background != "") {newMapTile.style.background += ",linear-gradient(to left, transparent calc(80%), black calc(80%) calc(100%))";}
+            else {newMapTile.style.background = "linear-gradient(to left, transparent calc(80%), black calc(80%) calc(100%))";}
         }
         if (mapArray[y][x].walls.includes("right")) {
-            if (newMapTile.style.background != "") {newMapTile.style.background += ",linear-gradient(to right, white calc(80%), black calc(80%) calc(100%))"}
-            else {newMapTile.style.background += "linear-gradient(to right, white calc(80%), black calc(80%) calc(100%))";}
+            if (newMapTile.style.background != "") {newMapTile.style.background += ",linear-gradient(to right, transparent calc(80%), black calc(80%) calc(100%))"}
+            else {newMapTile.style.background += "linear-gradient(to right, transparent calc(80%), black calc(80%) calc(100%))";}
         }
         if (mapArray[y][x].walls.includes("top")) {
-            if (newMapTile.style.background != "") {newMapTile.style.background += ",linear-gradient(to top, white calc(80%), black calc(80%) calc(100%))"}
-            else {newMapTile.style.background += "linear-gradient(to top, white calc(80%), black calc(80%) calc(100%))";}
+            if (newMapTile.style.background != "") {newMapTile.style.background += ",linear-gradient(to top, transparent calc(80%), black calc(80%) calc(100%))"}
+            else {newMapTile.style.background += "linear-gradient(to top, transparent calc(80%), black calc(80%) calc(100%))";}
         }
         if (mapArray[y][x].walls.includes("bottom")) {
-            if (newMapTile.style.background != "") {newMapTile.style.background += ",linear-gradient(to bottom, white calc(80%), black calc(80%) calc(100%))"}
-            else {newMapTile.style.background += "linear-gradient(to bottom, white calc(80%), black calc(80%) calc(100%))";}
+            if (newMapTile.style.background != "") {newMapTile.style.background += ",linear-gradient(to bottom, transparent calc(80%), black calc(80%) calc(100%))"}
+            else {newMapTile.style.background += "linear-gradient(to bottom, transparent calc(80%), black calc(80%) calc(100%))";}
+        }
+    }
+    if (typeof mapArray[y][x].seen !== "undefined") {
+        if (isGM && !mapArray[y][x].seen && showSeenOverlay) {
+            //newMapTile.style.opacity = ".9";
+            newMapTile.style.background = "white";
         }
     }
     return newMapTile

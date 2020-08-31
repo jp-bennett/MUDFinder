@@ -289,6 +289,20 @@ class Session(object):
                 cells = raytrace(x, y, max(0, x + xBox), max(0, y + yBox), 12)
                 for distance in range(len(cells)):
                     try:
+
+                        if distance > 0 and "walls" in self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]:
+                            if cells[distance][1] - cells[distance - 1][1] == -1: #I think thes means the ray is moving down
+                                if "bottom" in self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]["walls"]:
+                                    break
+                            if cells[distance][1] - cells[distance - 1][1] == 1: #I think thes means the ray is moving up
+                                if "top" in self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]["walls"]:
+                                    break
+                            if cells[distance][0] - cells[distance - 1][0] == -1: #I think thes means the ray is moving right
+                                if "right" in self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]["walls"]:
+                                    break
+                            if cells[distance][0] - cells[distance - 1][0] == 1: #I think thes means the ray is moving left
+                                if "left" in self.mapData["mapArray"][cells[distance ][1]][cells[distance][0]]["walls"]:
+                                    break
                         if self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]["seen"] == False:
                             mark = True
                         self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]["seen"] = True

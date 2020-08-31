@@ -330,10 +330,10 @@ function featuresToggle(obj) {
         //console.log(obj);
         if(obj.checked) {
             css_getclass(".fullyTransparent").style.opacity = "";
-            css_getclass(".floorTile").style.background = "";
+            //css_getclass(".floorTile").style.background = "";
         } else {
             css_getclass(".fullyTransparent").style.opacity = "0";
-            css_getclass(".floorTile").style.background = "white";
+            //css_getclass(".floorTile").style.background = "white";
         }
         //drawMap(mapObject);
         //drawUnits(gmData);
