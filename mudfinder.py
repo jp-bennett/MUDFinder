@@ -467,7 +467,14 @@ def on_remove_encounter(data):
 def on_load_encounter(data):
     room = data['room']
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
-        ROOMS[room].mapData = copy.deepcopy(ROOMS[room].savedEncounters[data['encounterName']]["mapData"])
+        #catch and load old maps
+        if "mapData" not in ROOMS[room].savedEncounters[data['encounterName']]:
+            ROOMS[room].mapData = {}
+            ROOMS[room].mapData["mapArray"] = copy.deepcopy(ROOMS[room].savedEncounters[data['encounterName']]["mapArray"])
+            ROOMS[room].mapData["mapBackground"] = "static/images/mapbackground.jpg"
+            ROOMS[room].mapData["showBackground"] = True
+        else:
+            ROOMS[room].mapData = copy.deepcopy(ROOMS[room].savedEncounters[data['encounterName']]["mapData"])
         for x in reversed(ROOMS[room].unitList):
             if x.controlledBy == "gm":
                 ROOMS[room].unitList.remove(x)

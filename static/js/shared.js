@@ -270,7 +270,8 @@ function drawSingleTile(mapData, x, y) {
     }
     if (typeof mapArray[y][x].seen !== "undefined") {
         if (isGM && !mapArray[y][x].seen && showSeenOverlay) {
-            //newMapTile.style.opacity = ".9";
+            newMapTile.style.opacity = ".9";
+            newMapTile.classList.remove("fullyTransparent");
             newMapTile.style.background = "white";
         }
     }

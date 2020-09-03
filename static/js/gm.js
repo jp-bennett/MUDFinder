@@ -330,9 +330,11 @@ function featuresToggle(obj) {
         //console.log(obj);
         if(obj.checked) {
             css_getclass(".fullyTransparent").style.opacity = "";
+            document.getElementById("mapBackgroundDiv").style.opacity = .7
             //css_getclass(".floorTile").style.background = "";
         } else {
             css_getclass(".fullyTransparent").style.opacity = "0";
+            document.getElementById("mapBackgroundDiv").style.opacity = ""
             //css_getclass(".floorTile").style.background = "white";
         }
         //drawMap(mapObject);
