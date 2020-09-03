@@ -1219,7 +1219,7 @@ def database_spells(casterClass, level):
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     q = (level, )
-    if casterClass == "Arcanist":
+    if casterClass in ["Arcanist", "Wizard"]:
         casterClass = "wiz"
     if casterClass == "Cleric":
         casterClass = "cleric"
