@@ -412,7 +412,7 @@ function drawUnits(Data) { //Give every addition a classname, that can be iterat
                 tmpMovDiv.style.background = Data.initiativeList[Data.initiativeCount].color;
                 document.getElementById("mapGraphic").appendChild(tmpMovDiv);
             }
-            if (Data.initiativeList[Data.initiativeCount].x != -1) {
+            if (Data.initiativeList[Data.initiativeCount].x != -1 && ) {
                 document.getElementById("tile" + Data.initiativeList[Data.initiativeCount].x + "," + Data.initiativeList[Data.initiativeCount].y).classList.add("activeUnit");
                 if (Data.initiativeList[Data.initiativeCount].size == "large") {
                     document.getElementById("tile" + (Data.initiativeList[Data.initiativeCount].x+1) + "," + Data.initiativeList[Data.initiativeCount].y).classList.add("activeUnit");

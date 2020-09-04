@@ -372,7 +372,7 @@ width:100%;
   background: linear-gradient(to bottom, transparent calc(80%), black calc(80%) calc(100%));
 }
 .unseenTile {
-    background: darkslategray;
+    background: darkslategray !important;
 }
 .unseenTileTransparent {
     background: transparent;
