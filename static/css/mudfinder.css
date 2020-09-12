@@ -26,11 +26,10 @@ input {
 }
 #register {
     height:calc(50% - 40px);
-    overflow:auto;
+    /*overflow:auto;*/
 }
 #items {
     height:calc(50% - 40px);
-    overflow:auto;
 }
 #addInv {
     height:calc(100% - 80px);
@@ -207,9 +206,32 @@ div.selected {
     display:none;
 }
 tr:nth-child(even) {background-color: #f2f2f2;}
+
 .inventoryTable{
     margin:auto;
+    table-layout: fixed;
+    border-collapse: collapse;
+    height:100%
+
 }
+
+.inventoryTable tbody{
+  display:block;
+  width: 100%;
+  overflow: auto;
+  height: calc(100% - 40px);
+}
+
+.inventoryTable thead tr {
+   display: block;
+}
+
+.inventoryTable th, .inventoryTable td {
+  padding: 5px;
+  text-align: left;
+  width: 200px;
+}
+
 .connectedPlayers {
     width:200px;
     min-height:10px;

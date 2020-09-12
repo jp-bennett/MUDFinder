@@ -703,18 +703,18 @@ function multiSelectToggle(element) {
     dragscroll.reset();
 
 }
-function hideBottomDiv() {
+function hideBottomDiv() {/*
     document.getElementById("mapContainer").style.height = "";
     document.getElementById("bottomPopupButton").style.top = "";
     document.getElementById("bottomPopupButton").onclick = function() {showBottomDiv();};
     document.getElementById("bottomPopupButton").children[0].src = "http://jp-bennett.com:17634/static/images/up.svg";
-    document.getElementById("bottomDiv").style.display="none";
+    document.getElementById("bottomDiv").style.display="none";*/
 }
 
 function showBottomDiv() {
-    document.getElementById("mapContainer").style.height = "80%";
+/*    document.getElementById("mapContainer").style.height = "80%";
     document.getElementById("bottomPopupButton").style.top = "calc(80% - 40px)";
     document.getElementById("bottomPopupButton").onclick = function() {hideBottomDiv();};
     document.getElementById("bottomPopupButton").children[0].src = "http://jp-bennett.com:17634/static/images/down.svg";
-    document.getElementById("bottomDiv").style.display="block";
+    document.getElementById("bottomDiv").style.display="block";*/
 }

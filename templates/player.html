@@ -1102,22 +1102,27 @@
           <div id="register">
             <div id="inventoryTitle">Player Inventory:</div>
             <table class="inventoryTable" id="gpTable">
+              <thead>
               <tr>
                 <th>Description</th>
                 <th>Decrease</th>
                 <th>Increase</th>
                 <th>Total</th>
               </tr>
+              </thead>
+              <tbody id="gpBody">
               <tr>
                 <td><textarea id="gpDescription"></textarea></td>
                 <td><input type="text" id="gpDecrement"></td>
                 <td><input type="text" id="gpIncrement"></td>
                 <td><button onclick="recordGP()">Record</button></td>
               </tr>
+              </tbody>
             </table>
           </div>
           <div id="items">
             <table class="inventoryTable" id="itemTable">
+              <thead>
               <tr>
                 <th>Item</th>
                 <th>Slot</th>
@@ -1127,6 +1132,8 @@
                 <th>Count</th>
                 <th></th>
               </tr>
+              </thead>
+              <tbody id="itemBody">
               <tr>
                 <td>
                   <!--<select onchange="changeItemCat(this)" id="itemCategory">
@@ -1158,6 +1165,7 @@
                 <td><input type="text" id="itemCount" style="width:40px;"></td>
                 <td><button onclick="recordItem()">Record</button></td>
               </tr>
+              </tbody>
             </table>
               <div style="text-align:center;" id="totalWeight"></div>
           </div>

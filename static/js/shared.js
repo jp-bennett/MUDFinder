@@ -436,6 +436,7 @@ function drawUnits(Data) { //Give every addition a classname, that can be iterat
 function enableTab(tabName) {
     try {
         //hide all of them
+        hideBottomDiv();
         children = document.getElementById("activeTabDiv").children
         for (x = 0; x < children.length; x++) {
             if (children[x].id !== "leftPopButton")

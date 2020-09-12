@@ -526,7 +526,7 @@ function changeInventory(newInventory) {
         socket.emit("error_handle", room, e);
     }
 }
-function populateInventory(inventories) {
+function populateInventory(inventories) { //Eventually change this to building the tbody objects, and just adding them to the tables.
     try {
         document.getElementById("addInv").style.display="none";
         document.getElementById("register").style.display="block";
@@ -554,7 +554,7 @@ function populateInventory(inventories) {
                 row.insertCell(4).innerHTML = '<button onclick="deleteLastGPTransaction()">Delete</button>';
             }
         }
-        document.getElementById("register").scrollTop = document.getElementById("register").scrollHeight
+        document.getElementById("gpBody").scrollTop = document.getElementById("gpBody").scrollHeight
         tmpInventory = inventories[selectedInventory].inventory;
         var table = document.getElementById("itemTable");
         table.innerHTML = inventoryTableSavedHTML;
@@ -572,6 +572,7 @@ function populateInventory(inventories) {
                 tmpWeight += Number(tmpInventory[x].itemWeight) * Number(tmpInventory[x].itemCount);
             }
         }
+        document.getElementById("itemBody").scrollTop = document.getElementById("itemBody").scrollHeight
         document.getElementById("totalWeight").innerHTML = "Total Weight: " + tmpWeight;
         tmpHTML = '';
         for (x=0;x<Object.keys(inventories).length; x++) {
