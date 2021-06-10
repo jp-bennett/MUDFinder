@@ -211,7 +211,9 @@ tr:nth-child(even) {background-color: #f2f2f2;}
     margin:auto;
     table-layout: fixed;
     border-collapse: collapse;
-    height:100%
+    height: calc(100% - 38px);
+    display: block;
+    width: fit-content;
 
 }
 
