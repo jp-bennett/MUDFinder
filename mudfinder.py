@@ -889,7 +889,7 @@ def on_del_init(data):
         if ROOMS[room].inInit and ROOMS[room].initiativeCount > data['initCount']:
             ROOMS[room].initiativeCount -= 1
         elif ROOMS[room].inInit and ROOMS[room].initiativeCount == data['initCount'] and data['initCount'] == len(
-                ROOMS[room].initList) - 1:
+                ROOMS[room].initiativeList) - 1:
             ROOMS[room].initiativeCount = 0
         ROOMS[room].unitList.pop(ROOMS[room].initiativeList[data['initCount']].unitNum)
         ROOMS[room].number_units()
