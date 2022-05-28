@@ -894,6 +894,10 @@ def on_del_init(data):
         ROOMS[room].unitList.pop(ROOMS[room].initiativeList[data['initCount']].unitNum)
         ROOMS[room].number_units()
         ROOMS[room].initiativeList.pop(data['initCount'])
+        initNum = 0
+        for x in ROOMS[room].initiativeList:
+                x.initNum = initNum
+                initNum += 1
         ROOMS[room].send_updates()
 
 
