@@ -588,3 +588,115 @@ class TestShowFeatures:
     ])
     def test_discovered_tiles_are_never_marked(self, features, background, shown):
         assert not features["%s|%s" % (background, shown)]["discoveredMarked"]
+
+
+BACKGROUND_REPORT_JS = """
+() => {
+  const tile = document.getElementById("tile1,1");
+  const backgroundDiv = document.getElementById("mapBackgroundDiv");
+  return {
+    featuresChecked: document.getElementById("showFeatures").checked,
+    tileOpacity: tile ? getComputedStyle(tile).opacity : null,
+    backgroundImage: backgroundDiv ? backgroundDiv.style.backgroundImage : null,
+    mapObjectBackground: (typeof mapObject !== "undefined" && mapObject)
+      ? String(mapObject.mapBackground) : null,
+  };
+}
+"""
+
+UPLOADED_MAP_URL = "https://example.invalid/battlemap.png"
+
+
+@pytest.fixture(scope="module")
+def background_walkthrough(browser, live_server):
+    """Generate a map, set a background on it, then redraw.
+
+    Goes through the same image_upload event the Background button sends, so
+    the server side of setting a background is covered too.
+    """
+    context = browser.new_context(viewport={"width": 1100, "height": 700})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "background walkthrough")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+
+        page.fill("#mapWidth", "4")
+        page.fill("#mapHeight", "3")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages = {"generated": page.evaluate(BACKGROUND_REPORT_JS)}
+
+        page.evaluate(
+            """(url) => socket.emit("image_upload", room, url, "mapBackground", "")""",
+            UPLOADED_MAP_URL,
+        )
+        page.wait_for_function(
+            """(url) => document.getElementById("mapBackgroundDiv")
+                 .style.backgroundImage.includes(url)""",
+            arg=UPLOADED_MAP_URL,
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["backgroundSet"] = page.evaluate(BACKGROUND_REPORT_JS)
+
+        # A full redraw, as a reload or any map edit would cause. This is where
+        # the tiles pick up fullyTransparent and used to cover the image.
+        page.evaluate("() => drawMap(mapObject)")
+        stages["redrawn"] = page.evaluate(BACKGROUND_REPORT_JS)
+
+        page.set_checked("#showFeatures", True)
+        page.evaluate("() => drawMap(mapObject)")
+        stages["featuresRequested"] = page.evaluate(BACKGROUND_REPORT_JS)
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestSettingABackground:
+    """Uploading a map image has to leave the image visible.
+
+    Tiles carry fullyTransparent over an uploaded background, so once the
+    Show Features checkbox drove that class on generated maps as well, its
+    default of checked meant an opaque grid was drawn over the artwork the GM
+    had just chosen. The default now follows the kind of map.
+    """
+
+    def test_the_background_is_applied(self, background_walkthrough):
+        assert UPLOADED_MAP_URL in background_walkthrough["backgroundSet"]["backgroundImage"]
+
+    def test_features_switch_off_for_an_uploaded_map(self, background_walkthrough):
+        assert not background_walkthrough["backgroundSet"]["featuresChecked"]
+
+    def test_the_image_is_not_covered_after_a_redraw(self, background_walkthrough):
+        """The redraw is when tiles pick up fullyTransparent."""
+        assert background_walkthrough["redrawn"]["tileOpacity"] == "0"
+
+    def test_the_background_survives_a_redraw(self, background_walkthrough):
+        assert UPLOADED_MAP_URL in background_walkthrough["redrawn"]["backgroundImage"]
+
+    def test_the_map_object_learns_the_new_background(self, background_walkthrough):
+        """Otherwise a later redraw from it puts the old background back."""
+        assert background_walkthrough["redrawn"]["mapObjectBackground"] == UPLOADED_MAP_URL
+
+    def test_a_generated_map_still_shows_its_features(self, background_walkthrough):
+        generated = background_walkthrough["generated"]
+        assert generated["featuresChecked"]
+        assert float(generated["tileOpacity"]) > 0
+
+    def test_the_gm_can_still_turn_features_on_over_the_image(self, background_walkthrough):
+        assert background_walkthrough["featuresRequested"]["tileOpacity"] == "1"
+
+    def test_nothing_raised(self, background_walkthrough):
+        assert background_walkthrough["errors"] == []

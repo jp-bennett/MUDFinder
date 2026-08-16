@@ -108,12 +108,21 @@ window.onload = function() {
         }
     });
     socket.on('gm_map', function(msg) {
+        syncFeaturesToMapType(msg.mapBackground);
         drawMap(msg);
         mapObject = msg;
         multiSelectToggle(document.getElementById("multiSelect"));
     });
     socket.on('gm_map_update', function(msg) {
         updateMap(msg, mapObject);
+        if (typeof msg.mapBackground !== "undefined" && msg.mapBackground != mapObject.mapBackground) {
+            // Setting a background arrives here with an empty mapArray, so the
+            // tiles are not redrawn. Without this, mapObject keeps the old
+            // background and any later redraw from it, such as toggling the
+            // overlay, puts the previous background back.
+            mapObject.mapBackground = msg.mapBackground;
+            syncFeaturesToMapType(msg.mapBackground);
+        }
         if (multiSelect)
             ds.addSelectables(document.getElementsByClassName('selectableTile'));
     });
@@ -365,6 +374,26 @@ function applyFeaturesToggle() {
     // rather than a single consistent one, so the checkbox is applied on load
     // to put both of them into whichever state it is actually in.
     featuresToggle(document.getElementById("showFeatures"));
+}
+
+var featuresMatchDefaultBackground = null;
+
+function syncFeaturesToMapType(mapBackground) {
+    // The useful default differs by map. On a generated map the drawn features
+    // are the map, so they have to be on. Over an uploaded image they are a
+    // grid drawn on top of artwork the GM chose to look at, so they start off,
+    // which is how this behaved before the toggle reached generated maps.
+    //
+    // This only fires when the map changes from one kind to the other, so a GM
+    // who sets the checkbox themselves keeps that until they load a different
+    // sort of map.
+    usingDefaultBackground = (mapBackground == "static/images/mapbackground.jpg");
+    if (usingDefaultBackground === featuresMatchDefaultBackground) {
+        return;
+    }
+    featuresMatchDefaultBackground = usingDefaultBackground;
+    document.getElementById("showFeatures").checked = usingDefaultBackground;
+    applyFeaturesToggle();
 }
 
 function sendChat() {
