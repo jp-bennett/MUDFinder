@@ -1,0 +1,90 @@
+"""Tests for the plain HTTP routes."""
+
+import json
+
+import pytest
+
+import mudfinder
+from conftest import GM_KEY, make_player
+
+
+class TestPages:
+    @pytest.mark.parametrize("route", ["/", "/player.html", "/spectator.html", "/gm.html"])
+    def test_page_renders(self, http, route):
+        assert http.get(route).status_code == 200
+
+    def test_index_offers_game_creation(self, http):
+        assert b"Create Game" in http.get("/").data
+
+    def test_gm_page_loads_its_script(self, http):
+        assert b"gm.js" in http.get("/gm.html").data
+
+    def test_unknown_route_is_a_404(self, http):
+        assert http.get("/definitely-not-a-page").status_code == 404
+
+
+class TestStatic:
+    @pytest.mark.parametrize("asset", [
+        "/static/js/socket.io.js",
+        "/static/js/shared.js",
+        "/static/js/gm.js",
+        "/static/js/player.js",
+        "/static/css/mudfinder.css",
+    ])
+    def test_asset_is_served(self, http, asset):
+        assert http.get(asset).status_code == 200
+
+    def test_vendored_socket_io_client_is_version_2(self, http):
+        """The pinned server dependencies exist to match this client.
+
+        If someone vendors a newer socket.io.js, this fails as a reminder that
+        requirements.txt has to move with it.
+        """
+        assert b"Socket.IO v2" in http.get("/static/js/socket.io.js").data[:200]
+
+
+class TestDownload:
+    def test_gm_can_download_a_save(self, http, make_session):
+        session = make_session(room="dl-room")
+        session.unitList.append(make_player())
+        session.playerList["Aria"] = session.unitList[-1]
+
+        response = http.get("/download.html?room=dl-room&gmKey=%s" % GM_KEY)
+        assert response.status_code == 200
+        assert json.loads(response.data)["name"] == "Test Game"
+
+    def test_download_is_sent_as_an_attachment(self, http, make_session):
+        make_session(room="dl-room")
+        response = http.get("/download.html?room=dl-room&gmKey=%s" % GM_KEY)
+        assert "attachment" in response.headers["Content-disposition"]
+
+    def test_saved_units_are_included(self, http, make_session):
+        session = make_session(room="dl-room")
+        session.unitList.append(make_player())
+        session.playerList["Aria"] = session.unitList[-1]
+        blob = json.loads(http.get("/download.html?room=dl-room&gmKey=%s" % GM_KEY).data)
+        assert [u["charName"] for u in blob["unitList"]] == ["Aria"]
+
+    def test_wrong_gm_key_is_refused(self, http, make_session):
+        make_session(room="dl-room")
+        response = http.get("/download.html?room=dl-room&gmKey=not-the-key")
+        assert response.status_code != 200
+
+
+class TestGetImage:
+    def test_image_is_returned(self, http, make_session):
+        session = make_session(room="img-room")
+        # base64 for the bytes b"hello"
+        session.images["abc"] = "aGVsbG8="
+        response = http.get("/get_image.html?room=img-room&id=abc")
+        assert response.status_code == 200
+        assert response.data == b"hello"
+
+
+class TestKnownGaps:
+    """Unguarded paths, pinned so a fix is deliberate rather than accidental."""
+
+    def test_download_for_an_unknown_room_is_a_server_error(self, http):
+        # check_room() returns False and the view falls through to None, which
+        # Flask reports as a 500. A 404 would be the better answer.
+        assert http.get("/download.html?room=nope&gmKey=nope").status_code == 500
