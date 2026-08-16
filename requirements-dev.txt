@@ -1,3 +1,9 @@
 # Test-only dependencies. Install alongside requirements.txt:
 #   pip install -r requirements.txt -r requirements-dev.txt
+#
+# playwright drives the end-to-end browser tests in tests/browser/. It also
+# needs a browser binary, installed separately with:
+#   playwright install chromium
+# Without one, those tests skip and the rest of the suite runs normally.
 pytest>=7.0
+playwright>=1.40

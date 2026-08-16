@@ -5,7 +5,7 @@ import json
 import pytest
 
 import mudfinder
-from conftest import GM_KEY, make_player
+from helpers import GM_KEY, make_player
 
 
 class TestPages:
