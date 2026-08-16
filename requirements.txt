@@ -11,7 +11,7 @@
 # Flask/Werkzeug are held below 2.1 because Flask-SocketIO 4.3.2 imports
 # werkzeug.serving.run_with_reloader, which was removed in Werkzeug 2.1.
 
-Flask==2.0.3
+Flask==3.1.3
 Werkzeug==2.0.3
 Jinja2==3.0.3
 itsdangerous==2.0.1
