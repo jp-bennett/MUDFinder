@@ -272,15 +272,12 @@ function drawSingleTile(mapData, x, y) {
         if (isGM && !mapArray[y][x].seen && showSeenOverlay) {
             newMapTile.style.opacity = ".9";
             newMapTile.classList.remove("fullyTransparent");
-            // White is added as the last layer, which makes it the background
-            // colour sitting under any wall gradients composed above. Assigning
-            // style.background outright would replace those and leave the GM
-            // unable to see walls on undiscovered tiles.
-            if (newMapTile.style.background != "") {
-                newMapTile.style.background += ",white";
-            } else {
-                newMapTile.style.background = "white";
-            }
+            // The wash is a class rather than a background, because every tile
+            // type paints through background: the classes for floors, doors,
+            // stairs and full wall tiles, and the inline gradients for thin
+            // walls. Writing white into that property erased whichever of them
+            // the tile was using.
+            newMapTile.classList.add("undiscoveredTile");
         }
     }
     return newMapTile

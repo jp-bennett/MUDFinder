@@ -236,67 +236,129 @@ class TestSelfContained:
         assert external == []
 
 
-# Renders one tile through the page's own drawSingleTile and reports what the
-# browser actually computed for it. Driving the function directly keeps the
-# test off the wall-painting toolbar, which is a lot of UI for one CSS rule.
-DRAW_TILE_JS = """
-([seen, walls]) => {
+
+
+# Every one of these paints through the background property -- the CSS classes
+# for these types, and inline gradients for thin walls -- which is what the
+# overlay used to overwrite.
+TILE_KINDS = ["floorTile", "floorTileD", "wallTile", "doorClosed", "doorOpen", "stairsUp"]
+WALL_CASES = [["left"], ["right"], ["top"], ["bottom"], ["left", "right", "top", "bottom"]]
+
+# Renders tiles through the page's own drawSingleTile and reports what the
+# browser computed for each. Every case is measured in one pass: a fixture per
+# case meant a fresh game per case, which is slow and eventually exhausts the
+# server's connections. Each tile sits in the middle of a 3x3 grid because the
+# door and stair branches look at their neighbours.
+MEASURE_JS = """
+([kinds, wallCases]) => {
   showSeenOverlay = true;
   zoomSize = 70;
-  const mapData = {
-    mapArray: [[{tile: "floorTile", walkable: true, seen: seen, secret: false,
-                 x: 0, y: 0, walls: walls}]],
-    showBackground: true,
-    mapBackground: "static/images/mapbackground.jpg",
+
+  const build = (kind, seen, walls) => {
+    const rows = [];
+    for (let y = 0; y < 3; y++) {
+      const row = [];
+      for (let x = 0; x < 3; x++) {
+        const middle = (x === 1 && y === 1);
+        const cell = {tile: middle ? kind : "floorTile", walkable: true,
+                      seen: seen, secret: false, x: x, y: y};
+        if (middle && walls) { cell.walls = walls; }
+        row.push(cell);
+      }
+      rows.push(row);
+    }
+    return {mapArray: rows, showBackground: true,
+            mapBackground: "static/images/mapbackground.jpg"};
   };
-  const tile = drawSingleTile(mapData, 0, 0);
-  document.body.appendChild(tile);
-  const computed = getComputedStyle(tile);
-  const result = {
-    backgroundColor: computed.backgroundColor,
-    gradients: (computed.backgroundImage.match(/linear-gradient/g) || []).length,
+
+  const measure = (kind, seen, walls) => {
+    const tile = drawSingleTile(build(kind, seen, walls), 1, 1);
+    document.body.appendChild(tile);
+    const computed = getComputedStyle(tile);
+    const result = {
+      backgroundColor: computed.backgroundColor,
+      backgroundImage: computed.backgroundImage,
+      gradients: (computed.backgroundImage.match(/gradient/g) || []).length,
+      washed: computed.boxShadow.includes("inset"),
+    };
+    tile.remove();
+    return result;
   };
-  tile.remove();
-  return result;
+
+  const out = {kinds: {}, walls: {}};
+  for (const kind of kinds) {
+    out.kinds[kind] = {seen: measure(kind, true, null), unseen: measure(kind, false, null)};
+  }
+  for (const walls of wallCases) {
+    out.walls[walls.join("+")] = measure("floorTile", false, walls);
+  }
+  return out;
 }
 """
+
+
+@pytest.fixture(scope="module")
+def overlay(browser, live_server):
+    """Measure every overlay case once, in a single GM page."""
+    context = browser.new_context(viewport={"width": 1000, "height": 700})
+    try:
+        page = context.new_page()
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "overlay measurements")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        return page.evaluate(MEASURE_JS, [TILE_KINDS, WALL_CASES])
+    finally:
+        context.close()
 
 
 class TestSeenOverlay:
     """The GM's "Show discovered overlay" whitens tiles nobody has explored.
 
-    It used to do that by assigning style.background, which threw away the wall
-    gradients composed onto the same property just above, so walls were
-    invisible on exactly the part of the map the GM is working from.
+    It used to do that by writing white into style.background. Every tile type
+    paints through that same property, so the wash replaced whatever the tile
+    was drawing: full wall tiles, doors, decorated floors, stairs, and the
+    inline gradients used for thin walls. The overlay must mark the tile
+    without altering how it is painted.
     """
 
-    def draw(self, gm, seen, walls):
-        client, _, _ = gm
-        return client.page.evaluate(DRAW_TILE_JS, [seen, walls])
+    @pytest.mark.parametrize("kind", TILE_KINDS)
+    def test_the_overlay_does_not_change_how_a_tile_is_painted(self, overlay, kind):
+        """The invariant: discovered and undiscovered differ only by the wash."""
+        seen, unseen = overlay["kinds"][kind]["seen"], overlay["kinds"][kind]["unseen"]
+        assert unseen["backgroundColor"] == seen["backgroundColor"]
+        assert unseen["backgroundImage"] == seen["backgroundImage"]
 
-    def test_walls_are_drawn_on_an_undiscovered_tile(self, gm_client):
-        assert self.draw(gm_client, False, ["left", "top"])["gradients"] == 2
+    @pytest.mark.parametrize("kind", TILE_KINDS)
+    def test_every_tile_type_is_washed_when_undiscovered(self, overlay, kind):
+        assert overlay["kinds"][kind]["unseen"]["washed"]
 
-    def test_the_overlay_still_whitens_that_tile(self, gm_client):
-        """Guards the fix from going too far the other way."""
-        assert self.draw(gm_client, False, ["left", "top"])["backgroundColor"] == "rgb(255, 255, 255)"
+    @pytest.mark.parametrize("kind", TILE_KINDS)
+    def test_no_tile_type_is_washed_once_discovered(self, overlay, kind):
+        assert not overlay["kinds"][kind]["seen"]["washed"]
 
-    def test_an_undiscovered_tile_without_walls_is_plain_white(self, gm_client):
-        result = self.draw(gm_client, False, None)
-        assert result["backgroundColor"] == "rgb(255, 255, 255)"
-        assert result["gradients"] == 0
+    def test_a_full_wall_tile_keeps_its_colour(self, overlay):
+        """wallTile is the clearest case: a solid black tile turned white."""
+        assert overlay["kinds"]["wallTile"]["unseen"]["backgroundColor"] == "rgb(0, 0, 0)"
 
-    def test_a_discovered_tile_keeps_its_walls_and_is_not_whitened(self, gm_client):
-        result = self.draw(gm_client, True, ["left", "top"])
-        assert result["gradients"] == 2
-        assert result["backgroundColor"] == "rgba(0, 0, 0, 0)"
+    @pytest.mark.parametrize("kind,expected", [
+        ("floorTileD", 2),
+        ("doorClosed", 1),
+        ("doorOpen", 1),
+        ("stairsUp", 1),
+    ])
+    def test_tile_artwork_survives_the_overlay(self, overlay, kind, expected):
+        assert overlay["kinds"][kind]["unseen"]["gradients"] == expected
 
     @pytest.mark.parametrize("walls,expected", [
-        (["left"], 1),
-        (["right"], 1),
-        (["top"], 1),
-        (["bottom"], 1),
-        (["left", "right", "top", "bottom"], 4),
+        ("left", 1), ("right", 1), ("top", 1), ("bottom", 1),
+        ("left+right+top+bottom", 4),
     ])
-    def test_every_wall_side_survives_the_overlay(self, gm_client, walls, expected):
-        assert self.draw(gm_client, False, walls)["gradients"] == expected
+    def test_thin_walls_survive_the_overlay(self, overlay, walls, expected):
+        assert overlay["walls"][walls]["gradients"] == expected
+        assert overlay["walls"][walls]["washed"]

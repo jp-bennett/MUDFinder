@@ -404,6 +404,13 @@ width:100%;
 .unseenTile {
     background: darkslategray !important;
 }
+/* GM-only marker for tiles no player has discovered yet. The wash is an inset
+   shadow so that it paints over the tile rather than replacing it: floors,
+   doors, stairs, full wall tiles and thin wall markings all draw through
+   background, and are still legible underneath. */
+.undiscoveredTile {
+    box-shadow: inset 0 0 0 1000px rgba(255, 255, 255, 0.65);
+}
 .unseenTileTransparent {
     background: transparent;
     border:none;
