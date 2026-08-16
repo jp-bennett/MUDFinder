@@ -9,7 +9,7 @@ signatures, these fail rather than the app merely failing to work in a browser.
 import pytest
 
 import mudfinder
-from conftest import GM_KEY, event, event_names
+from helpers import GM_KEY, event, event_names
 
 
 class TestConnection:

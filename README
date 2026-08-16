@@ -26,6 +26,20 @@ HTTP routes, and the Socket.IO event handlers. It needs no running server and
 no network. Tests that pin deliberate-decision-required behaviour, rather than
 behaviour that is definitely correct, live in TestKnownGaps classes.
 
+tests/browser/ additionally drives a real Chromium against a real server
+process, which is the only way to cover the browser Socket.IO client. Those
+need a browser binary:
+
+    .venv/bin/playwright install chromium
+
+Without one they skip, and the rest of the suite still runs. To select them:
+
+    .venv/bin/python -m pytest -m browser        # just the browser tests
+    .venv/bin/python -m pytest -m "not browser"  # everything else, ~0.5s
+
+If Chromium is installed somewhere playwright does not expect, point
+MUDFINDER_CHROMIUM at the binary.
+
 The dependency versions in requirements.txt are pinned on purpose --
 static/js/socket.io.js is the Socket.IO 2.x browser client, so the server
 side needs the matching Flask-SocketIO 4.x / python-engineio 3.x generation.

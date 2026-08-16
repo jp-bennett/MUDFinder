@@ -6,7 +6,7 @@ from a bad refactor, plus the initiative ordering rules.
 
 import pytest
 
-from conftest import make_player, make_unit
+from helpers import make_player, make_unit
 from player import Player
 from session import Session
 from unit import Unit, default
