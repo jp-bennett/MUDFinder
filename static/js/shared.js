@@ -115,24 +115,22 @@ function drawMap(mapData) {
         document.getElementById("mapGraphic").style.display = "block";
         backgroundDiv = document.createElement("div");
         backgroundDiv.id = "mapBackgroundDiv";
-        backgroundDiv.style.height = mapArray.length * 70 +"px";
-        backgroundDiv.style.width = mapArray[0].length * 70 + "px";
+        backgroundDiv.style.height = mapArray.length * zoomSize +"px";
+        backgroundDiv.style.width = mapArray[0].length * zoomSize + "px";
         backgroundDiv.style.position = "absolute";
         backgroundDiv.style.left = "0";
         backgroundDiv.style.top = "0";
         backgroundDiv.style.zIndex = "-1";
-
-        backgroundDiv.style.backgroundImage = "url(" + mapData.mapBackground + ")";
-        backgroundDiv.style.backgroundSize = "cover";
         document.getElementById("mapGraphic").appendChild(backgroundDiv);
+        applyMapBackground(mapData);
 
         effectCanvas = document.createElement("canvas");
         effectCanvas.style.position = "absolute";
         effectCanvas.style.top = 0;
         effectCanvas.style.pointerEvents = "none";
         document.getElementById("mapGraphic").appendChild(effectCanvas);
-        effectCanvas.width = mapArray[0].length*70;
-        effectCanvas.height = mapArray.length*70;
+        effectCanvas.width = mapArray[0].length * zoomSize;
+        effectCanvas.height = mapArray.length * zoomSize;
         effectCTX = effectCanvas.getContext("2d");
     } catch (e) {
         socket.emit("error_handle", room, e);
@@ -150,11 +148,52 @@ function updateMap(newMapData, mapData) {
             newMapTile = drawSingleTile(mapData, x, y)
             document.getElementById("mapGraphic").appendChild(newMapTile);
         }
-        if (newMapData.mapBackground != mapData.mapBackground) {
-            document.getElementById("mapBackgroundDiv").style.backgroundImage = "url(" + newMapData.mapBackground + ")";
+        if (typeof newMapData.mapBackground !== "undefined") {
+            mapData.mapBackground = newMapData.mapBackground;
         }
+        for (i = 0; i < BACKGROUND_ALIGNMENT_KEYS.length; i++) {
+            if (typeof newMapData[BACKGROUND_ALIGNMENT_KEYS[i]] !== "undefined") {
+                mapData[BACKGROUND_ALIGNMENT_KEYS[i]] = newMapData[BACKGROUND_ALIGNMENT_KEYS[i]];
+            }
+        }
+        applyMapBackground(mapData);
     } catch (e) {
         socket.emit("error_handle", room, e);
+    }
+}
+
+// Kept in step with BACKGROUND_ALIGNMENT_KEYS in session.py.
+var BACKGROUND_ALIGNMENT_KEYS = ["backgroundTilesWide", "backgroundOffsetX", "backgroundOffsetY"];
+
+function isMapAligned(mapData) {
+    return typeof mapData.backgroundTilesWide === "number" && mapData.backgroundTilesWide > 0;
+}
+
+function applyMapBackground(mapData) {
+    // Places the background image behind the grid. The only place that decides
+    // the background div's image, size and position, so drawMap and updateMap
+    // cannot drift apart.
+    //
+    // A map with alignment set positions the image explicitly, in grid squares
+    // scaled by zoomSize, which is what lets a battlemap's printed squares be
+    // made to coincide with the play grid. A map without it keeps the original
+    // stretch-to-fill, so every map made before alignment existed looks the
+    // same as it always did.
+    backgroundDiv = document.getElementById("mapBackgroundDiv");
+    if (!backgroundDiv) {
+        return;
+    }
+    backgroundDiv.style.backgroundImage = "url(" + mapData.mapBackground + ")";
+    if (isMapAligned(mapData)) {
+        backgroundDiv.style.backgroundSize = (mapData.backgroundTilesWide * zoomSize) + "px auto";
+        backgroundDiv.style.backgroundPosition =
+            ((mapData.backgroundOffsetX || 0) * zoomSize) + "px " +
+            ((mapData.backgroundOffsetY || 0) * zoomSize) + "px";
+        backgroundDiv.style.backgroundRepeat = "no-repeat";
+    } else {
+        backgroundDiv.style.backgroundSize = "cover";
+        backgroundDiv.style.backgroundPosition = "";
+        backgroundDiv.style.backgroundRepeat = "";
     }
 }
 

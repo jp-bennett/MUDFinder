@@ -5,6 +5,14 @@ from flask_socketio import emit
 from math import floor
 
 
+# How an uploaded battlemap image is placed behind the grid, measured in grid
+# squares rather than pixels so the numbers survive a change of tile size.
+# backgroundTilesWide is how many squares the image spans across; the offsets
+# are where its top left corner sits relative to tile (0, 0), and may be
+# negative. A map with none of these set is drawn the old way, stretched to
+# fill the play area, which is what every map made before this existed wants.
+BACKGROUND_ALIGNMENT_KEYS = ("backgroundTilesWide", "backgroundOffsetX", "backgroundOffsetY")
+
 
 class Session(object):
 
@@ -117,6 +125,10 @@ class Session(object):
             self.mapData["showBackground"] = True
         if "mapBackground" not in self.mapData:
             self.mapData["mapBackground"] = "static/images/mapbackground.jpg"
+        # Saves written before background alignment existed have none of these.
+        # Leaving them absent is deliberate: the client falls back to the old
+        # stretch-to-fill rendering when they are missing, so those maps look
+        # exactly as they always did.
         self.lore = obj["lore"]
         if "loreFiles" in obj.keys():
             for x in obj["loreFiles"]:
@@ -205,6 +217,11 @@ class Session(object):
         tmpMapData = {}
         tmpMapData["mapBackground"] = self.mapData["mapBackground"]
         tmpMapData["showBackground"] = self.mapData["showBackground"]
+        # Players have to be given the same alignment the GM set, or the
+        # artwork will not line up with the grid they are moving on.
+        for key in BACKGROUND_ALIGNMENT_KEYS:
+            if key in self.mapData:
+                tmpMapData[key] = self.mapData[key]
         tmpMapData["mapArray"] = []
 
         for y in range(len(self.mapData["mapArray"])):

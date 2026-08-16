@@ -120,6 +120,15 @@
               Height:<br>
               <input type="text" id="mapHeight"><br>
               <button onclick="mapGenerate()">Generate Map</button><br>
+              <hr style="width:40%;">
+              Or build a battlemap from an image:<br>
+              <button onclick="imageUpload(this, 'mapBackground', '')">Choose Image</button><br>
+              <span id="battlemapImageState">No image chosen yet.</span><br>
+              Squares across:<br>
+              <input type="text" id="battlemapWidth"><br>
+              Squares down:<br>
+              <input type="text" id="battlemapHeight"><br>
+              <button onclick="battlemapCreate()">Create Battlemap</button><br>
             </div>
             <div style="display:none;" id='mapGraphic'></div>
           </div>
@@ -184,8 +193,26 @@
           <div style="float:right;padding-right:100px;padding-top:10px;">Show discovered overlay: <input type="checkbox" id="seenOverlay" value="seenOverlay" onchange="seenOverlayToggle(this)" checked></div>
             <div style="float:right;padding-right:100px;padding-top:10px;">Show Features: <input type="checkbox" id="showFeatures" value="showFeatures" onchange="featuresToggle(this)" checked></div>
             <div style="float:right;padding-right:100px;padding-top:10px;">MultiSelect: <input type="checkbox" id="multiSelect" value="multiSelect" onchange="multiSelectToggle(this)"></div>
+          <div style="float:right;padding-right:100px;padding-top:10px;">Align background: <input type="checkbox" id="alignBackground" value="alignBackground" onchange="alignmentToggle(this)"></div>
           <button id="showEffectDivButton" onclick="showEffectControls()">Effect</button>
           <button id="SelectMapBackgroundButton" onclick="imageUpload(this, 'mapBackground', '')">Background</button>
+          </div>
+          <div id="alignmentControls" style="display:none;">
+            Drag the map to move the image. Match its printed squares to the grid.<br>
+            Squares across the image:
+            <input type="range" id="alignTilesWideSlider" min="1" max="80" step="0.1" oninput="alignmentSliderInput(this)">
+            <input type="text" id="alignTilesWide" onchange="alignmentFieldInput()">
+            <button onclick="alignmentNudge('backgroundTilesWide', -0.05)">&minus;</button>
+            <button onclick="alignmentNudge('backgroundTilesWide', 0.05)">+</button>
+            &nbsp; Across:
+            <input type="text" id="alignOffsetX" onchange="alignmentFieldInput()">
+            <button onclick="alignmentNudge('backgroundOffsetX', -0.05)">&minus;</button>
+            <button onclick="alignmentNudge('backgroundOffsetX', 0.05)">+</button>
+            &nbsp; Down:
+            <input type="text" id="alignOffsetY" onchange="alignmentFieldInput()">
+            <button onclick="alignmentNudge('backgroundOffsetY', -0.05)">&minus;</button>
+            <button onclick="alignmentNudge('backgroundOffsetY', 0.05)">+</button>
+            <button onclick="alignmentReset()">Fit To Grid</button>
           </div>
         </div>
         <div id="units" style="display:none;">

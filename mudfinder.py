@@ -16,7 +16,7 @@ from flask import Flask, abort, render_template, request, redirect
 from flask_socketio import SocketIO, join_room, emit
 from werkzeug.utils import secure_filename
 
-from session import Session
+from session import Session, BACKGROUND_ALIGNMENT_KEYS
 
 from player import Player
 from unit import Unit
@@ -352,6 +352,11 @@ def on_image_upload(room, image, title, owner):
             tmpMapData = {}
             tmpMapData["showBackground"] = ROOMS[room].mapData["showBackground"]
             tmpMapData["mapBackground"] = ROOMS[room].mapData["mapBackground"]
+            # Carry whatever alignment the map already has, so swapping the
+            # image does not leave the client rendering it a different way.
+            for key in BACKGROUND_ALIGNMENT_KEYS:
+                if key in ROOMS[room].mapData:
+                    tmpMapData[key] = ROOMS[room].mapData[key]
             tmpMapData["mapArray"] = []
             emit('gm_map_update', tmpMapData, room=ROOMS[room].gmRoom)
             emit('player_map_update', tmpMapData, room=room)
@@ -608,6 +613,8 @@ def on_clear_map(data):
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         ROOMS[room].mapData["mapArray"] = []
         ROOMS[room].mapData["mapBackground"] = "static/images/mapbackground.jpg"
+        for key in BACKGROUND_ALIGNMENT_KEYS:
+            ROOMS[room].mapData.pop(key, None)
         ROOMS[room].inInit = False
         for x in reversed(ROOMS[room].unitList):  # since we're removing elements, have to walk it backwards
             if x.controlledBy == "gm":
@@ -999,22 +1006,103 @@ def on_del_init(data):
         ROOMS[room].send_updates()
 
 
+def build_map_grid(width, height, discovered):
+    """A blank floor grid, in the row-major shape mapArray uses."""
+    map_array = []
+    for y in range(height):
+        map_line_list = []
+        for x in range(width):
+            map_line_list.append(
+                {"tile": "floorTile", "walkable": True, "seen": discovered, "secret": False, "x": x, "y": y})
+        map_array.append(map_line_list)
+    return map_array
+
+
 @socketio.on('map_generate')
 def on_map_generate(data):
     room = data['room']
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
-        ROOMS[room].mapData["mapArray"] = []
         ROOMS[room].mapData["mapBackground"] = "static/images/mapbackground.jpg"
-        map_line_list = []
-        for y in range(data["mapHeight"]):
-            for x in range(data["mapWidth"]):
-                map_line_list.append(
-                    {"tile": "floorTile", "walkable": True, "seen": data["discovered"], "secret": False, "x": x, "y": y})
-            ROOMS[room].mapData["mapArray"].append(map_line_list)
-            map_line_list = []
+        for key in BACKGROUND_ALIGNMENT_KEYS:
+            ROOMS[room].mapData.pop(key, None)
+        ROOMS[room].mapData["mapArray"] = build_map_grid(
+            data["mapWidth"], data["mapHeight"], data["discovered"])
         emit('gm_map', ROOMS[room].mapData)
         emit('draw_map', ROOMS[room].player_map(), room=room)
         ROOMS[room].send_updates()
+
+
+@socketio.on('map_generate_over_background')
+def on_map_generate_over_background(data):
+    """Build a grid over the background image the room already has.
+
+    map_generate resets the background to the default parchment, so a battlemap
+    cannot be made by generating and then uploading, and uploading and then
+    generating throws the image away. This is the third order: upload, then lay
+    a grid over what is there.
+    """
+    room = data['room']
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
+        width = data["mapWidth"]
+        height = data["mapHeight"]
+        ROOMS[room].mapData["mapArray"] = build_map_grid(width, height, data["discovered"])
+        # Start the image one grid wide with its corner on tile (0, 0). That is
+        # rarely the right answer for a real battlemap, but it is a predictable
+        # place to start adjusting from.
+        ROOMS[room].mapData["backgroundTilesWide"] = float(width)
+        ROOMS[room].mapData["backgroundOffsetX"] = 0.0
+        ROOMS[room].mapData["backgroundOffsetY"] = 0.0
+        emit('gm_map', ROOMS[room].mapData)
+        emit('draw_map', ROOMS[room].player_map(), room=room)
+        ROOMS[room].send_updates()
+
+
+MIN_BACKGROUND_TILES_WIDE = 0.1
+MAX_BACKGROUND_TILES_WIDE = 1000.0
+MAX_BACKGROUND_OFFSET = 1000.0
+
+
+def clamp_alignment(value, low, high):
+    """Coerce one alignment number, or None if it is not a number at all.
+
+    These arrive from a GM's input field, so a stray letter must not put the
+    map into a state that cannot be drawn.
+    """
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number or number in (float("inf"), float("-inf")):  # NaN or infinity
+        return None
+    return max(low, min(high, number))
+
+
+@socketio.on('set_background_alignment')
+def on_set_background_alignment(data):
+    """Place the background image against the grid."""
+    room = data['room']
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
+        tiles_wide = clamp_alignment(
+            data.get("backgroundTilesWide"), MIN_BACKGROUND_TILES_WIDE, MAX_BACKGROUND_TILES_WIDE)
+        offset_x = clamp_alignment(
+            data.get("backgroundOffsetX"), -MAX_BACKGROUND_OFFSET, MAX_BACKGROUND_OFFSET)
+        offset_y = clamp_alignment(
+            data.get("backgroundOffsetY"), -MAX_BACKGROUND_OFFSET, MAX_BACKGROUND_OFFSET)
+        if tiles_wide is None or offset_x is None or offset_y is None:
+            return
+        ROOMS[room].mapData["backgroundTilesWide"] = tiles_wide
+        ROOMS[room].mapData["backgroundOffsetX"] = offset_x
+        ROOMS[room].mapData["backgroundOffsetY"] = offset_y
+        # Same shape image_upload uses for a background change: no tiles, so
+        # nothing is redrawn, only the background is repositioned.
+        tmpMapData = {"mapArray": [],
+                      "showBackground": ROOMS[room].mapData["showBackground"],
+                      "mapBackground": ROOMS[room].mapData["mapBackground"],
+                      "backgroundTilesWide": tiles_wide,
+                      "backgroundOffsetX": offset_x,
+                      "backgroundOffsetY": offset_y}
+        emit('gm_map_update', tmpMapData, room=ROOMS[room].gmRoom)
+        emit('player_map_update', tmpMapData, room=room)
 
 
 def toggleWall(tile, wall_side):

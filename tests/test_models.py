@@ -8,7 +8,7 @@ import pytest
 
 from helpers import make_player, make_unit
 from player import Player
-from session import Session
+from session import Session, BACKGROUND_ALIGNMENT_KEYS
 from unit import Unit, default
 
 
@@ -248,3 +248,64 @@ class TestSessionSerialisation:
     def test_gen_save_keeps_full_saved_encounters(self, populated):
         populated.savedEncounters = {"Ambush": {"units": []}}
         assert populated.gen_save()["savedEncounters"] == {"Ambush": {"units": []}}
+
+
+class TestBackgroundAlignmentPersistence:
+    """Where an uploaded battlemap sits behind the grid.
+
+    Stored in grid squares rather than pixels, so the numbers stay meaningful
+    if the tile size ever changes.
+    """
+
+    @pytest.fixture
+    def aligned(self):
+        session = Session("room-1", "key-1", "Battlemap")
+        session.mapData["mapArray"] = [[{"tile": "floorTile", "walkable": True,
+                                         "seen": True, "secret": False, "x": 0, "y": 0}]]
+        session.mapData["mapBackground"] = "get_image.html?room=room-1&id=abc"
+        session.mapData["backgroundTilesWide"] = 24.5
+        session.mapData["backgroundOffsetX"] = -1.25
+        session.mapData["backgroundOffsetY"] = -0.8
+        return session
+
+    def test_alignment_survives_a_save_and_load(self, aligned):
+        restored = Session("room-1", "key-1", "placeholder")
+        restored.from_json(aligned.gen_save())
+        assert restored.mapData["backgroundTilesWide"] == 24.5
+        assert restored.mapData["backgroundOffsetX"] == -1.25
+        assert restored.mapData["backgroundOffsetY"] == -0.8
+
+    def test_the_background_survives_with_it(self, aligned):
+        restored = Session("room-1", "key-1", "placeholder")
+        restored.from_json(aligned.gen_save())
+        assert restored.mapData["mapBackground"] == "get_image.html?room=room-1&id=abc"
+
+    def test_a_save_from_before_the_feature_still_loads(self, aligned):
+        blob = aligned.gen_save()
+        for key in BACKGROUND_ALIGNMENT_KEYS:
+            del blob["mapData"][key]
+        restored = Session("room-1", "key-1", "placeholder")
+        restored.from_json(blob)
+        assert restored.mapData["mapArray"]
+
+    def test_an_older_save_is_left_unaligned(self, aligned):
+        """Deliberate: absent keys are what makes the client draw it the old
+        way, so an existing game keeps looking exactly as it did."""
+        blob = aligned.gen_save()
+        for key in BACKGROUND_ALIGNMENT_KEYS:
+            del blob["mapData"][key]
+        restored = Session("room-1", "key-1", "placeholder")
+        restored.from_json(blob)
+        assert not any(key in restored.mapData for key in BACKGROUND_ALIGNMENT_KEYS)
+
+    def test_players_are_given_the_alignment(self, aligned):
+        """Or their artwork will not line up with the grid they move on."""
+        player_view = aligned.player_map()
+        assert player_view["backgroundTilesWide"] == 24.5
+        assert player_view["backgroundOffsetX"] == -1.25
+        assert player_view["backgroundOffsetY"] == -0.8
+
+    def test_players_of_an_unaligned_map_are_given_nothing(self, aligned):
+        for key in BACKGROUND_ALIGNMENT_KEYS:
+            del aligned.mapData[key]
+        assert not any(key in aligned.player_map() for key in BACKGROUND_ALIGNMENT_KEYS)

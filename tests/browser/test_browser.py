@@ -700,3 +700,285 @@ class TestSettingABackground:
 
     def test_nothing_raised(self, background_walkthrough):
         assert background_walkthrough["errors"] == []
+
+
+BATTLEMAP_IMAGE = "https://example.invalid/gunalley.png"
+
+BACKGROUND_GEOMETRY_JS = """
+() => {
+  const div = document.getElementById("mapBackgroundDiv");
+  const computed = div ? getComputedStyle(div) : null;
+  const tile = document.getElementById("tile0,0");
+  return {
+    backgroundSize: computed ? computed.backgroundSize : null,
+    backgroundPosition: computed ? computed.backgroundPosition : null,
+    tilesWide: (typeof mapObject !== "undefined" && mapObject)
+      ? mapObject.backgroundTilesWide : null,
+    offsetX: (typeof mapObject !== "undefined" && mapObject)
+      ? mapObject.backgroundOffsetX : null,
+    offsetY: (typeof mapObject !== "undefined" && mapObject)
+      ? mapObject.backgroundOffsetY : null,
+    aligning: document.getElementById("mapGraphic").classList.contains("aligning"),
+    tileOpacity: tile ? getComputedStyle(tile).opacity : null,
+    tilePitch: tile ? tile.getBoundingClientRect().width : null,
+  };
+}
+"""
+
+
+@pytest.fixture(scope="module")
+def battlemap(browser, live_server):
+    """Build a battlemap from an image and align it, the way a GM would."""
+    context = browser.new_context(viewport={"width": 1200, "height": 800})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "battlemap")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1) for pair in page.url.split("?", 1)[1].split("&"))["room"]
+
+        stages = {}
+
+        # The Choose Image button goes through the existing upload modal, which
+        # ends in this event.
+        page.evaluate(
+            """(url) => socket.emit("image_upload", room, url, "mapBackground", "")""",
+            BATTLEMAP_IMAGE,
+        )
+        page.wait_for_timeout(400)
+
+        page.fill("#battlemapWidth", "22")
+        page.fill("#battlemapHeight", "34")
+        page.click("text=Create Battlemap")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["created"] = page.evaluate(BACKGROUND_GEOMETRY_JS)
+
+        page.fill("#alignTilesWide", "24.5")
+        page.dispatch_event("#alignTilesWide", "change")
+        page.wait_for_timeout(300)
+        stages["scaled"] = page.evaluate(BACKGROUND_GEOMETRY_JS)
+
+        # Drag two squares right and one down, at 70px per square.
+        box = page.locator("#mapContainer").bounding_box()
+        page.mouse.move(box["x"] + 300, box["y"] + 300)
+        page.mouse.down()
+        page.mouse.move(box["x"] + 440, box["y"] + 370, steps=8)
+        page.mouse.up()
+        page.wait_for_timeout(400)
+        stages["dragged"] = page.evaluate(BACKGROUND_GEOMETRY_JS)
+
+        # A full redraw, as toggling the discovered overlay causes.
+        page.evaluate("() => drawMap(mapObject)")
+        stages["redrawn"] = page.evaluate(BACKGROUND_GEOMETRY_JS)
+
+        # Zoom is a CSS transform over the whole map, so alignment must be
+        # untouched by it.
+        page.evaluate("""() => { zoom = 2;
+            document.getElementById("mapGraphic").style.transform = "scale(2)"; }""")
+        page.wait_for_timeout(200)
+        stages["zoomed"] = page.evaluate(BACKGROUND_GEOMETRY_JS)
+        page.evaluate("""() => { zoom = 1;
+            document.getElementById("mapGraphic").style.transform = "scale(1)"; }""")
+
+        # Three edits with no pause between them. Each one is echoed back by
+        # the server, and a slow echo must not undo a newer local change.
+        page.fill("#alignTilesWide", "12.4")
+        page.dispatch_event("#alignTilesWide", "change")
+        page.fill("#alignOffsetX", "-1.2")
+        page.dispatch_event("#alignOffsetX", "change")
+        page.fill("#alignOffsetY", "-0.6")
+        page.dispatch_event("#alignOffsetY", "change")
+        page.wait_for_timeout(900)
+        stages["rapid"] = page.evaluate(BACKGROUND_GEOMETRY_JS)
+        # Every change sent has had its echo accounted for by now. This only
+        # falls back to zero if the guard is actually wired into the handler.
+        stages["sendsInFlight"] = page.evaluate("() => alignmentSendsInFlight")
+
+        # A refresh while the GM is typing must leave that box alone. The
+        # half-typed value is put back before blurring, because blurring a
+        # changed field fires change, which would really move the image and
+        # leak into the stages below.
+        page.focus("#alignOffsetY")
+        stages["typing"] = page.evaluate("""() => {
+            const editing = document.getElementById("alignOffsetY");
+            const other = document.getElementById("alignOffsetX");
+            const original = editing.value;
+            editing.value = "-9.9";          // part way through typing
+            refreshAlignmentFields();
+            const result = {editing: editing.value, other: other.value};
+            editing.value = original;
+            editing.blur();
+            return result;
+        }""")
+
+        # The echo guard on its own. Losing the race on purpose is not
+        # reproducible, so the rule it enforces is checked directly.
+        stages["echo"] = page.evaluate("""() => {
+            const own = {backgroundTilesWide: 99, backgroundOffsetX: 9, backgroundOffsetY: 9};
+            alignmentSendsInFlight = 1;
+            const droppedOwn = dropOwnAlignmentEcho(own);
+            const other = {backgroundTilesWide: 99, backgroundOffsetX: 9, backgroundOffsetY: 9};
+            const droppedOther = dropOwnAlignmentEcho(other);
+            return {droppedOwn: droppedOwn,
+                    ownStripped: !("backgroundTilesWide" in own),
+                    droppedOther: droppedOther,
+                    otherKept: "backgroundTilesWide" in other,
+                    counter: alignmentSendsInFlight};
+        }""")
+
+        # What a player sees of the same room.
+        player = context.new_page()
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["player"] = player.evaluate(BACKGROUND_GEOMETRY_JS)
+
+        # Clearing back to a plain generated map must restore the old rendering.
+        page.evaluate("""() => socket.emit("clear_map",
+            {room: room, gmKey: gmKey, clearLocations: true})""")
+        page.wait_for_timeout(500)
+        page.fill("#mapWidth", "4")
+        page.fill("#mapHeight", "3")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["generated"] = page.evaluate(BACKGROUND_GEOMETRY_JS)
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestBattlemapFromAnImage:
+    """A GM uploads a battlemap, says how big it is, and lines it up.
+
+    The image used to be stretched to fill the play area with background-size:
+    cover and no background-position, so a map's printed squares could not be
+    made to coincide with the play grid, and distances were wrong.
+    """
+
+    def test_the_grid_is_laid_over_the_image(self, battlemap):
+        """22 squares at 70px each."""
+        assert battlemap["created"]["backgroundSize"] == "1540px"
+
+    def test_the_image_starts_on_the_grid_origin(self, battlemap):
+        assert battlemap["created"]["backgroundPosition"] == "0px 0px"
+
+    def test_it_drops_into_alignment_mode(self, battlemap):
+        """A fresh grid almost never matches the image's printed one."""
+        assert battlemap["created"]["aligning"]
+
+    def test_the_grid_is_visible_to_align_against(self, battlemap):
+        """Tiles over an uploaded image are transparent; alignment shows them."""
+        assert battlemap["created"]["tileOpacity"] == "1"
+
+    def test_the_scale_field_resizes_the_image(self, battlemap):
+        """24.5 squares at 70px."""
+        assert battlemap["scaled"]["backgroundSize"] == "1715px"
+        assert battlemap["scaled"]["tilesWide"] == 24.5
+
+    def test_dragging_moves_the_image_by_whole_squares(self, battlemap):
+        """140px right and 70px down, at 70px per square."""
+        assert battlemap["dragged"]["offsetX"] == pytest.approx(2, abs=0.01)
+        assert battlemap["dragged"]["offsetY"] == pytest.approx(1, abs=0.01)
+
+    def test_dragging_is_applied_to_the_image(self, battlemap):
+        assert battlemap["dragged"]["backgroundPosition"] == "140px 70px"
+
+    def test_alignment_survives_a_full_redraw(self, battlemap):
+        redrawn, dragged = battlemap["redrawn"], battlemap["dragged"]
+        assert redrawn["backgroundSize"] == dragged["backgroundSize"]
+        assert redrawn["backgroundPosition"] == dragged["backgroundPosition"]
+
+    def test_zoom_does_not_disturb_the_alignment(self, battlemap):
+        """The invariant. Zoom scales the whole map, so the image and the grid
+        have to move together or a zoomed-in GM sees a map that has drifted."""
+        zoomed, before = battlemap["zoomed"], battlemap["redrawn"]
+        assert zoomed["backgroundSize"] == before["backgroundSize"]
+        assert zoomed["backgroundPosition"] == before["backgroundPosition"]
+
+    def test_zoom_scaled_the_map_at_all(self, battlemap):
+        """Guards the test above from passing because nothing happened."""
+        assert battlemap["zoomed"]["tilePitch"] > battlemap["redrawn"]["tilePitch"] * 1.5
+
+    def test_edits_in_quick_succession_all_stick(self, battlemap):
+        """The outcome a GM cares about. Note this does not deliberately lose
+        the echo race, which is not reproducible on demand; the rule that
+        prevents it is checked in TestAlignmentEchoes."""
+        rapid = battlemap["rapid"]
+        assert rapid["tilesWide"] == pytest.approx(12.4)
+        assert rapid["offsetX"] == pytest.approx(-1.2)
+        assert rapid["offsetY"] == pytest.approx(-0.6)
+
+    def test_players_get_the_same_alignment(self, battlemap):
+        """Players move on this grid, so their artwork has to sit where the
+        GM's does. Compared against the state the GM was in when the player
+        loaded, which is after the rapid edits above."""
+        assert battlemap["player"]["backgroundSize"] == battlemap["rapid"]["backgroundSize"]
+        assert battlemap["player"]["backgroundPosition"] == battlemap["rapid"]["backgroundPosition"]
+
+    def test_a_plain_generated_map_is_still_stretched_to_fit(self, battlemap):
+        """The compatibility hinge: a map with no alignment renders as before."""
+        assert battlemap["generated"]["backgroundSize"] == "cover"
+        assert battlemap["generated"]["tilesWide"] is None
+
+    def test_alignment_mode_lets_go_of_a_plain_map(self, battlemap):
+        """There is nothing to align, and the mode strips tile art."""
+        assert not battlemap["generated"]["aligning"]
+
+    def test_nothing_raised(self, battlemap):
+        assert battlemap["errors"] == []
+
+
+class TestAlignmentEchoes:
+    """Alignment changes come back from the server, and a late echo of an
+    earlier one must not undo a later local adjustment."""
+
+    def test_our_own_echo_is_dropped(self, battlemap):
+        assert battlemap["echo"]["droppedOwn"]
+
+    def test_the_dropped_echo_carries_no_alignment_on(self, battlemap):
+        """Stripped rather than ignored, so updateMap cannot apply it either."""
+        assert battlemap["echo"]["ownStripped"]
+
+    def test_a_change_from_elsewhere_is_kept(self, battlemap):
+        """With nothing of ours outstanding, an update is somebody else's and
+        has to be applied, or a second GM tab could never move the image."""
+        assert not battlemap["echo"]["droppedOther"]
+        assert battlemap["echo"]["otherKept"]
+
+    def test_the_counter_is_spent(self, battlemap):
+        assert battlemap["echo"]["counter"] == 0
+
+    def test_the_guard_is_wired_into_the_handler(self, battlemap):
+        """Three changes were sent and three echoes came back. A non-zero count
+        means the handler is not consuming them, so the guard is inert."""
+        assert battlemap["sendsInFlight"] == 0
+
+
+class TestTypingIntoAlignmentFields:
+    """The alignment boxes are refreshed on every map update, and a GM part
+    way through typing a value must not have it replaced under them."""
+
+    def test_the_field_being_typed_into_is_left_alone(self, battlemap):
+        assert battlemap["typing"]["editing"] == "-9.9"
+
+    def test_the_other_fields_still_refresh(self, battlemap):
+        """Only the focused box is protected, not the whole panel."""
+        assert battlemap["typing"]["other"] == "-1.20"

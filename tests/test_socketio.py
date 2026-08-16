@@ -316,3 +316,179 @@ class TestImages:
         # The handler returns None; the test client reports "no callback data"
         # as an empty list.
         assert not client.emit("request_images", "no-such-room", callback=True)
+
+
+BATTLEMAP_IMAGE = "https://example.invalid/gunalley.png"
+DEFAULT_BACKGROUND = "static/images/mapbackground.jpg"
+
+
+def set_background(gm_client, room, image=BATTLEMAP_IMAGE):
+    gm_client.emit("image_upload", room, image, "mapBackground", "")
+    gm_client.get_received()
+
+
+class TestMapGenerateOverBackground:
+    """Laying a grid over an uploaded battlemap.
+
+    map_generate resets the background to the default parchment, so a battlemap
+    cannot be made by generating first and uploading second, and uploading
+    first then generating throws the image away. This is the path that works.
+    """
+
+    def test_it_builds_the_requested_grid(self, gm):
+        gm_client, room, key = gm
+        set_background(gm_client, room)
+        gm_client.emit("map_generate_over_background", {
+            "room": room, "gmKey": key,
+            "mapWidth": 22, "mapHeight": 34, "discovered": False,
+        })
+        grid = mudfinder.ROOMS[room].mapData["mapArray"]
+        assert len(grid) == 34
+        assert all(len(row) == 22 for row in grid)
+
+    def test_it_keeps_the_background(self, gm):
+        """The whole point: map_generate would have discarded it."""
+        gm_client, room, key = gm
+        set_background(gm_client, room)
+        gm_client.emit("map_generate_over_background", {
+            "room": room, "gmKey": key,
+            "mapWidth": 4, "mapHeight": 3, "discovered": False,
+        })
+        assert mudfinder.ROOMS[room].mapData["mapBackground"] == BATTLEMAP_IMAGE
+
+    def test_plain_generate_still_discards_the_background(self, gm):
+        """Guards the contrast, so the two paths cannot quietly converge."""
+        gm_client, room, key = gm
+        set_background(gm_client, room)
+        gm_client.emit("map_generate", {
+            "room": room, "gmKey": key,
+            "mapWidth": 4, "mapHeight": 3, "discovered": False,
+        })
+        assert mudfinder.ROOMS[room].mapData["mapBackground"] == DEFAULT_BACKGROUND
+
+    def test_it_seeds_alignment_spanning_the_grid(self, gm):
+        gm_client, room, key = gm
+        set_background(gm_client, room)
+        gm_client.emit("map_generate_over_background", {
+            "room": room, "gmKey": key,
+            "mapWidth": 22, "mapHeight": 34, "discovered": False,
+        })
+        map_data = mudfinder.ROOMS[room].mapData
+        assert map_data["backgroundTilesWide"] == 22
+        assert map_data["backgroundOffsetX"] == 0
+        assert map_data["backgroundOffsetY"] == 0
+
+    def test_tiles_have_the_same_shape_as_a_generated_map(self, gm):
+        gm_client, room, key = gm
+        gm_client.emit("map_generate_over_background", {
+            "room": room, "gmKey": key,
+            "mapWidth": 2, "mapHeight": 2, "discovered": True,
+        })
+        tile = mudfinder.ROOMS[room].mapData["mapArray"][1][0]
+        assert tile == {"tile": "floorTile", "walkable": True, "seen": True,
+                        "secret": False, "x": 0, "y": 1}
+
+    def test_wrong_key_cannot_build(self, gm):
+        gm_client, room, _ = gm
+        gm_client.emit("map_generate_over_background", {
+            "room": room, "gmKey": "wrong",
+            "mapWidth": 4, "mapHeight": 3, "discovered": False,
+        })
+        assert mudfinder.ROOMS[room].mapData["mapArray"] == []
+
+    def test_unknown_room_is_ignored(self, client):
+        client.emit("map_generate_over_background", {
+            "room": "no-such-room", "gmKey": GM_KEY,
+            "mapWidth": 4, "mapHeight": 3, "discovered": False,
+        })
+        assert client.get_received() == []
+
+
+class TestBackgroundAlignment:
+    """Placing the image against the grid, in grid squares."""
+
+    def align(self, gm_client, room, key, wide=24.5, x=-1.25, y=-0.8):
+        gm_client.emit("set_background_alignment", {
+            "room": room, "gmKey": key,
+            "backgroundTilesWide": wide, "backgroundOffsetX": x, "backgroundOffsetY": y,
+        })
+
+    def test_the_values_are_stored(self, gm):
+        gm_client, room, key = gm
+        self.align(gm_client, room, key)
+        map_data = mudfinder.ROOMS[room].mapData
+        assert map_data["backgroundTilesWide"] == 24.5
+        assert map_data["backgroundOffsetX"] == -1.25
+        assert map_data["backgroundOffsetY"] == -0.8
+
+    def test_it_reaches_the_gm(self, gm):
+        gm_client, room, key = gm
+        self.align(gm_client, room, key)
+        assert "gm_map_update" in event_names(gm_client.get_received())
+
+    def test_it_carries_no_tiles(self, gm):
+        """Only the background moves; nothing should be redrawn."""
+        gm_client, room, key = gm
+        self.align(gm_client, room, key)
+        payload = event(gm_client.get_received(), "gm_map_update")["args"][0]
+        assert payload["mapArray"] == []
+        assert payload["backgroundTilesWide"] == 24.5
+
+    def test_it_reaches_players(self, gm):
+        gm_client, room, key = gm
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+
+        self.align(gm_client, room, key)
+        payload = event(player.get_received(), "player_map_update")["args"][0]
+        assert payload["backgroundTilesWide"] == 24.5
+        assert payload["backgroundOffsetX"] == -1.25
+
+    def test_wrong_key_changes_nothing(self, gm):
+        gm_client, room, key = gm
+        self.align(gm_client, room, key)
+        gm_client.get_received()
+        self.align(gm_client, room, "wrong", wide=99)
+        assert mudfinder.ROOMS[room].mapData["backgroundTilesWide"] == 24.5
+
+    def test_unknown_room_is_ignored(self, client):
+        client.emit("set_background_alignment", {
+            "room": "no-such-room", "gmKey": GM_KEY,
+            "backgroundTilesWide": 5, "backgroundOffsetX": 0, "backgroundOffsetY": 0,
+        })
+        assert client.get_received() == []
+
+    @pytest.mark.parametrize("bad", ["abc", None, "", [1], float("nan"), float("inf")])
+    def test_values_that_are_not_numbers_are_refused(self, gm, bad):
+        """These come from a GM's text field, so junk must not wedge the map."""
+        gm_client, room, key = gm
+        self.align(gm_client, room, key)
+        gm_client.get_received()
+        self.align(gm_client, room, key, wide=bad)
+        assert mudfinder.ROOMS[room].mapData["backgroundTilesWide"] == 24.5
+
+    def test_an_absurd_scale_is_clamped(self, gm):
+        gm_client, room, key = gm
+        self.align(gm_client, room, key, wide=99999)
+        assert mudfinder.ROOMS[room].mapData["backgroundTilesWide"] == mudfinder.MAX_BACKGROUND_TILES_WIDE
+
+    def test_a_zero_scale_is_clamped(self, gm):
+        """Zero squares wide would make the image vanish."""
+        gm_client, room, key = gm
+        self.align(gm_client, room, key, wide=0)
+        assert mudfinder.ROOMS[room].mapData["backgroundTilesWide"] == mudfinder.MIN_BACKGROUND_TILES_WIDE
+
+    def test_negative_offsets_are_allowed(self, gm):
+        """Pulling the image up and left is the normal case: it trims a border."""
+        gm_client, room, key = gm
+        self.align(gm_client, room, key, x=-3.5, y=-2.25)
+        map_data = mudfinder.ROOMS[room].mapData
+        assert map_data["backgroundOffsetX"] == -3.5
+        assert map_data["backgroundOffsetY"] == -2.25
+
+    def test_clearing_the_map_drops_the_alignment(self, gm):
+        gm_client, room, key = gm
+        self.align(gm_client, room, key)
+        gm_client.emit("clear_map", {"room": room, "gmKey": key, "clearLocations": True})
+        assert "backgroundTilesWide" not in mudfinder.ROOMS[room].mapData
