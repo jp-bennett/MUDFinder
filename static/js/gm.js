@@ -67,7 +67,7 @@ document.getElementById("mapContainer").onwheel = function(e){
 
 window.onload = function() {
     try {
-        socket = io.connect(document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
+        socket = io({transports: ['websocket'], upgrade: false});
     } catch (e) {
         alert("Could not connect to websocket");
     }
