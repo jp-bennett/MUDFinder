@@ -272,7 +272,15 @@ function drawSingleTile(mapData, x, y) {
         if (isGM && !mapArray[y][x].seen && showSeenOverlay) {
             newMapTile.style.opacity = ".9";
             newMapTile.classList.remove("fullyTransparent");
-            newMapTile.style.background = "white";
+            // White is added as the last layer, which makes it the background
+            // colour sitting under any wall gradients composed above. Assigning
+            // style.background outright would replace those and leave the GM
+            // unable to see walls on undiscovered tiles.
+            if (newMapTile.style.background != "") {
+                newMapTile.style.background += ",white";
+            } else {
+                newMapTile.style.background = "white";
+            }
         }
     }
     return newMapTile

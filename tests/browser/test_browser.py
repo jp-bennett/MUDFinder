@@ -234,3 +234,69 @@ class TestSelfContained:
         wait_for_socket(client)
         client.page.wait_for_timeout(500)
         assert external == []
+
+
+# Renders one tile through the page's own drawSingleTile and reports what the
+# browser actually computed for it. Driving the function directly keeps the
+# test off the wall-painting toolbar, which is a lot of UI for one CSS rule.
+DRAW_TILE_JS = """
+([seen, walls]) => {
+  showSeenOverlay = true;
+  zoomSize = 70;
+  const mapData = {
+    mapArray: [[{tile: "floorTile", walkable: true, seen: seen, secret: false,
+                 x: 0, y: 0, walls: walls}]],
+    showBackground: true,
+    mapBackground: "static/images/mapbackground.jpg",
+  };
+  const tile = drawSingleTile(mapData, 0, 0);
+  document.body.appendChild(tile);
+  const computed = getComputedStyle(tile);
+  const result = {
+    backgroundColor: computed.backgroundColor,
+    gradients: (computed.backgroundImage.match(/linear-gradient/g) || []).length,
+  };
+  tile.remove();
+  return result;
+}
+"""
+
+
+class TestSeenOverlay:
+    """The GM's "Show discovered overlay" whitens tiles nobody has explored.
+
+    It used to do that by assigning style.background, which threw away the wall
+    gradients composed onto the same property just above, so walls were
+    invisible on exactly the part of the map the GM is working from.
+    """
+
+    def draw(self, gm, seen, walls):
+        client, _, _ = gm
+        return client.page.evaluate(DRAW_TILE_JS, [seen, walls])
+
+    def test_walls_are_drawn_on_an_undiscovered_tile(self, gm_client):
+        assert self.draw(gm_client, False, ["left", "top"])["gradients"] == 2
+
+    def test_the_overlay_still_whitens_that_tile(self, gm_client):
+        """Guards the fix from going too far the other way."""
+        assert self.draw(gm_client, False, ["left", "top"])["backgroundColor"] == "rgb(255, 255, 255)"
+
+    def test_an_undiscovered_tile_without_walls_is_plain_white(self, gm_client):
+        result = self.draw(gm_client, False, None)
+        assert result["backgroundColor"] == "rgb(255, 255, 255)"
+        assert result["gradients"] == 0
+
+    def test_a_discovered_tile_keeps_its_walls_and_is_not_whitened(self, gm_client):
+        result = self.draw(gm_client, True, ["left", "top"])
+        assert result["gradients"] == 2
+        assert result["backgroundColor"] == "rgba(0, 0, 0, 0)"
+
+    @pytest.mark.parametrize("walls,expected", [
+        (["left"], 1),
+        (["right"], 1),
+        (["top"], 1),
+        (["bottom"], 1),
+        (["left", "right", "top", "bottom"], 4),
+    ])
+    def test_every_wall_side_survives_the_overlay(self, gm_client, walls, expected):
+        assert self.draw(gm_client, False, walls)["gradients"] == expected
