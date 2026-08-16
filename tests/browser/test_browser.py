@@ -118,11 +118,20 @@ class TestMapSync:
             timeout=HANDSHAKE_TIMEOUT,
         )
 
+    def tile_count(self, client):
+        """Count map tiles specifically.
+
+        #mapGraphic also holds the background div, and in the GM view the
+        undiscovered-tile washes, so its child count is not a tile count. The
+        selector is scoped to the map because the tile-type palette in the
+        toolbar reuses the mapTile class.
+        """
+        return client.page.eval_on_selector_all("#mapGraphic .mapTile", "els => els.length")
+
     def test_generated_map_renders_for_the_gm(self, gm_client):
         gm, _, _ = gm_client
         self.generate_map(gm, 5, 4)
-        tiles = gm.page.eval_on_selector("#mapGraphic", "el => el.children.length")
-        assert tiles >= 20
+        assert self.tile_count(gm) == 20
 
     def test_generated_map_reaches_a_joined_player(self, live_server, new_client, gm_client):
         gm, room, _ = gm_client
@@ -132,12 +141,10 @@ class TestMapSync:
         self.generate_map(gm, 5, 4)
 
         player.page.wait_for_function(
-            "() => document.getElementById('mapGraphic').children.length > 0",
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length > 0",
             timeout=HANDSHAKE_TIMEOUT,
         )
-        gm_tiles = gm.page.eval_on_selector("#mapGraphic", "el => el.children.length")
-        player_tiles = player.page.eval_on_selector("#mapGraphic", "el => el.children.length")
-        assert player_tiles == gm_tiles
+        assert self.tile_count(player) == self.tile_count(gm)
 
 
 class TestChat:
@@ -239,22 +246,27 @@ class TestSelfContained:
 
 
 # Every one of these paints through the background property -- the CSS classes
-# for these types, and inline gradients for thin walls -- which is what the
-# overlay used to overwrite.
+# for these types, and inline gradients for thin walls -- which the overlay
+# used to overwrite.
 TILE_KINDS = ["floorTile", "floorTileD", "wallTile", "doorClosed", "doorOpen", "stairsUp"]
 WALL_CASES = [["left"], ["right"], ["top"], ["bottom"], ["left", "right", "top", "bottom"]]
 
-# Renders tiles through the page's own drawSingleTile and reports what the
-# browser computed for each. Every case is measured in one pass: a fixture per
-# case meant a fresh game per case, which is slow and eventually exhausts the
-# server's connections. Each tile sits in the middle of a 3x3 grid because the
-# door and stair branches look at their neighbours.
+# "Show Features" only bites when a map image has been uploaded: that is when
+# tiles get the fullyTransparent class whose opacity the toggle drives.
+DEFAULT_BACKGROUND = "static/images/mapbackground.jpg"
+UPLOADED_BACKGROUND = "get_image.html?room=x&id=y"
+
+# Measures every case in one pass. A fixture per case meant a fresh game per
+# case, which was slow enough to exhaust the server's connections partway
+# through. Each tile sits in the middle of a 3x3 grid because the door and
+# stair branches look at their neighbours.
 MEASURE_JS = """
-([kinds, wallCases]) => {
+([kinds, wallCases, defaultBg, uploadedBg]) => {
   showSeenOverlay = true;
   zoomSize = 70;
+  const graphic = document.getElementById("mapGraphic");
 
-  const build = (kind, seen, walls) => {
+  const build = (kind, seen, walls, background) => {
     const rows = [];
     for (let y = 0; y < 3; y++) {
       const row = [];
@@ -267,31 +279,44 @@ MEASURE_JS = """
       }
       rows.push(row);
     }
-    return {mapArray: rows, showBackground: true,
-            mapBackground: "static/images/mapbackground.jpg"};
+    return {mapArray: rows, showBackground: true, mapBackground: background};
   };
 
-  const measure = (kind, seen, walls) => {
-    const tile = drawSingleTile(build(kind, seen, walls), 1, 1);
-    document.body.appendChild(tile);
+  const measure = (kind, seen, walls, background) => {
+    graphic.innerHTML = "";
+    const tile = drawSingleTile(build(kind, seen, walls, background), 1, 1);
+    graphic.appendChild(tile);
     const computed = getComputedStyle(tile);
+    const wash = document.getElementById("wash1,1");
     const result = {
+      opacity: computed.opacity,
       backgroundColor: computed.backgroundColor,
       backgroundImage: computed.backgroundImage,
       gradients: (computed.backgroundImage.match(/gradient/g) || []).length,
-      washed: computed.boxShadow.includes("inset"),
+      washed: !!wash,
+      washClickable: wash ? getComputedStyle(wash).pointerEvents !== "none" : null,
     };
-    tile.remove();
+    graphic.innerHTML = "";
     return result;
   };
 
-  const out = {kinds: {}, walls: {}};
+  const out = {kinds: {}, walls: {}, features: {}};
   for (const kind of kinds) {
-    out.kinds[kind] = {seen: measure(kind, true, null), unseen: measure(kind, false, null)};
+    out.kinds[kind] = {seen: measure(kind, true, null, defaultBg),
+                       unseen: measure(kind, false, null, defaultBg)};
   }
   for (const walls of wallCases) {
-    out.walls[walls.join("+")] = measure("floorTile", false, walls);
+    out.walls[walls.join("+")] = measure("floorTile", false, walls, defaultBg);
   }
+  // The Show Features toggle drives the fullyTransparent rule's opacity.
+  for (const featuresOn of [false, true]) {
+    css_getclass(".fullyTransparent").style.opacity = featuresOn ? "" : "0";
+    out.features[featuresOn ? "on" : "off"] = {
+      seen: measure("wallTile", true, null, uploadedBg),
+      unseen: measure("wallTile", false, null, uploadedBg),
+    };
+  }
+  css_getclass(".fullyTransparent").style.opacity = "0";
   return out;
 }
 """
@@ -312,27 +337,31 @@ def overlay(browser, live_server):
         page.click("text=Create Game")
         page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
         page.wait_for_selector("#mapForm", state="attached")
-        return page.evaluate(MEASURE_JS, [TILE_KINDS, WALL_CASES])
+        return page.evaluate(
+            MEASURE_JS, [TILE_KINDS, WALL_CASES, DEFAULT_BACKGROUND, UPLOADED_BACKGROUND]
+        )
     finally:
         context.close()
 
 
 class TestSeenOverlay:
-    """The GM's "Show discovered overlay" whitens tiles nobody has explored.
+    """The GM's "Show discovered overlay" marks tiles nobody has explored.
 
-    It used to do that by writing white into style.background. Every tile type
-    paints through that same property, so the wash replaced whatever the tile
-    was drawing: full wall tiles, doors, decorated floors, stairs, and the
-    inline gradients used for thin walls. The overlay must mark the tile
-    without altering how it is painted.
+    It used to do that by writing white into the tile's style.background and
+    forcing the tile visible. Both were wrong. Every tile type paints through
+    background, so the wash replaced whatever the tile was drawing; and forcing
+    the tile visible overrode "Show Features", which hides the feature layer
+    through that same opacity. The wash is now its own element over the tile,
+    so the tile is left entirely alone.
     """
 
     @pytest.mark.parametrize("kind", TILE_KINDS)
     def test_the_overlay_does_not_change_how_a_tile_is_painted(self, overlay, kind):
-        """The invariant: discovered and undiscovered differ only by the wash."""
+        """The invariant: the overlay adds a wash and changes nothing else."""
         seen, unseen = overlay["kinds"][kind]["seen"], overlay["kinds"][kind]["unseen"]
         assert unseen["backgroundColor"] == seen["backgroundColor"]
         assert unseen["backgroundImage"] == seen["backgroundImage"]
+        assert unseen["opacity"] == seen["opacity"]
 
     @pytest.mark.parametrize("kind", TILE_KINDS)
     def test_every_tile_type_is_washed_when_undiscovered(self, overlay, kind):
@@ -362,3 +391,31 @@ class TestSeenOverlay:
     def test_thin_walls_survive_the_overlay(self, overlay, walls, expected):
         assert overlay["walls"][walls]["gradients"] == expected
         assert overlay["walls"][walls]["washed"]
+
+    def test_the_wash_does_not_swallow_clicks(self, overlay):
+        """The GM still has to be able to paint on an undiscovered tile."""
+        assert overlay["kinds"]["floorTile"]["unseen"]["washClickable"] is False
+
+
+class TestSeenOverlayAgainstShowFeatures:
+    """The two GM toggles are independent and must stay that way.
+
+    "Show Features" hides the drawn feature layer over an uploaded map image by
+    zeroing the tile's opacity. The overlay used to force that opacity back up
+    so its wash would show, which dragged the features back into view with it.
+    """
+
+    def test_features_stay_hidden_on_undiscovered_tiles(self, overlay):
+        assert overlay["features"]["off"]["unseen"]["opacity"] == "0"
+
+    def test_undiscovered_tiles_are_still_marked_while_features_are_hidden(self, overlay):
+        assert overlay["features"]["off"]["unseen"]["washed"]
+
+    def test_features_show_on_undiscovered_tiles_when_asked_for(self, overlay):
+        assert overlay["features"]["on"]["unseen"]["opacity"] == "1"
+
+    @pytest.mark.parametrize("features", ["off", "on"])
+    def test_the_overlay_never_alters_tile_opacity(self, overlay, features):
+        """Whatever Show Features decided, discovered and undiscovered agree."""
+        state = overlay["features"][features]
+        assert state["unseen"]["opacity"] == state["seen"]["opacity"]

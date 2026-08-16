@@ -158,6 +158,32 @@ function updateMap(newMapData, mapData) {
     }
 }
 
+function drawUndiscoveredWash(x, y) {
+    // Marks a tile no player has discovered yet, in the GM view.
+    //
+    // This is a separate element sitting over the tile rather than styling on
+    // the tile itself, for two reasons. Every tile type paints through the
+    // background property -- the classes for floors, doors, stairs and full
+    // wall tiles, and inline gradients for thin walls -- so writing a wash
+    // into that property erased whichever the tile was using. And "Show
+    // Features" hides the feature layer by driving the tile's own opacity, so
+    // anything the overlay puts on the tile either disappears with the
+    // features or drags them back into view.
+    tileWash = document.getElementById(`wash${x},${y}`);
+    if (tileWash) {
+        tileWash.remove();
+    }
+    tileWash = document.createElement("div");
+    tileWash.id = `wash${x},${y}`;
+    tileWash.className = "undiscoveredTile";
+    tileWash.style.position = "absolute";
+    tileWash.style.top = y * zoomSize + "px";
+    tileWash.style.left = x * zoomSize + "px";
+    tileWash.style.width = zoomSize - 2 + "px";
+    tileWash.style.height = zoomSize - 2 + "px";
+    document.getElementById("mapGraphic").appendChild(tileWash);
+}
+
 function drawSingleTile(mapData, x, y) {
     mapArray = mapData.mapArray
     newMapTile = document.createElement("div");
@@ -270,14 +296,7 @@ function drawSingleTile(mapData, x, y) {
     }
     if (typeof mapArray[y][x].seen !== "undefined") {
         if (isGM && !mapArray[y][x].seen && showSeenOverlay) {
-            newMapTile.style.opacity = ".9";
-            newMapTile.classList.remove("fullyTransparent");
-            // The wash is a class rather than a background, because every tile
-            // type paints through background: the classes for floors, doors,
-            // stairs and full wall tiles, and the inline gradients for thin
-            // walls. Writing white into that property erased whichever of them
-            // the tile was using.
-            newMapTile.classList.add("undiscoveredTile");
+            drawUndiscoveredWash(x, y);
         }
     }
     return newMapTile
