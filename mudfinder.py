@@ -132,7 +132,9 @@ def roll_dice(input_roll_string):
 
 # initialize Flask
 app = Flask(__name__)
-socketio = SocketIO(app, async_mode="eventlet", cors_allowed_origins="*")
+# threading mode keeps the dependency list to Flask-SocketIO and
+# simple-websocket. eventlet, the previous driver, is deprecated upstream.
+socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
 ROOMS = {}  # dict to track active rooms
 thread = None
 thread_lock = Lock()
@@ -1370,4 +1372,11 @@ if thread is None:
 atexit.register(cleanup)
 
 if __name__ == '__main__':
-    socketio.run(app, debug=False, host='0.0.0.0', port="5000")
+    # allow_unsafe_werkzeug lets socketio.run() start the Werkzeug development
+    # server, which Flask-SocketIO 5 otherwise refuses to do. That is fine for
+    # running a game locally. To serve this to the internet, put it behind
+    # gunicorn instead of running this file:
+    #   gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker \
+    #            -w 1 -b 0.0.0.0:5000 mudfinder:app
+    socketio.run(app, debug=False, host='0.0.0.0', port=5000,
+                 allow_unsafe_werkzeug=True)

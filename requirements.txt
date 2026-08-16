@@ -1,21 +1,16 @@
 # MUDFinder runtime dependencies.
 #
-# These versions are pinned deliberately. static/js/socket.io.js is the
-# Socket.IO 2.2.0 browser client, which speaks Engine.IO protocol 3.
-# python-engineio 4.x (and therefore Flask-SocketIO 5.x) only accepts
-# protocol 4 clients, so a newer server stack rejects the bundled client
-# with "handshake: Unexpected response code: 400" and nothing connects.
-# Upgrading the server libraries requires vendoring a Socket.IO 4.x client
-# and updating the io.connect() calls in the templates.
+# The one hard constraint is that the server and the browser client must speak
+# the same Engine.IO protocol. static/js/socket.io.js is the Socket.IO 4.x
+# client, which speaks protocol 4, so the server side needs python-engineio 4.x
+# by way of Flask-SocketIO 5.x. Changing one without the other breaks every
+# websocket handshake while the pages still render, so the failure looks like
+# "the site loads but nothing works" -- tests/browser/ guards this pairing.
 #
-# Flask/Werkzeug are held below 2.1 because Flask-SocketIO 4.3.2 imports
-# werkzeug.serving.run_with_reloader, which was removed in Werkzeug 2.1.
+# simple-websocket provides websocket support for the threading async mode.
 
-Flask==2.0.3
-Werkzeug==2.0.3
-Jinja2==3.0.3
-itsdangerous==2.0.1
-Flask-SocketIO==4.3.2
-python-socketio==4.6.1
-python-engineio==3.14.2
-eventlet==0.41.2
+Flask>=3.0
+Flask-SocketIO>=5.3
+python-socketio>=5.0
+python-engineio>=4.0
+simple-websocket>=1.0

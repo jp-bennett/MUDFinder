@@ -34,13 +34,22 @@ class TestStatic:
     def test_asset_is_served(self, http, asset):
         assert http.get(asset).status_code == 200
 
-    def test_vendored_socket_io_client_is_version_2(self, http):
-        """The pinned server dependencies exist to match this client.
+    def test_vendored_socket_io_client_is_version_4(self, http):
+        """The server dependencies have to match this client's protocol.
 
-        If someone vendors a newer socket.io.js, this fails as a reminder that
-        requirements.txt has to move with it.
+        Socket.IO 4.x speaks Engine.IO protocol 4, which needs
+        python-engineio 4.x / Flask-SocketIO 5.x. If someone changes the
+        vendored client, this fails as a reminder that requirements.txt has to
+        move with it.
         """
-        assert b"Socket.IO v2" in http.get("/static/js/socket.io.js").data[:200]
+        assert b"Socket.IO v4" in http.get("/static/js/socket.io.js").data[:200]
+
+    def test_the_server_speaks_the_same_protocol_as_the_client(self):
+        """The pairing this whole pinning exercise is about."""
+        from importlib.metadata import version
+
+        assert int(version("python-socketio").split(".")[0]) >= 5
+        assert int(version("python-engineio").split(".")[0]) >= 4
 
 
 class TestDownload:

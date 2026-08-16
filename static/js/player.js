@@ -71,7 +71,7 @@ window.onload = function() {
         alert ("Page initialization failed: " + error);
     }
     try {
-        socket = io.connect(document.domain + ':' + location.port, {'sync disconnect on unload': true, transports: ['websocket'], upgrade: false});
+        socket = io({transports: ['websocket'], upgrade: false});
     } catch (error) {
         alert("Could not connect to websocket: " + error);
     }

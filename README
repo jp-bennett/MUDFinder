@@ -15,6 +15,19 @@ Then open http://localhost:5000/ and create a game. You'll be sent to the GM
 view, which has share links for players and spectators. Sessions are held in
 memory and flushed to saves/*.json every five minutes and on shutdown.
 
+Running mudfinder.py directly starts the Werkzeug development server, which is
+fine for a game night on your own machine or LAN. To serve it publicly, run it
+under a real server instead:
+
+    pip install gunicorn gevent gevent-websocket
+    gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker \
+             -w 1 -b 0.0.0.0:5000 mudfinder:app
+
+Use a single worker. Sessions live in the process, so a second worker would
+serve a different set of games. If you put nginx in front, it has to pass the
+websocket upgrade headers through, or Socket.IO will fail to connect while the
+pages still load normally.
+
 Running the tests
 -----------------
 
@@ -23,8 +36,7 @@ Running the tests
 
 The suite covers the dice parser, the Unit/Player/Session save round trip, the
 HTTP routes, and the Socket.IO event handlers. It needs no running server and
-no network. Tests that pin deliberate-decision-required behaviour, rather than
-behaviour that is definitely correct, live in TestKnownGaps classes.
+no network.
 
 tests/browser/ additionally drives a real Chromium against a real server
 process, which is the only way to cover the browser Socket.IO client. Those
@@ -40,10 +52,11 @@ Without one they skip, and the rest of the suite still runs. To select them:
 If Chromium is installed somewhere playwright does not expect, point
 MUDFINDER_CHROMIUM at the binary.
 
-The dependency versions in requirements.txt are pinned on purpose --
-static/js/socket.io.js is the Socket.IO 2.x browser client, so the server
-side needs the matching Flask-SocketIO 4.x / python-engineio 3.x generation.
-See the comments in requirements.txt before upgrading.
+static/js/socket.io.js is the vendored Socket.IO 4.x browser client. It has to
+stay in the same generation as the server libraries, since the two negotiate an
+Engine.IO protocol version between them. Read the comments in requirements.txt
+before changing either, and run the browser tests afterwards -- a mismatch
+still serves every page normally and only fails at the websocket handshake.
 
 The MUDFinder project is licensed as AGPLv3 as a whole, but the individual contributor contributions are licensed as GPLv3.
 The purpose of this is to allow the project owner to add user management glue code in his offering of MUDFinder as a service,

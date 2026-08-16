@@ -65,7 +65,8 @@ def live_server():
             sys.executable,
             "-c",
             "import mudfinder; mudfinder.socketio.run("
-            "mudfinder.app, host='127.0.0.1', port=%d)" % port,
+            "mudfinder.app, host='127.0.0.1', port=%d, "
+            "allow_unsafe_werkzeug=True)" % port,
         ],
         cwd=REPO_ROOT,
         stdout=subprocess.PIPE,
