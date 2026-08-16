@@ -16,6 +16,6 @@ Werkzeug==2.0.3
 Jinja2==3.0.3
 itsdangerous==2.0.1
 Flask-SocketIO==4.3.2
-python-socketio==4.6.1
+python-socketio==5.16.2
 python-engineio==3.14.2
 eventlet==0.41.2
