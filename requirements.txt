@@ -12,7 +12,7 @@
 # werkzeug.serving.run_with_reloader, which was removed in Werkzeug 2.1.
 
 Flask==2.0.3
-Werkzeug==2.0.3
+Werkzeug==3.1.6
 Jinja2==3.0.3
 itsdangerous==2.0.1
 Flask-SocketIO==4.3.2
