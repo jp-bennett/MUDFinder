@@ -118,11 +118,20 @@ class TestMapSync:
             timeout=HANDSHAKE_TIMEOUT,
         )
 
+    def tile_count(self, client):
+        """Count map tiles specifically.
+
+        #mapGraphic also holds the background div, and in the GM view the
+        undiscovered-tile washes, so its child count is not a tile count. The
+        selector is scoped to the map because the tile-type palette in the
+        toolbar reuses the mapTile class.
+        """
+        return client.page.eval_on_selector_all("#mapGraphic .mapTile", "els => els.length")
+
     def test_generated_map_renders_for_the_gm(self, gm_client):
         gm, _, _ = gm_client
         self.generate_map(gm, 5, 4)
-        tiles = gm.page.eval_on_selector("#mapGraphic", "el => el.children.length")
-        assert tiles >= 20
+        assert self.tile_count(gm) == 20
 
     def test_generated_map_reaches_a_joined_player(self, live_server, new_client, gm_client):
         gm, room, _ = gm_client
@@ -132,12 +141,10 @@ class TestMapSync:
         self.generate_map(gm, 5, 4)
 
         player.page.wait_for_function(
-            "() => document.getElementById('mapGraphic').children.length > 0",
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length > 0",
             timeout=HANDSHAKE_TIMEOUT,
         )
-        gm_tiles = gm.page.eval_on_selector("#mapGraphic", "el => el.children.length")
-        player_tiles = player.page.eval_on_selector("#mapGraphic", "el => el.children.length")
-        assert player_tiles == gm_tiles
+        assert self.tile_count(player) == self.tile_count(gm)
 
 
 class TestChat:
@@ -234,3 +241,462 @@ class TestSelfContained:
         wait_for_socket(client)
         client.page.wait_for_timeout(500)
         assert external == []
+
+
+
+
+# Every one of these paints through the background property -- the CSS classes
+# for these types, and inline gradients for thin walls -- which the overlay
+# used to overwrite.
+TILE_KINDS = ["floorTile", "floorTileD", "wallTile", "doorClosed", "doorOpen", "stairsUp"]
+WALL_CASES = [["left"], ["right"], ["top"], ["bottom"], ["left", "right", "top", "bottom"]]
+
+# "Show Features" only bites when a map image has been uploaded: that is when
+# tiles get the fullyTransparent class whose opacity the toggle drives.
+DEFAULT_BACKGROUND = "static/images/mapbackground.jpg"
+UPLOADED_BACKGROUND = "get_image.html?room=x&id=y"
+
+# Measures every case in one pass. A fixture per case meant a fresh game per
+# case, which was slow enough to exhaust the server's connections partway
+# through. Each tile sits in the middle of a 3x3 grid because the door and
+# stair branches look at their neighbours.
+MEASURE_JS = """
+([kinds, wallCases, defaultBg, uploadedBg]) => {
+  showSeenOverlay = true;
+  zoomSize = 70;
+  const graphic = document.getElementById("mapGraphic");
+
+  const build = (kind, seen, walls, background) => {
+    const rows = [];
+    for (let y = 0; y < 3; y++) {
+      const row = [];
+      for (let x = 0; x < 3; x++) {
+        const middle = (x === 1 && y === 1);
+        const cell = {tile: middle ? kind : "floorTile", walkable: true,
+                      seen: seen, secret: false, x: x, y: y};
+        if (middle && walls) { cell.walls = walls; }
+        row.push(cell);
+      }
+      rows.push(row);
+    }
+    return {mapArray: rows, showBackground: true, mapBackground: background};
+  };
+
+  const measure = (kind, seen, walls, background) => {
+    graphic.innerHTML = "";
+    const tile = drawSingleTile(build(kind, seen, walls, background), 1, 1);
+    graphic.appendChild(tile);
+    const computed = getComputedStyle(tile);
+    const wash = document.getElementById("wash1,1");
+    const result = {
+      opacity: computed.opacity,
+      backgroundColor: computed.backgroundColor,
+      backgroundImage: computed.backgroundImage,
+      gradients: (computed.backgroundImage.match(/gradient/g) || []).length,
+      washed: !!wash,
+      washClickable: wash ? getComputedStyle(wash).pointerEvents !== "none" : null,
+    };
+    graphic.innerHTML = "";
+    return result;
+  };
+
+  const out = {kinds: {}, walls: {}, features: {}};
+  for (const kind of kinds) {
+    out.kinds[kind] = {seen: measure(kind, true, null, defaultBg),
+                       unseen: measure(kind, false, null, defaultBg)};
+  }
+  for (const walls of wallCases) {
+    out.walls[walls.join("+")] = measure("floorTile", false, walls, defaultBg);
+  }
+  // The Show Features toggle drives the fullyTransparent rule's opacity.
+  for (const featuresOn of [false, true]) {
+    css_getclass(".fullyTransparent").style.opacity = featuresOn ? "" : "0";
+    out.features[featuresOn ? "on" : "off"] = {
+      seen: measure("wallTile", true, null, uploadedBg),
+      unseen: measure("wallTile", false, null, uploadedBg),
+    };
+  }
+  css_getclass(".fullyTransparent").style.opacity = "0";
+  return out;
+}
+"""
+
+
+@pytest.fixture(scope="module")
+def overlay(browser, live_server):
+    """Measure every overlay case once, in a single GM page."""
+    context = browser.new_context(viewport={"width": 1000, "height": 700})
+    try:
+        page = context.new_page()
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "overlay measurements")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        return page.evaluate(
+            MEASURE_JS, [TILE_KINDS, WALL_CASES, DEFAULT_BACKGROUND, UPLOADED_BACKGROUND]
+        )
+    finally:
+        context.close()
+
+
+class TestSeenOverlay:
+    """The GM's "Show discovered overlay" marks tiles nobody has explored.
+
+    It used to do that by writing white into the tile's style.background and
+    forcing the tile visible. Both were wrong. Every tile type paints through
+    background, so the wash replaced whatever the tile was drawing; and forcing
+    the tile visible overrode "Show Features", which hides the feature layer
+    through that same opacity. The wash is now its own element over the tile,
+    so the tile is left entirely alone.
+    """
+
+    @pytest.mark.parametrize("kind", TILE_KINDS)
+    def test_the_overlay_does_not_change_how_a_tile_is_painted(self, overlay, kind):
+        """The invariant: the overlay adds a wash and changes nothing else."""
+        seen, unseen = overlay["kinds"][kind]["seen"], overlay["kinds"][kind]["unseen"]
+        assert unseen["backgroundColor"] == seen["backgroundColor"]
+        assert unseen["backgroundImage"] == seen["backgroundImage"]
+        assert unseen["opacity"] == seen["opacity"]
+
+    @pytest.mark.parametrize("kind", TILE_KINDS)
+    def test_every_tile_type_is_washed_when_undiscovered(self, overlay, kind):
+        assert overlay["kinds"][kind]["unseen"]["washed"]
+
+    @pytest.mark.parametrize("kind", TILE_KINDS)
+    def test_no_tile_type_is_washed_once_discovered(self, overlay, kind):
+        assert not overlay["kinds"][kind]["seen"]["washed"]
+
+    def test_a_full_wall_tile_keeps_its_colour(self, overlay):
+        """wallTile is the clearest case: a solid black tile turned white."""
+        assert overlay["kinds"]["wallTile"]["unseen"]["backgroundColor"] == "rgb(0, 0, 0)"
+
+    @pytest.mark.parametrize("kind,expected", [
+        ("floorTileD", 2),
+        ("doorClosed", 1),
+        ("doorOpen", 1),
+        ("stairsUp", 1),
+    ])
+    def test_tile_artwork_survives_the_overlay(self, overlay, kind, expected):
+        assert overlay["kinds"][kind]["unseen"]["gradients"] == expected
+
+    @pytest.mark.parametrize("walls,expected", [
+        ("left", 1), ("right", 1), ("top", 1), ("bottom", 1),
+        ("left+right+top+bottom", 4),
+    ])
+    def test_thin_walls_survive_the_overlay(self, overlay, walls, expected):
+        assert overlay["walls"][walls]["gradients"] == expected
+        assert overlay["walls"][walls]["washed"]
+
+    def test_the_wash_does_not_swallow_clicks(self, overlay):
+        """The GM still has to be able to paint on an undiscovered tile."""
+        assert overlay["kinds"]["floorTile"]["unseen"]["washClickable"] is False
+
+
+class TestSeenOverlayAgainstShowFeatures:
+    """The two GM toggles are independent and must stay that way.
+
+    "Show Features" hides the drawn feature layer over an uploaded map image by
+    zeroing the tile's opacity. The overlay used to force that opacity back up
+    so its wash would show, which dragged the features back into view with it.
+    """
+
+    def test_features_stay_hidden_on_undiscovered_tiles(self, overlay):
+        assert overlay["features"]["off"]["unseen"]["opacity"] == "0"
+
+    def test_undiscovered_tiles_are_still_marked_while_features_are_hidden(self, overlay):
+        assert overlay["features"]["off"]["unseen"]["washed"]
+
+    def test_features_show_on_undiscovered_tiles_when_asked_for(self, overlay):
+        assert overlay["features"]["on"]["unseen"]["opacity"] == "1"
+
+    @pytest.mark.parametrize("features", ["off", "on"])
+    def test_the_overlay_never_alters_tile_opacity(self, overlay, features):
+        """Whatever Show Features decided, discovered and undiscovered agree."""
+        state = overlay["features"][features]
+        assert state["unseen"]["opacity"] == state["seen"]["opacity"]
+
+
+DISCOVER_JS = """
+() => {
+  showSeenOverlay = true;
+  zoomSize = 70;
+  const build = (seen) => {
+    const rows = [];
+    for (let y = 0; y < 3; y++) {
+      const row = [];
+      for (let x = 0; x < 3; x++) {
+        row.push({tile: "floorTile", walkable: true, secret: false, x: x, y: y,
+                  seen: (x === 1 && y === 1) ? seen : true});
+      }
+      rows.push(row);
+    }
+    return {mapArray: rows, showBackground: true,
+            mapBackground: "static/images/mapbackground.jpg"};
+  };
+  const mapData = build(false);
+  drawMap(mapData);
+  const before = !!document.getElementById("wash1,1");
+  // Exactly what the gm_map_update handler does when a tile is discovered.
+  updateMap({mapArray: [{tile: "floorTile", walkable: true, seen: true,
+                         secret: false, x: 1, y: 1}],
+             mapBackground: mapData.mapBackground}, mapData);
+  return {before: before,
+          after: !!document.getElementById("wash1,1"),
+          remaining: document.querySelectorAll(".undiscoveredTile").length};
+}
+"""
+
+
+@pytest.fixture(scope="module")
+def discovery(browser, live_server):
+    """Discover a tile in place, the way gm_map_update does."""
+    context = browser.new_context(viewport={"width": 1000, "height": 700})
+    try:
+        page = context.new_page()
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "discovery")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        return page.evaluate(DISCOVER_JS)
+    finally:
+        context.close()
+
+
+class TestDiscoveringATile:
+    """A tile becoming discovered has to stop being marked straight away.
+
+    updateMap redraws a single tile in place rather than rebuilding the map, so
+    the wash has to be cleared on every redraw, not only when a new one is
+    drawn. Otherwise the mark lingers until something forces a full redraw --
+    toggling the overlay off and on, for instance.
+    """
+
+    def test_an_undiscovered_tile_starts_marked(self, discovery):
+        assert discovery["before"]
+
+    def test_the_mark_goes_when_the_tile_is_discovered(self, discovery):
+        assert not discovery["after"]
+
+    def test_no_wash_is_left_behind_anywhere(self, discovery):
+        assert discovery["remaining"] == 0
+
+
+# Draws a 3x3 map over the given background with the top row discovered and
+# the rest not, then reports what the toggles did to it.
+FEATURES_JS = """
+([background]) => {
+  showSeenOverlay = true;
+  zoomSize = 70;
+  const rows = [];
+  for (let y = 0; y < 3; y++) {
+    const row = [];
+    for (let x = 0; x < 3; x++) {
+      row.push({tile: "wallTile", walkable: true, secret: false, x: x, y: y,
+                seen: (y === 0)});
+    }
+    rows.push(row);
+  }
+  mapObject = {mapArray: rows, showBackground: true, mapBackground: background};
+  drawMap(mapObject);
+  return {
+    discoveredOpacity: getComputedStyle(document.getElementById("tile1,0")).opacity,
+    undiscoveredOpacity: getComputedStyle(document.getElementById("tile1,1")).opacity,
+    undiscoveredMarked: !!document.getElementById("wash1,1"),
+    discoveredMarked: !!document.getElementById("wash1,0"),
+  };
+}
+"""
+
+
+@pytest.fixture(scope="module")
+def features(browser, live_server):
+    """Drive the real Show Features checkbox over both kinds of map."""
+    context = browser.new_context(viewport={"width": 1100, "height": 700})
+    try:
+        page = context.new_page()
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "features")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+
+        results = {"defaultChecked": page.is_checked("#showFeatures")}
+        for label, background in (("generated", DEFAULT_BACKGROUND),
+                                  ("uploaded", UPLOADED_BACKGROUND)):
+            for shown in (True, False):
+                page.set_checked("#showFeatures", shown)
+                results["%s|%s" % (label, "on" if shown else "off")] = page.evaluate(
+                    FEATURES_JS, [background]
+                )
+        return results
+    finally:
+        context.close()
+
+
+class TestShowFeatures:
+    """One checkbox governing the feature layer, on either kind of map.
+
+    It only ever drove the fullyTransparent class, which a tile carries over an
+    uploaded map image. Over the default background a tile carries
+    slightlyTransparent instead, so on a generated map the checkbox changed a
+    rule that matched nothing and features could not be turned off at all.
+    """
+
+    def test_features_are_shown_by_default(self, features):
+        """Otherwise a generated map, whose features are the map, loads blank."""
+        assert features["defaultChecked"]
+
+    @pytest.mark.parametrize("background", ["generated", "uploaded"])
+    def test_features_are_visible_when_the_box_is_checked(self, features, background):
+        assert float(features["%s|on" % background]["discoveredOpacity"]) > 0
+
+    @pytest.mark.parametrize("background", ["generated", "uploaded"])
+    def test_features_are_hidden_when_the_box_is_cleared(self, features, background):
+        assert features["%s|off" % background]["discoveredOpacity"] == "0"
+
+    @pytest.mark.parametrize("background", ["generated", "uploaded"])
+    def test_undiscovered_tiles_follow_the_same_setting(self, features, background):
+        """The overlay must not be a way round the toggle."""
+        state = features["%s|off" % background]
+        assert state["undiscoveredOpacity"] == state["discoveredOpacity"] == "0"
+
+    @pytest.mark.parametrize("background,shown", [
+        ("generated", "on"), ("generated", "off"),
+        ("uploaded", "on"), ("uploaded", "off"),
+    ])
+    def test_undiscovered_tiles_stay_marked_either_way(self, features, background, shown):
+        """Hiding features must not also hide which ground is unexplored."""
+        assert features["%s|%s" % (background, shown)]["undiscoveredMarked"]
+
+    @pytest.mark.parametrize("background,shown", [
+        ("generated", "on"), ("generated", "off"),
+        ("uploaded", "on"), ("uploaded", "off"),
+    ])
+    def test_discovered_tiles_are_never_marked(self, features, background, shown):
+        assert not features["%s|%s" % (background, shown)]["discoveredMarked"]
+
+
+BACKGROUND_REPORT_JS = """
+() => {
+  const tile = document.getElementById("tile1,1");
+  const backgroundDiv = document.getElementById("mapBackgroundDiv");
+  return {
+    featuresChecked: document.getElementById("showFeatures").checked,
+    tileOpacity: tile ? getComputedStyle(tile).opacity : null,
+    backgroundImage: backgroundDiv ? backgroundDiv.style.backgroundImage : null,
+    mapObjectBackground: (typeof mapObject !== "undefined" && mapObject)
+      ? String(mapObject.mapBackground) : null,
+  };
+}
+"""
+
+UPLOADED_MAP_URL = "https://example.invalid/battlemap.png"
+
+
+@pytest.fixture(scope="module")
+def background_walkthrough(browser, live_server):
+    """Generate a map, set a background on it, then redraw.
+
+    Goes through the same image_upload event the Background button sends, so
+    the server side of setting a background is covered too.
+    """
+    context = browser.new_context(viewport={"width": 1100, "height": 700})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "background walkthrough")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+
+        page.fill("#mapWidth", "4")
+        page.fill("#mapHeight", "3")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages = {"generated": page.evaluate(BACKGROUND_REPORT_JS)}
+
+        page.evaluate(
+            """(url) => socket.emit("image_upload", room, url, "mapBackground", "")""",
+            UPLOADED_MAP_URL,
+        )
+        page.wait_for_function(
+            """(url) => document.getElementById("mapBackgroundDiv")
+                 .style.backgroundImage.includes(url)""",
+            arg=UPLOADED_MAP_URL,
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["backgroundSet"] = page.evaluate(BACKGROUND_REPORT_JS)
+
+        # A full redraw, as a reload or any map edit would cause. This is where
+        # the tiles pick up fullyTransparent and used to cover the image.
+        page.evaluate("() => drawMap(mapObject)")
+        stages["redrawn"] = page.evaluate(BACKGROUND_REPORT_JS)
+
+        page.set_checked("#showFeatures", True)
+        page.evaluate("() => drawMap(mapObject)")
+        stages["featuresRequested"] = page.evaluate(BACKGROUND_REPORT_JS)
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestSettingABackground:
+    """Uploading a map image has to leave the image visible.
+
+    Tiles carry fullyTransparent over an uploaded background, so once the
+    Show Features checkbox drove that class on generated maps as well, its
+    default of checked meant an opaque grid was drawn over the artwork the GM
+    had just chosen. The default now follows the kind of map.
+    """
+
+    def test_the_background_is_applied(self, background_walkthrough):
+        assert UPLOADED_MAP_URL in background_walkthrough["backgroundSet"]["backgroundImage"]
+
+    def test_features_switch_off_for_an_uploaded_map(self, background_walkthrough):
+        assert not background_walkthrough["backgroundSet"]["featuresChecked"]
+
+    def test_the_image_is_not_covered_after_a_redraw(self, background_walkthrough):
+        """The redraw is when tiles pick up fullyTransparent."""
+        assert background_walkthrough["redrawn"]["tileOpacity"] == "0"
+
+    def test_the_background_survives_a_redraw(self, background_walkthrough):
+        assert UPLOADED_MAP_URL in background_walkthrough["redrawn"]["backgroundImage"]
+
+    def test_the_map_object_learns_the_new_background(self, background_walkthrough):
+        """Otherwise a later redraw from it puts the old background back."""
+        assert background_walkthrough["redrawn"]["mapObjectBackground"] == UPLOADED_MAP_URL
+
+    def test_a_generated_map_still_shows_its_features(self, background_walkthrough):
+        generated = background_walkthrough["generated"]
+        assert generated["featuresChecked"]
+        assert float(generated["tileOpacity"]) > 0
+
+    def test_the_gm_can_still_turn_features_on_over_the_image(self, background_walkthrough):
+        assert background_walkthrough["featuresRequested"]["tileOpacity"] == "1"
+
+    def test_nothing_raised(self, background_walkthrough):
+        assert background_walkthrough["errors"] == []

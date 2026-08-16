@@ -404,6 +404,14 @@ width:100%;
 .unseenTile {
     background: darkslategray !important;
 }
+/* GM-only marker for tiles no player has discovered yet. It is its own element
+   laid over the tile, so the tile keeps painting normally underneath and keeps
+   answering clicks. See drawUndiscoveredWash in shared.js. */
+.undiscoveredTile {
+    border: 1px solid transparent;
+    background: rgba(255, 255, 255, 0.65);
+    pointer-events: none;
+}
 .unseenTileTransparent {
     background: transparent;
     border:none;
