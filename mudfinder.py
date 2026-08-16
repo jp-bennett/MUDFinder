@@ -24,6 +24,30 @@ savegame_lock = Lock()
 
 MAX_DICE = 1000  # per term, so one chat line cannot tie up the server
 
+# A caster class selects a column in the spells table, and a column name cannot
+# be a bound parameter. Resolving the request through this table means the name
+# put into the query is always one of these literals, never client input.
+SPELL_CLASS_COLUMNS = {
+    name: name for name in (
+        "wiz", "sor", "cleric", "druid", "ranger", "bard", "paladin",
+        "alchemist", "summoner", "witch", "inquisitor", "oracle",
+        "antipaladin", "magus", "bloodrager", "shaman", "psychic", "medium",
+        "mesmerist", "occultist", "spiritualist", "skald", "investigator",
+        "hunter",
+    )
+}
+# The client sends display names for these.
+SPELL_CLASS_COLUMNS["Arcanist"] = "wiz"
+SPELL_CLASS_COLUMNS["Wizard"] = "wiz"
+SPELL_CLASS_COLUMNS["Cleric"] = "cleric"
+
+SPELL_QUERY = (
+    "select name, school, subschool, descriptor, spell_level, casting_time,"
+    " components, costly_components, range, area, effect, targets, duration,"
+    " dismissible, shapeable, saving_throw, spell_resistence, description,"
+    " short_description, description_formated from spells where {column}=?;"
+)
+
 
 def roll_int(text, fallback=0):
     """int() that yields a fallback instead of raising on player input.
@@ -1253,28 +1277,27 @@ def error_handle(room, error_message):
 
 @socketio.on('database_spells')
 def database_spells(casterClass, level):
+    # The column name comes out of SPELL_CLASS_COLUMNS, so the string
+    # interpolated into the query is always one of our own literals and never
+    # the value the client sent.
+    column = SPELL_CLASS_COLUMNS.get(casterClass)
+    if column is None:
+        return []
     conn = sqlite3.connect("mudfinder.sql")
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    q = (level, )
-    if casterClass in ["Arcanist", "Wizard"]:
-        casterClass = "wiz"
-    if casterClass == "Cleric":
-        casterClass = "cleric"
-    if casterClass in ["wiz", "sor", "cleric", "druid", "ranger", "bard", "paladin", "alchemist", "summoner", "witch", "inquisitor", "oracle", "antipaladin", "magus", "bloodrager", "shaman", "psychic", "medium", "mesmerist", "occultist", "spiritualist", "skald", "investigator", "hunter"]:
-        c.execute("select name, school, subschool, descriptor, spell_level, casting_time, components, costly_components, range, area, effect, targets, duration, dismissible, shapeable, saving_throw, spell_resistence, description, short_description, description_formated from spells where %s=?;" % casterClass, q)
+    c.execute(SPELL_QUERY.format(column=column), (level, ))
     result = [dict(row) for row in c.fetchall()]
     for i in result:
         i["level"] = level
     return result
 
 @socketio.on('database_creatures')
-def database_spells(data):
+def database_creatures(data):
     conn = sqlite3.connect("mudfinder.sql")
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    q = (data["cr"], )
-    c.execute("select * from creatures where %s = ?" % "cr", q)
+    c.execute("select * from creatures where cr = ?", (data["cr"], ))
     result = [dict(row) for row in c.fetchall()]
     emit("database_creatures_response", result)
 
