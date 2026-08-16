@@ -489,3 +489,102 @@ class TestDiscoveringATile:
 
     def test_no_wash_is_left_behind_anywhere(self, discovery):
         assert discovery["remaining"] == 0
+
+
+# Draws a 3x3 map over the given background with the top row discovered and
+# the rest not, then reports what the toggles did to it.
+FEATURES_JS = """
+([background]) => {
+  showSeenOverlay = true;
+  zoomSize = 70;
+  const rows = [];
+  for (let y = 0; y < 3; y++) {
+    const row = [];
+    for (let x = 0; x < 3; x++) {
+      row.push({tile: "wallTile", walkable: true, secret: false, x: x, y: y,
+                seen: (y === 0)});
+    }
+    rows.push(row);
+  }
+  mapObject = {mapArray: rows, showBackground: true, mapBackground: background};
+  drawMap(mapObject);
+  return {
+    discoveredOpacity: getComputedStyle(document.getElementById("tile1,0")).opacity,
+    undiscoveredOpacity: getComputedStyle(document.getElementById("tile1,1")).opacity,
+    undiscoveredMarked: !!document.getElementById("wash1,1"),
+    discoveredMarked: !!document.getElementById("wash1,0"),
+  };
+}
+"""
+
+
+@pytest.fixture(scope="module")
+def features(browser, live_server):
+    """Drive the real Show Features checkbox over both kinds of map."""
+    context = browser.new_context(viewport={"width": 1100, "height": 700})
+    try:
+        page = context.new_page()
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "features")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+
+        results = {"defaultChecked": page.is_checked("#showFeatures")}
+        for label, background in (("generated", DEFAULT_BACKGROUND),
+                                  ("uploaded", UPLOADED_BACKGROUND)):
+            for shown in (True, False):
+                page.set_checked("#showFeatures", shown)
+                results["%s|%s" % (label, "on" if shown else "off")] = page.evaluate(
+                    FEATURES_JS, [background]
+                )
+        return results
+    finally:
+        context.close()
+
+
+class TestShowFeatures:
+    """One checkbox governing the feature layer, on either kind of map.
+
+    It only ever drove the fullyTransparent class, which a tile carries over an
+    uploaded map image. Over the default background a tile carries
+    slightlyTransparent instead, so on a generated map the checkbox changed a
+    rule that matched nothing and features could not be turned off at all.
+    """
+
+    def test_features_are_shown_by_default(self, features):
+        """Otherwise a generated map, whose features are the map, loads blank."""
+        assert features["defaultChecked"]
+
+    @pytest.mark.parametrize("background", ["generated", "uploaded"])
+    def test_features_are_visible_when_the_box_is_checked(self, features, background):
+        assert float(features["%s|on" % background]["discoveredOpacity"]) > 0
+
+    @pytest.mark.parametrize("background", ["generated", "uploaded"])
+    def test_features_are_hidden_when_the_box_is_cleared(self, features, background):
+        assert features["%s|off" % background]["discoveredOpacity"] == "0"
+
+    @pytest.mark.parametrize("background", ["generated", "uploaded"])
+    def test_undiscovered_tiles_follow_the_same_setting(self, features, background):
+        """The overlay must not be a way round the toggle."""
+        state = features["%s|off" % background]
+        assert state["undiscoveredOpacity"] == state["discoveredOpacity"] == "0"
+
+    @pytest.mark.parametrize("background,shown", [
+        ("generated", "on"), ("generated", "off"),
+        ("uploaded", "on"), ("uploaded", "off"),
+    ])
+    def test_undiscovered_tiles_stay_marked_either_way(self, features, background, shown):
+        """Hiding features must not also hide which ground is unexplored."""
+        assert features["%s|%s" % (background, shown)]["undiscoveredMarked"]
+
+    @pytest.mark.parametrize("background,shown", [
+        ("generated", "on"), ("generated", "off"),
+        ("uploaded", "on"), ("uploaded", "off"),
+    ])
+    def test_discovered_tiles_are_never_marked(self, features, background, shown):
+        assert not features["%s|%s" % (background, shown)]["discoveredMarked"]

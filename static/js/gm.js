@@ -14,6 +14,10 @@ var ds; /* = new DragSelect({
 const isGM = true;
 showSeenOverlay = true;
 mapBackground = "static/images/mapbackground.jpg";
+// What .slightlyTransparent is set back to when features are shown. Tiles over
+// the default background are drawn a little see-through so the parchment shows
+// through them; this has to match the stylesheet.
+const SHOWN_TILE_OPACITY = "0.6";
 
 
 document.getElementById("mapContainer").onwheel = function(e){
@@ -71,6 +75,7 @@ window.onload = function() {
     } catch (e) {
         alert("Could not connect to websocket");
     }
+    applyFeaturesToggle();
 
     socket.on('connect', function() {
         try {
@@ -328,13 +333,23 @@ function seenOverlayToggle(obj) {
 function featuresToggle(obj) {
     try {
         //console.log(obj);
+        // Both transparency classes have to move together. A tile carries
+        // slightlyTransparent over the default background and fullyTransparent
+        // over an uploaded map image, so driving only one of them left the
+        // toggle doing nothing at all on generated maps.
         if(obj.checked) {
             css_getclass(".fullyTransparent").style.opacity = "";
-            document.getElementById("mapBackgroundDiv").style.opacity = .7
+            css_getclass(".slightlyTransparent").style.opacity = SHOWN_TILE_OPACITY;
+            if (document.getElementById("mapBackgroundDiv")) {
+                document.getElementById("mapBackgroundDiv").style.opacity = .7
+            }
             //css_getclass(".floorTile").style.background = "";
         } else {
             css_getclass(".fullyTransparent").style.opacity = "0";
-            document.getElementById("mapBackgroundDiv").style.opacity = ""
+            css_getclass(".slightlyTransparent").style.opacity = "0";
+            if (document.getElementById("mapBackgroundDiv")) {
+                document.getElementById("mapBackgroundDiv").style.opacity = ""
+            }
             //css_getclass(".floorTile").style.background = "white";
         }
         //drawMap(mapObject);
@@ -343,6 +358,13 @@ function featuresToggle(obj) {
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
+}
+
+function applyFeaturesToggle() {
+    // The stylesheet's own values are the two classes' shown/hidden states
+    // rather than a single consistent one, so the checkbox is applied on load
+    // to put both of them into whichever state it is actually in.
+    featuresToggle(document.getElementById("showFeatures"));
 }
 
 function sendChat() {
