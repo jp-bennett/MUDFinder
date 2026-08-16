@@ -17,5 +17,5 @@ Jinja2==3.0.3
 itsdangerous==2.0.1
 Flask-SocketIO==4.3.2
 python-socketio==4.6.1
-python-engineio==3.14.2
+python-engineio==4.13.2
 eventlet==0.41.2
