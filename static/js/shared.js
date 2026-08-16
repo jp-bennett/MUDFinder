@@ -158,6 +158,13 @@ function updateMap(newMapData, mapData) {
     }
 }
 
+function clearUndiscoveredWash(x, y) {
+    tileWash = document.getElementById(`wash${x},${y}`);
+    if (tileWash) {
+        tileWash.remove();
+    }
+}
+
 function drawUndiscoveredWash(x, y) {
     // Marks a tile no player has discovered yet, in the GM view.
     //
@@ -169,10 +176,7 @@ function drawUndiscoveredWash(x, y) {
     // Features" hides the feature layer by driving the tile's own opacity, so
     // anything the overlay puts on the tile either disappears with the
     // features or drags them back into view.
-    tileWash = document.getElementById(`wash${x},${y}`);
-    if (tileWash) {
-        tileWash.remove();
-    }
+    clearUndiscoveredWash(x, y);
     tileWash = document.createElement("div");
     tileWash.id = `wash${x},${y}`;
     tileWash.className = "undiscoveredTile";
@@ -294,6 +298,11 @@ function drawSingleTile(mapData, x, y) {
             else {newMapTile.style.background += "linear-gradient(to bottom, transparent calc(80%), black calc(80%) calc(100%))";}
         }
     }
+    // Any wash left from an earlier render of this tile goes regardless of
+    // what happens next, so that a tile which has just been discovered stops
+    // being marked. updateMap redraws one tile at a time without clearing the
+    // map, so nothing else would remove it.
+    clearUndiscoveredWash(x, y);
     if (typeof mapArray[y][x].seen !== "undefined") {
         if (isGM && !mapArray[y][x].seen && showSeenOverlay) {
             drawUndiscoveredWash(x, y);

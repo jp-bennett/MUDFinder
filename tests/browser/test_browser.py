@@ -419,3 +419,73 @@ class TestSeenOverlayAgainstShowFeatures:
         """Whatever Show Features decided, discovered and undiscovered agree."""
         state = overlay["features"][features]
         assert state["unseen"]["opacity"] == state["seen"]["opacity"]
+
+
+DISCOVER_JS = """
+() => {
+  showSeenOverlay = true;
+  zoomSize = 70;
+  const build = (seen) => {
+    const rows = [];
+    for (let y = 0; y < 3; y++) {
+      const row = [];
+      for (let x = 0; x < 3; x++) {
+        row.push({tile: "floorTile", walkable: true, secret: false, x: x, y: y,
+                  seen: (x === 1 && y === 1) ? seen : true});
+      }
+      rows.push(row);
+    }
+    return {mapArray: rows, showBackground: true,
+            mapBackground: "static/images/mapbackground.jpg"};
+  };
+  const mapData = build(false);
+  drawMap(mapData);
+  const before = !!document.getElementById("wash1,1");
+  // Exactly what the gm_map_update handler does when a tile is discovered.
+  updateMap({mapArray: [{tile: "floorTile", walkable: true, seen: true,
+                         secret: false, x: 1, y: 1}],
+             mapBackground: mapData.mapBackground}, mapData);
+  return {before: before,
+          after: !!document.getElementById("wash1,1"),
+          remaining: document.querySelectorAll(".undiscoveredTile").length};
+}
+"""
+
+
+@pytest.fixture(scope="module")
+def discovery(browser, live_server):
+    """Discover a tile in place, the way gm_map_update does."""
+    context = browser.new_context(viewport={"width": 1000, "height": 700})
+    try:
+        page = context.new_page()
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "discovery")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        return page.evaluate(DISCOVER_JS)
+    finally:
+        context.close()
+
+
+class TestDiscoveringATile:
+    """A tile becoming discovered has to stop being marked straight away.
+
+    updateMap redraws a single tile in place rather than rebuilding the map, so
+    the wash has to be cleared on every redraw, not only when a new one is
+    drawn. Otherwise the mark lingers until something forces a full redraw --
+    toggling the overlay off and on, for instance.
+    """
+
+    def test_an_undiscovered_tile_starts_marked(self, discovery):
+        assert discovery["before"]
+
+    def test_the_mark_goes_when_the_tile_is_discovered(self, discovery):
+        assert not discovery["after"]
+
+    def test_no_wash_is_left_behind_anywhere(self, discovery):
+        assert discovery["remaining"] == 0
