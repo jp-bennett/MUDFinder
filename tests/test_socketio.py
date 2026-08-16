@@ -105,6 +105,20 @@ class TestPlayerJoin:
         client.emit("player_join", {"room": "no-such-room", "charName": "Aria"})
         assert event_names(client.get_received()) == ["error"]
 
+    def test_the_gm_is_notified_of_the_join(self, gm):
+        """Without this the GM's lists stay stale until an unrelated event."""
+        gm_client, room, _ = gm
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        assert "gm_update" in event_names(gm_client.get_received())
+
+    def test_the_gm_update_contains_the_new_player(self, gm):
+        gm_client, room, _ = gm
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        state = event(gm_client.get_received(), "gm_update")["args"][0]
+        assert "Aria" in state["playerList"]
+
 
 class TestChat:
     def test_player_message_is_broadcast(self, gm):
@@ -272,6 +286,20 @@ class TestSpellDatabase:
 
     def test_unknown_class_returns_nothing(self, client):
         assert client.emit("database_spells", "Nonsense", "1", callback=True) == []
+
+    @pytest.mark.parametrize("caster_class", [
+        "wiz; drop table spells--",
+        "wiz or 1=1",
+        "1) --",
+        "",
+    ])
+    def test_a_class_name_is_never_interpolated_into_the_query(self, client, caster_class):
+        """The column comes from SPELL_CLASS_COLUMNS, never from the client."""
+        assert client.emit("database_spells", caster_class, "1", callback=True) == []
+
+    def test_the_spells_table_survives_a_hostile_class_name(self, client):
+        client.emit("database_spells", "wiz; drop table spells--", "1", callback=True)
+        assert len(client.emit("database_spells", "Wizard", "1", callback=True)) > 100
 
     def test_creature_lookup_by_cr(self, client):
         client.emit("database_creatures", {"cr": "1"})

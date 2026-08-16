@@ -2,7 +2,13 @@ html, body {
     height: 100%;
     margin: 0;
     overflow:hidden;
-    font-family: 'LiberationSerifRegular';
+    /* Liberation Serif if the system has it, otherwise the metric-compatible
+       Times New Roman, otherwise whatever serif the browser prefers. The
+       player page used to pull this face from fontlibrary.org on every load,
+       which made the page depend on a third party and fail when offline. The
+       GM and spectator pages never loaded it, so they already rendered with
+       the fallback. */
+    font-family: 'LiberationSerifRegular', 'Liberation Serif', 'Times New Roman', serif;
 }
 button {
     margin: 3px;

@@ -3,6 +3,7 @@ import json
 import time
 import io
 import base64
+import re
 import sqlite3
 import uuid
 import atexit
@@ -11,7 +12,7 @@ from os import mkdir
 from threading import Lock
 from random import randint
 
-from flask import Flask, render_template, request, redirect
+from flask import Flask, abort, render_template, request, redirect
 from flask_socketio import SocketIO, join_room, emit
 
 from session import Session
@@ -20,6 +21,45 @@ from player import Player
 from unit import Unit
 global savegame_lock
 savegame_lock = Lock()
+
+
+MAX_DICE = 1000  # per term, so one chat line cannot tie up the server
+
+# A caster class selects a column in the spells table, and a column name cannot
+# be a bound parameter. Resolving the request through this table means the name
+# put into the query is always one of these literals, never client input.
+SPELL_CLASS_COLUMNS = {
+    name: name for name in (
+        "wiz", "sor", "cleric", "druid", "ranger", "bard", "paladin",
+        "alchemist", "summoner", "witch", "inquisitor", "oracle",
+        "antipaladin", "magus", "bloodrager", "shaman", "psychic", "medium",
+        "mesmerist", "occultist", "spiritualist", "skald", "investigator",
+        "hunter",
+    )
+}
+# The client sends display names for these.
+SPELL_CLASS_COLUMNS["Arcanist"] = "wiz"
+SPELL_CLASS_COLUMNS["Wizard"] = "wiz"
+SPELL_CLASS_COLUMNS["Cleric"] = "cleric"
+
+SPELL_QUERY = (
+    "select name, school, subschool, descriptor, spell_level, casting_time,"
+    " components, costly_components, range, area, effect, targets, duration,"
+    " dismissible, shapeable, saving_throw, spell_resistence, description,"
+    " short_description, description_formated from spells where {column}=?;"
+)
+
+
+def roll_int(text, fallback=0):
+    """int() that yields a fallback instead of raising on player input.
+
+    Everything reaching roll_dice comes from a chat line, so a malformed term
+    must not raise out of the socket handler.
+    """
+    try:
+        return int(text)
+    except ValueError:
+        return fallback
 
 
 def roll_dice(input_roll_string):
@@ -51,11 +91,16 @@ def roll_dice(input_roll_string):
                 partial_roll_value = 0
                 roll_count_txt = partial_roll_string[1:partial_roll_string.find("d")]
                 if len(roll_count_txt) > 0:
-                    roll_count = int(roll_count_txt)
+                    roll_count = roll_int(roll_count_txt)
                 else:
                     roll_count = 1
-                roll_die = int(partial_roll_string[partial_roll_string.find("d") + 1:])
-                for i in range(roll_count):
+                roll_die = roll_int(partial_roll_string[partial_roll_string.find("d") + 1:])
+                # An unrollable or oversized term contributes 0, the same as any
+                # other junk input. Without the cap, "/roll 100000000d1" spins
+                # here long enough to freeze the whole server.
+                if roll_die < 1 or roll_count > MAX_DICE:
+                    roll_count = 0
+                for i in range(max(roll_count, 0)):
                     single_roll_value = randint(1, roll_die)
                     partial_roll_value += single_roll_value
                     totals += partial_roll_string[:1] + str(single_roll_value)
@@ -63,13 +108,17 @@ def roll_dice(input_roll_string):
             else:
                 totals += partial_roll_string
             if partial_roll_string[:1] in "+":
-                roll_total += int(partial_roll_string[1:])
+                roll_total += roll_int(partial_roll_string[1:])
             if partial_roll_string[:1] in "-":
-                roll_total -= int(partial_roll_string[1:])
+                roll_total -= roll_int(partial_roll_string[1:])
             if partial_roll_string[:1] in "/÷":
-                roll_total /= int(partial_roll_string[1:])
+                # Dividing by a missing or zero term leaves the total alone
+                # rather than raising ZeroDivisionError at the player.
+                divisor = roll_int(partial_roll_string[1:])
+                if divisor != 0:
+                    roll_total /= divisor
             if partial_roll_string[:1] in "*×xX":
-                roll_total *= int(partial_roll_string[1:])
+                roll_total *= roll_int(partial_roll_string[1:], 1)
         if not first_time:
             roll_output += ", "
         first_time = False
@@ -89,6 +138,22 @@ thread_lock = Lock()
 if not path.exists("saves"):
     mkdir("saves")
 
+# A room id becomes a filename under saves/. It is generated server-side as a
+# session id, but it also arrives from the client on every event and from
+# uploaded save files, so it is checked before it is ever used to build a path.
+ROOM_ID_PATTERN = re.compile(r"\A[A-Za-z0-9_-]{1,64}\Z")
+
+
+def save_path(room):
+    """Path to a room's save file, or None if the id is not a safe filename.
+
+    Without this a room of "../../../etc/whatever" reads and writes outside
+    saves/, since check_room() loads any .json it finds at the path it builds.
+    """
+    if not isinstance(room, str) or not ROOM_ID_PATTERN.match(room):
+        return None
+    return path.join("saves", room + ".json")
+
 
 def savegame_thread():
     global savegame_lock
@@ -98,7 +163,10 @@ def savegame_thread():
             socketio.sleep(300)
             with thread_lock:
                 for room in ROOMS.keys():
-                    with open("saves/" + room + ".json", "w") as outfile:
+                    outpath = save_path(room)
+                    if outpath is None:
+                        continue
+                    with open(outpath, "w") as outfile:
                         json.dump(ROOMS[room].gen_save(), outfile)
 
 
@@ -110,8 +178,11 @@ def check_room(room):
     global ROOMS
     if room in ROOMS:
         return True
-    elif path.exists("saves/" + room + ".json"):
-        with open("saves/" + room + ".json", "r") as infile:
+    savefile = save_path(room)
+    if savefile is None:
+        return False
+    if path.exists(savefile):
+        with open(savefile, "r") as infile:
             data = json.loads(infile.read())
             ROOMS[room] = Session(room, data["gmKey"], data["name"])
             ROOMS[room].from_json(data)
@@ -169,6 +240,10 @@ def upload():
     f = request.files['file']
     data = json.loads(f.read())
     room = data["room"]
+    # The room id in an uploaded save becomes a filename when the game is
+    # written back out, so it gets the same check as one arriving over a socket.
+    if save_path(room) is None:
+        abort(400)
     ROOMS[room] = Session(room, data["gmKey"], data["name"])
     ROOMS[room].from_json(data)
     ROOMS[room].number_units()
@@ -187,18 +262,25 @@ def save_download():
             mimetype='application/json'
         )
         return response
+    # A missing room and a bad gmKey answer the same way, so this cannot be
+    # used to probe which rooms exist. Falling through returned None, which
+    # Flask reports as a 500.
+    abort(404)
 
 
 @app.route('/get_image.html')
 def get_image():
     room = request.args['room']
-    if check_room(room):
+    if check_room(room) and request.args['id'] in ROOMS[room].images:
         response = app.response_class(
             response=base64.b64decode(ROOMS[room].images[request.args['id']]),
             status=200,
             mimetype='image'
         )
         return response
+    # Same fall-through as save_download: an unknown room or image id returned
+    # None, which Flask reports as a 500.
+    abort(404)
 
 
 @socketio.on('lore_upload')
@@ -305,7 +387,10 @@ def on_player_join(data):
         ROOMS[room].playerList[data['charName']].connected = True
         ROOMS[room].number_units()
         emit('draw_map', ROOMS[room].player_map())
-        emit('do_update', ROOMS[room].player_json(), room=room)
+        # send_updates() covers the same do_update to the player room and also
+        # pushes gm_update to the GM, whose player and unit lists would
+        # otherwise stay stale until some unrelated event refreshed them.
+        ROOMS[room].send_updates()
     else:
         emit('error', {'error': 'Unable to join room. Room does not exist.'})
 
@@ -1219,28 +1304,27 @@ def error_handle(room, error_message):
 
 @socketio.on('database_spells')
 def database_spells(casterClass, level):
+    # The column name comes out of SPELL_CLASS_COLUMNS, so the string
+    # interpolated into the query is always one of our own literals and never
+    # the value the client sent.
+    column = SPELL_CLASS_COLUMNS.get(casterClass)
+    if column is None:
+        return []
     conn = sqlite3.connect("mudfinder.sql")
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    q = (level, )
-    if casterClass in ["Arcanist", "Wizard"]:
-        casterClass = "wiz"
-    if casterClass == "Cleric":
-        casterClass = "cleric"
-    if casterClass in ["wiz", "sor", "cleric", "druid", "ranger", "bard", "paladin", "alchemist", "summoner", "witch", "inquisitor", "oracle", "antipaladin", "magus", "bloodrager", "shaman", "psychic", "medium", "mesmerist", "occultist", "spiritualist", "skald", "investigator", "hunter"]:
-        c.execute("select name, school, subschool, descriptor, spell_level, casting_time, components, costly_components, range, area, effect, targets, duration, dismissible, shapeable, saving_throw, spell_resistence, description, short_description, description_formated from spells where %s=?;" % casterClass, q)
+    c.execute(SPELL_QUERY.format(column=column), (level, ))
     result = [dict(row) for row in c.fetchall()]
     for i in result:
         i["level"] = level
     return result
 
 @socketio.on('database_creatures')
-def database_spells(data):
+def database_creatures(data):
     conn = sqlite3.connect("mudfinder.sql")
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    q = (data["cr"], )
-    c.execute("select * from creatures where %s = ?" % "cr", q)
+    c.execute("select * from creatures where cr = ?", (data["cr"], ))
     result = [dict(row) for row in c.fetchall()]
     emit("database_creatures_response", result)
 
@@ -1262,7 +1346,10 @@ def cleanup():
     print("Attempting cleanup")
     thread_lock.acquire()
     for room in ROOMS.keys():
-        with open("saves/" + room + ".json", "w") as outfile:
+        outpath = save_path(room)
+        if outpath is None:
+            continue
+        with open(outpath, "w") as outfile:
             json.dump(ROOMS[room].gen_save(), outfile)
     print("Bye")
 

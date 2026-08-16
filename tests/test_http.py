@@ -68,7 +68,7 @@ class TestDownload:
     def test_wrong_gm_key_is_refused(self, http, make_session):
         make_session(room="dl-room")
         response = http.get("/download.html?room=dl-room&gmKey=not-the-key")
-        assert response.status_code != 200
+        assert response.status_code == 404
 
 
 class TestGetImage:
@@ -81,10 +81,29 @@ class TestGetImage:
         assert response.data == b"hello"
 
 
-class TestKnownGaps:
-    """Unguarded paths, pinned so a fix is deliberate rather than accidental."""
+class TestMissingResources:
+    """Unknown rooms and ids are 404s, not 500s.
 
-    def test_download_for_an_unknown_room_is_a_server_error(self, http):
-        # check_room() returns False and the view falls through to None, which
-        # Flask reports as a 500. A 404 would be the better answer.
-        assert http.get("/download.html?room=nope&gmKey=nope").status_code == 500
+    A bad gmKey answers exactly like a missing room, so the endpoint cannot be
+    used to probe which rooms exist.
+    """
+
+    def test_download_for_an_unknown_room_is_a_404(self, http):
+        assert http.get("/download.html?room=nope&gmKey=nope").status_code == 404
+
+    def test_download_with_a_wrong_key_is_a_404(self, http, make_session):
+        make_session(room="dl-room")
+        assert http.get("/download.html?room=dl-room&gmKey=wrong").status_code == 404
+
+    def test_a_wrong_key_is_indistinguishable_from_a_missing_room(self, http, make_session):
+        make_session(room="dl-room")
+        wrong_key = http.get("/download.html?room=dl-room&gmKey=wrong")
+        missing_room = http.get("/download.html?room=nope&gmKey=wrong")
+        assert wrong_key.status_code == missing_room.status_code
+
+    def test_image_for_an_unknown_room_is_a_404(self, http):
+        assert http.get("/get_image.html?room=nope&id=abc").status_code == 404
+
+    def test_image_with_an_unknown_id_is_a_404(self, http, make_session):
+        make_session(room="img-room")
+        assert http.get("/get_image.html?room=img-room&id=nope").status_code == 404
