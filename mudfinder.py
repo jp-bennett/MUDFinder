@@ -3,6 +3,7 @@ import json
 import time
 import io
 import base64
+import re
 import sqlite3
 import uuid
 import atexit
@@ -137,6 +138,22 @@ thread_lock = Lock()
 if not path.exists("saves"):
     mkdir("saves")
 
+# A room id becomes a filename under saves/. It is generated server-side as a
+# session id, but it also arrives from the client on every event and from
+# uploaded save files, so it is checked before it is ever used to build a path.
+ROOM_ID_PATTERN = re.compile(r"\A[A-Za-z0-9_-]{1,64}\Z")
+
+
+def save_path(room):
+    """Path to a room's save file, or None if the id is not a safe filename.
+
+    Without this a room of "../../../etc/whatever" reads and writes outside
+    saves/, since check_room() loads any .json it finds at the path it builds.
+    """
+    if not isinstance(room, str) or not ROOM_ID_PATTERN.match(room):
+        return None
+    return path.join("saves", room + ".json")
+
 
 def savegame_thread():
     global savegame_lock
@@ -146,7 +163,10 @@ def savegame_thread():
             socketio.sleep(300)
             with thread_lock:
                 for room in ROOMS.keys():
-                    with open("saves/" + room + ".json", "w") as outfile:
+                    outpath = save_path(room)
+                    if outpath is None:
+                        continue
+                    with open(outpath, "w") as outfile:
                         json.dump(ROOMS[room].gen_save(), outfile)
 
 
@@ -158,8 +178,11 @@ def check_room(room):
     global ROOMS
     if room in ROOMS:
         return True
-    elif path.exists("saves/" + room + ".json"):
-        with open("saves/" + room + ".json", "r") as infile:
+    savefile = save_path(room)
+    if savefile is None:
+        return False
+    if path.exists(savefile):
+        with open(savefile, "r") as infile:
             data = json.loads(infile.read())
             ROOMS[room] = Session(room, data["gmKey"], data["name"])
             ROOMS[room].from_json(data)
@@ -217,6 +240,10 @@ def upload():
     f = request.files['file']
     data = json.loads(f.read())
     room = data["room"]
+    # The room id in an uploaded save becomes a filename when the game is
+    # written back out, so it gets the same check as one arriving over a socket.
+    if save_path(room) is None:
+        abort(400)
     ROOMS[room] = Session(room, data["gmKey"], data["name"])
     ROOMS[room].from_json(data)
     ROOMS[room].number_units()
@@ -1319,7 +1346,10 @@ def cleanup():
     print("Attempting cleanup")
     thread_lock.acquire()
     for room in ROOMS.keys():
-        with open("saves/" + room + ".json", "w") as outfile:
+        outpath = save_path(room)
+        if outpath is None:
+            continue
+        with open(outpath, "w") as outfile:
             json.dump(ROOMS[room].gen_save(), outfile)
     print("Bye")
 
