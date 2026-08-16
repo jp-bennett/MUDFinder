@@ -11,7 +11,7 @@ from os import mkdir
 from threading import Lock
 from random import randint
 
-from flask import Flask, render_template, request, redirect
+from flask import Flask, abort, render_template, request, redirect
 from flask_socketio import SocketIO, join_room, emit
 
 from session import Session
@@ -20,6 +20,21 @@ from player import Player
 from unit import Unit
 global savegame_lock
 savegame_lock = Lock()
+
+
+MAX_DICE = 1000  # per term, so one chat line cannot tie up the server
+
+
+def roll_int(text, fallback=0):
+    """int() that yields a fallback instead of raising on player input.
+
+    Everything reaching roll_dice comes from a chat line, so a malformed term
+    must not raise out of the socket handler.
+    """
+    try:
+        return int(text)
+    except ValueError:
+        return fallback
 
 
 def roll_dice(input_roll_string):
@@ -51,11 +66,16 @@ def roll_dice(input_roll_string):
                 partial_roll_value = 0
                 roll_count_txt = partial_roll_string[1:partial_roll_string.find("d")]
                 if len(roll_count_txt) > 0:
-                    roll_count = int(roll_count_txt)
+                    roll_count = roll_int(roll_count_txt)
                 else:
                     roll_count = 1
-                roll_die = int(partial_roll_string[partial_roll_string.find("d") + 1:])
-                for i in range(roll_count):
+                roll_die = roll_int(partial_roll_string[partial_roll_string.find("d") + 1:])
+                # An unrollable or oversized term contributes 0, the same as any
+                # other junk input. Without the cap, "/roll 100000000d1" spins
+                # here long enough to freeze the whole server.
+                if roll_die < 1 or roll_count > MAX_DICE:
+                    roll_count = 0
+                for i in range(max(roll_count, 0)):
                     single_roll_value = randint(1, roll_die)
                     partial_roll_value += single_roll_value
                     totals += partial_roll_string[:1] + str(single_roll_value)
@@ -63,13 +83,17 @@ def roll_dice(input_roll_string):
             else:
                 totals += partial_roll_string
             if partial_roll_string[:1] in "+":
-                roll_total += int(partial_roll_string[1:])
+                roll_total += roll_int(partial_roll_string[1:])
             if partial_roll_string[:1] in "-":
-                roll_total -= int(partial_roll_string[1:])
+                roll_total -= roll_int(partial_roll_string[1:])
             if partial_roll_string[:1] in "/÷":
-                roll_total /= int(partial_roll_string[1:])
+                # Dividing by a missing or zero term leaves the total alone
+                # rather than raising ZeroDivisionError at the player.
+                divisor = roll_int(partial_roll_string[1:])
+                if divisor != 0:
+                    roll_total /= divisor
             if partial_roll_string[:1] in "*×xX":
-                roll_total *= int(partial_roll_string[1:])
+                roll_total *= roll_int(partial_roll_string[1:], 1)
         if not first_time:
             roll_output += ", "
         first_time = False
@@ -187,18 +211,25 @@ def save_download():
             mimetype='application/json'
         )
         return response
+    # A missing room and a bad gmKey answer the same way, so this cannot be
+    # used to probe which rooms exist. Falling through returned None, which
+    # Flask reports as a 500.
+    abort(404)
 
 
 @app.route('/get_image.html')
 def get_image():
     room = request.args['room']
-    if check_room(room):
+    if check_room(room) and request.args['id'] in ROOMS[room].images:
         response = app.response_class(
             response=base64.b64decode(ROOMS[room].images[request.args['id']]),
             status=200,
             mimetype='image'
         )
         return response
+    # Same fall-through as save_download: an unknown room or image id returned
+    # None, which Flask reports as a 500.
+    abort(404)
 
 
 @socketio.on('lore_upload')
@@ -305,7 +336,10 @@ def on_player_join(data):
         ROOMS[room].playerList[data['charName']].connected = True
         ROOMS[room].number_units()
         emit('draw_map', ROOMS[room].player_map())
-        emit('do_update', ROOMS[room].player_json(), room=room)
+        # send_updates() covers the same do_update to the player room and also
+        # pushes gm_update to the GM, whose player and unit lists would
+        # otherwise stay stale until some unrelated event refreshed them.
+        ROOMS[room].send_updates()
     else:
         emit('error', {'error': 'Unable to join room. Room does not exist.'})
 

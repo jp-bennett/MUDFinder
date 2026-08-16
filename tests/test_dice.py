@@ -6,10 +6,11 @@ random component deterministic without seeding.
 """
 
 import random
+import time
 
 import pytest
 
-from mudfinder import roll_dice
+from mudfinder import MAX_DICE, roll_dice
 
 
 def total(roll_string):
@@ -145,11 +146,60 @@ class TestMultipleRolls:
         assert roll_dice('1d1,1d1 "Damage"') == "1, 1 Damage"
 
 
-class TestKnownGaps:
-    """Current behaviour that is arguably wrong, pinned so a fix is deliberate."""
+class TestMalformedInput:
+    """Everything here arrives from a chat line, so nothing may raise.
 
-    def test_zero_sided_die_raises(self):
-        # A player typing "/roll 1d0" raises out of the chat handler rather
-        # than returning an error message.
-        with pytest.raises(ValueError):
-            roll_dice("1d0")
+    Junk contributes 0, matching how "abc" and "0d6" already behaved.
+    """
+
+    @pytest.mark.parametrize("roll_string", [
+        "1d0",      # zero-sided die: used to raise ValueError
+        "1d",       # no die size
+        "d",        # no count and no size
+        "1d-2",     # negative size
+        "1dd2",     # doubled separator
+        "0d0",
+        "+",        # operator with no operand
+        "-",
+        "*",
+        "/",
+        "10/0",     # used to raise ZeroDivisionError
+        "1d6+",
+        "d+d",
+    ])
+    def test_malformed_input_does_not_raise(self, roll_string):
+        assert isinstance(roll_dice(roll_string), str)
+
+    def test_zero_sided_die_contributes_nothing(self):
+        assert total("1d0") == "0"
+
+    def test_zero_sided_die_does_not_poison_the_rest_of_the_roll(self):
+        assert total("1d0+5") == "5"
+
+    def test_division_by_zero_leaves_the_total_alone(self):
+        assert total("10/0") == "10"
+
+    def test_multiplication_by_a_missing_operand_is_identity(self):
+        assert total("6*") == "6"
+
+
+class TestDiceLimit:
+    """A single chat line must not be able to tie up the server.
+
+    Before the cap, "/roll 100000000d1" looped long enough to freeze every
+    connected client, since eventlet runs the handlers cooperatively.
+    """
+
+    def test_a_roll_at_the_limit_still_works(self):
+        assert total("%dd1" % MAX_DICE) == str(MAX_DICE)
+
+    def test_a_roll_over_the_limit_contributes_nothing(self):
+        assert total("%dd1" % (MAX_DICE + 1)) == "0"
+
+    def test_an_enormous_roll_returns_promptly(self):
+        started = time.time()
+        roll_dice("100000000d1")
+        assert time.time() - started < 1.0
+
+    def test_the_rest_of_the_line_still_evaluates(self):
+        assert total("%dd1+7" % (MAX_DICE + 1)) == "7"

@@ -105,6 +105,20 @@ class TestPlayerJoin:
         client.emit("player_join", {"room": "no-such-room", "charName": "Aria"})
         assert event_names(client.get_received()) == ["error"]
 
+    def test_the_gm_is_notified_of_the_join(self, gm):
+        """Without this the GM's lists stay stale until an unrelated event."""
+        gm_client, room, _ = gm
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        assert "gm_update" in event_names(gm_client.get_received())
+
+    def test_the_gm_update_contains_the_new_player(self, gm):
+        gm_client, room, _ = gm
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        state = event(gm_client.get_received(), "gm_update")["args"][0]
+        assert "Aria" in state["playerList"]
+
 
 class TestChat:
     def test_player_message_is_broadcast(self, gm):

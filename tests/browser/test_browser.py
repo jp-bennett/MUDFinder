@@ -81,22 +81,24 @@ class TestPlayerJoin:
         )
         assert "Aria" in player.page.inner_text("#unitsDiv")
 
-    def test_player_is_registered_on_the_server(self, live_server, new_client, gm_client):
-        """The join itself works; only the GM's view is not told about it."""
-        gm, room, gm_key = gm_client
-        player = new_client("%s/player.html?room=%s&charName=Aria" % (live_server, room))
-        wait_for_socket(player)
-
-        # Any later event triggers send_updates(), which does reach the GM.
-        gm.page.fill("#mapWidth", "2")
-        gm.page.fill("#mapHeight", "2")
-        gm.page.click("text=Generate Map")
-
+    def test_player_appears_in_the_gm_player_list(self, live_server, new_client, gm_client):
+        """The GM is told about the join itself, with no other event needed."""
+        gm, room, _ = gm_client
+        new_client("%s/player.html?room=%s&charName=Aria" % (live_server, room))
         gm.page.wait_for_function(
             "() => document.getElementById('connectedPlayers').innerText.includes('Aria')",
             timeout=HANDSHAKE_TIMEOUT,
         )
         assert "Aria" in gm.page.inner_text("#connectedPlayers")
+
+    def test_player_appears_in_the_gm_unit_list(self, live_server, new_client, gm_client):
+        gm, room, _ = gm_client
+        new_client("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        gm.page.wait_for_function(
+            "() => document.getElementById('unitsDiv').innerText.includes('Aria')",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        assert "Aria" in gm.page.inner_text("#unitsDiv")
 
     def test_player_view_raises_no_javascript_exceptions(self, live_server, new_client, gm_client):
         _, room, _ = gm_client
@@ -204,42 +206,18 @@ class TestStaticAssets:
         assert client.local_request_failures(live_server) == []
 
 
-class TestKnownGaps:
-    """Real behaviour worth fixing, pinned so a fix is deliberate."""
+class TestSelfContained:
+    """Every view must load entirely from this server.
 
-    def test_gm_view_is_not_notified_when_a_player_joins(
-        self, live_server, new_client, gm_client
+    player.html used to pull a stylesheet from fontlibrary.org on every load,
+    which made the page depend on a third party and fail when offline.
+    """
+
+    @pytest.mark.parametrize("page", ["player.html", "gm.html", "spectator.html"])
+    def test_view_makes_no_third_party_requests(
+        self, live_server, new_client, gm_client, page
     ):
-        """on_player_join emits do_update to the player room only.
-
-        session.send_updates() is what pushes gm_update to the GM's room, and
-        the join handler never calls it, so a GM watching the screen sees
-        nothing until some other event happens to refresh them. Fixing this is
-        a one-line change in on_player_join.
-        """
-        gm, room, _ = gm_client
-        player = new_client("%s/player.html?room=%s&charName=Aria" % (live_server, room))
-        wait_for_socket(player)
-        player.page.wait_for_function(
-            "() => document.getElementById('unitsDiv').innerText.includes('Aria')",
-            timeout=HANDSHAKE_TIMEOUT,
-        )
-
-        # The player is in the game, but the GM's lists are still empty.
-        gm.page.wait_for_timeout(1000)
-        assert "Aria" not in gm.page.inner_text("#connectedPlayers")
-        assert "Aria" not in gm.page.inner_text("#unitsDiv")
-
-    def test_player_page_depends_on_an_external_font_host(
-        self, live_server, new_client, gm_client
-    ):
-        """templates/player.html loads a stylesheet from fontlibrary.org.
-
-        The page works without it, but it is a third-party request on every
-        player page load, and it fails outright on an offline or
-        network-restricted machine.
-        """
-        _, room, _ = gm_client
+        _, room, gm_key = gm_client
         client = new_client()
         external = []
         client.page.on(
@@ -250,7 +228,9 @@ class TestKnownGaps:
                 else None
             ),
         )
-        client.page.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        client.page.goto(
+            "%s/%s?room=%s&charName=Aria&gmKey=%s" % (live_server, page, room, gm_key)
+        )
         wait_for_socket(client)
         client.page.wait_for_timeout(500)
-        assert any("fontlibrary.org" in url for url in external)
+        assert external == []
