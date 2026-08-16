@@ -15,6 +15,17 @@ Then open http://localhost:5000/ and create a game. You'll be sent to the GM
 view, which has share links for players and spectators. Sessions are held in
 memory and flushed to saves/*.json every five minutes and on shutdown.
 
+Running the tests
+-----------------
+
+    .venv/bin/pip install -r requirements-dev.txt
+    .venv/bin/python -m pytest
+
+The suite covers the dice parser, the Unit/Player/Session save round trip, the
+HTTP routes, and the Socket.IO event handlers. It needs no running server and
+no network. Tests that pin deliberate-decision-required behaviour, rather than
+behaviour that is definitely correct, live in TestKnownGaps classes.
+
 The dependency versions in requirements.txt are pinned on purpose --
 static/js/socket.io.js is the Socket.IO 2.x browser client, so the server
 side needs the matching Flask-SocketIO 4.x / python-engineio 3.x generation.
