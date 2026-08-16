@@ -4,6 +4,22 @@ MUDFinder is written in Python3, and uses flask-socketio. It's intended to emula
 It's a tool for running Pathfinder (and other D&D) games over the internet. It can be thought of as a replacement for
 roll20 and DnD Beyond, though not all of that functionality is finished yet.
 
+Running it
+----------
+
+    python3 -m venv .venv
+    .venv/bin/pip install -r requirements.txt
+    .venv/bin/python mudfinder.py
+
+Then open http://localhost:5000/ and create a game. You'll be sent to the GM
+view, which has share links for players and spectators. Sessions are held in
+memory and flushed to saves/*.json every five minutes and on shutdown.
+
+The dependency versions in requirements.txt are pinned on purpose --
+static/js/socket.io.js is the Socket.IO 2.x browser client, so the server
+side needs the matching Flask-SocketIO 4.x / python-engineio 3.x generation.
+See the comments in requirements.txt before upgrading.
+
 The MUDFinder project is licensed as AGPLv3 as a whole, but the individual contributor contributions are licensed as GPLv3.
 The purpose of this is to allow the project owner to add user management glue code in his offering of MUDFinder as a service,
 and not distribute that glue code as part of this project.
