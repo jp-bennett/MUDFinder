@@ -14,6 +14,7 @@ from random import randint
 
 from flask import Flask, abort, render_template, request, redirect
 from flask_socketio import SocketIO, join_room, emit
+from werkzeug.utils import secure_filename
 
 from session import Session
 
@@ -142,6 +143,7 @@ if not path.exists("saves"):
 # session id, but it also arrives from the client on every event and from
 # uploaded save files, so it is checked before it is ever used to build a path.
 ROOM_ID_PATTERN = re.compile(r"\A[A-Za-z0-9_-]{1,64}\Z")
+SAVE_DIR = "saves"
 
 
 def save_path(room):
@@ -149,10 +151,19 @@ def save_path(room):
 
     Without this a room of "../../../etc/whatever" reads and writes outside
     saves/, since check_room() loads any .json it finds at the path it builds.
+
+    The pattern is what actually enforces the rule: an id that does not match
+    is rejected outright rather than rewritten into something safe. The name is
+    then rebuilt with secure_filename, which is a no-op on anything the pattern
+    already accepted, so that the value reaching the path is one static
+    analysis can see has been sanitised.
     """
     if not isinstance(room, str) or not ROOM_ID_PATTERN.match(room):
         return None
-    return path.join("saves", room + ".json")
+    filename = secure_filename(room + ".json")
+    if not filename:
+        return None
+    return path.join(SAVE_DIR, filename)
 
 
 def savegame_thread():
