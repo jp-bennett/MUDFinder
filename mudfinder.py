@@ -1015,6 +1015,25 @@ def on_del_init(data):
         ROOMS[room].send_updates()
 
 
+MAX_MAP_DIMENSION = 300
+
+
+def clamp_map_dimension(value):
+    """One side of a map in squares, or None if it is not a usable number.
+
+    Typed by a GM, and the grid is built by iterating it, so a stray letter or
+    a number with too many digits has to be turned away rather than handed to
+    range().
+    """
+    try:
+        size = int(value)
+    except (TypeError, ValueError):
+        return None
+    if size < 1:
+        return None
+    return min(size, MAX_MAP_DIMENSION)
+
+
 def build_map_grid(width, height, discovered):
     """A blank floor grid, in the row-major shape mapArray uses."""
     map_array = []
@@ -1052,8 +1071,10 @@ def on_map_generate_over_background(data):
     """
     room = data['room']
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
-        width = data["mapWidth"]
-        height = data["mapHeight"]
+        width = clamp_map_dimension(data["mapWidth"])
+        height = clamp_map_dimension(data["mapHeight"])
+        if width is None or height is None:
+            return
         ROOMS[room].mapData["mapArray"] = build_map_grid(width, height, data["discovered"])
         # Start the image one grid wide with its corner on tile (0, 0). That is
         # rarely the right answer for a real battlemap, but it is a predictable
@@ -1061,6 +1082,38 @@ def on_map_generate_over_background(data):
         ROOMS[room].mapData["backgroundTilesWide"] = float(width)
         ROOMS[room].mapData["backgroundOffsetX"] = 0.0
         ROOMS[room].mapData["backgroundOffsetY"] = 0.0
+        emit('gm_map', ROOMS[room].mapData)
+        emit('draw_map', ROOMS[room].player_map(), room=room)
+        ROOMS[room].send_updates()
+
+
+@socketio.on('map_resize')
+def on_map_resize(data):
+    """Change how many squares the map is, keeping what is already on it.
+
+    Getting the square count right is part of lining a battlemap up, and the
+    count is rarely obvious until the grid is sitting on the artwork. Tiles
+    that still fall inside the new bounds are carried over rather than rebuilt,
+    so adjusting the count does not throw away a map that has been painted.
+    """
+    room = data['room']
+    if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
+        width = clamp_map_dimension(data["mapWidth"])
+        height = clamp_map_dimension(data["mapHeight"])
+        if width is None or height is None:
+            return
+        old_array = ROOMS[room].mapData["mapArray"]
+        new_array = build_map_grid(width, height, data.get("discovered", False))
+        for y in range(min(height, len(old_array))):
+            for x in range(min(width, len(old_array[y]))):
+                new_array[y][x] = old_array[y][x]
+        ROOMS[room].mapData["mapArray"] = new_array
+        # A unit left outside the new bounds has no tile to stand on, and the
+        # views look their tiles up by coordinate, so put it back in the wings.
+        for unit in ROOMS[room].unitList:
+            if unit.x >= width or unit.y >= height:
+                unit.x = -1
+                unit.y = -1
         emit('gm_map', ROOMS[room].mapData)
         emit('draw_map', ROOMS[room].player_map(), room=room)
         ROOMS[room].send_updates()

@@ -123,12 +123,7 @@
               <hr style="width:40%;">
               Or build a battlemap from an image:<br>
               <button onclick="imageUpload(this, 'mapBackground', '')">Choose Image</button><br>
-              <span id="battlemapImageState">No image chosen yet.</span><br>
-              Squares across:<br>
-              <input type="text" id="battlemapWidth"><br>
-              Squares down:<br>
-              <input type="text" id="battlemapHeight"><br>
-              <button onclick="battlemapCreate()">Create Battlemap</button><br>
+              <span id="battlemapImageState">No image chosen yet. Choosing one starts the battlemap setup.</span><br>
             </div>
             <div style="display:none;" id='mapGraphic'></div>
           </div>
@@ -198,21 +193,32 @@
           <button id="SelectMapBackgroundButton" onclick="imageUpload(this, 'mapBackground', '')">Background</button>
           </div>
           <div id="alignmentControls" style="display:none;">
-            Drag the map to move the image. Match its printed squares to the grid.<br>
-            Squares across the image:
-            <input type="range" id="alignTilesWideSlider" min="1" max="80" step="0.1" oninput="alignmentSliderInput(this)">
-            <input type="text" id="alignTilesWide" onchange="alignmentFieldInput()">
-            <button onclick="alignmentNudge('backgroundTilesWide', -0.05)">&minus;</button>
-            <button onclick="alignmentNudge('backgroundTilesWide', 0.05)">+</button>
-            &nbsp; Across:
-            <input type="text" id="alignOffsetX" onchange="alignmentFieldInput()">
-            <button onclick="alignmentNudge('backgroundOffsetX', -0.05)">&minus;</button>
-            <button onclick="alignmentNudge('backgroundOffsetX', 0.05)">+</button>
-            &nbsp; Down:
-            <input type="text" id="alignOffsetY" onchange="alignmentFieldInput()">
-            <button onclick="alignmentNudge('backgroundOffsetY', -0.05)">&minus;</button>
-            <button onclick="alignmentNudge('backgroundOffsetY', 0.05)">+</button>
-            <button onclick="alignmentReset()">Fit To Grid</button>
+            <b>Battlemap setup.</b> Drag the map to move the image, and match its printed squares to the grid.
+            <button style="float:right;" onclick="alignmentFinish()">Done</button><br>
+            <span class="alignmentGroup">Grid is
+              <input type="text" id="alignGridWidth" onchange="alignmentResize()"> by
+              <input type="text" id="alignGridHeight" onchange="alignmentResize()"> squares
+              <button onclick="alignmentResizeBy(-1, 0)">&minus;</button>
+              <button onclick="alignmentResizeBy(1, 0)">+</button> across
+              <button onclick="alignmentResizeBy(0, -1)">&minus;</button>
+              <button onclick="alignmentResizeBy(0, 1)">+</button> down
+            </span>
+            <span class="alignmentGroup">Image spans
+              <input type="range" id="alignTilesWideSlider" min="1" max="80" step="0.1" oninput="alignmentSliderInput(this)">
+              <input type="text" id="alignTilesWide" onchange="alignmentFieldInput()"> squares
+              <button onclick="alignmentNudge('backgroundTilesWide', -0.05)">&minus;</button>
+              <button onclick="alignmentNudge('backgroundTilesWide', 0.05)">+</button>
+            </span>
+            <span class="alignmentGroup">Move image across
+              <input type="text" id="alignOffsetX" onchange="alignmentFieldInput()">
+              <button onclick="alignmentNudge('backgroundOffsetX', -0.05)">&minus;</button>
+              <button onclick="alignmentNudge('backgroundOffsetX', 0.05)">+</button>
+              down
+              <input type="text" id="alignOffsetY" onchange="alignmentFieldInput()">
+              <button onclick="alignmentNudge('backgroundOffsetY', -0.05)">&minus;</button>
+              <button onclick="alignmentNudge('backgroundOffsetY', 0.05)">+</button>
+            </span>
+            <button onclick="alignmentReset()">Fit Image To Grid</button>
           </div>
         </div>
         <div id="units" style="display:none;">

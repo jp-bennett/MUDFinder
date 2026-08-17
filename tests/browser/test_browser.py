@@ -721,6 +721,14 @@ BACKGROUND_GEOMETRY_JS = """
     aligning: document.getElementById("mapGraphic").classList.contains("aligning"),
     tileOpacity: tile ? getComputedStyle(tile).opacity : null,
     tilePitch: tile ? tile.getBoundingClientRect().width : null,
+    gridAcross: (typeof mapObject !== "undefined" && mapObject && mapObject.mapArray
+                 && mapObject.mapArray[0]) ? mapObject.mapArray[0].length : 0,
+    gridDown: (typeof mapObject !== "undefined" && mapObject && mapObject.mapArray)
+                 ? mapObject.mapArray.length : 0,
+    // Absent in the player view, which this probe also runs against.
+    setupOpen: document.getElementById("alignmentControls")
+      ? getComputedStyle(document.getElementById("alignmentControls")).display !== "none"
+      : null,
   };
 }
 """
@@ -748,18 +756,25 @@ def battlemap(browser, live_server):
         stages = {}
 
         # The Choose Image button goes through the existing upload modal, which
-        # ends in this event.
+        # ends in this event. On an empty map that starts battlemap setup by
+        # itself, with a grid guessed from the image's shape.
         page.evaluate(
             """(url) => socket.emit("image_upload", room, url, "mapBackground", "")""",
             BATTLEMAP_IMAGE,
         )
-        page.wait_for_timeout(400)
-
-        page.fill("#battlemapWidth", "22")
-        page.fill("#battlemapHeight", "34")
-        page.click("text=Create Battlemap")
         page.wait_for_function(
             "() => document.querySelectorAll('#mapGraphic .mapTile').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["setupStarted"] = page.evaluate(BACKGROUND_GEOMETRY_JS)
+
+        # Then the square count is set from within setup.
+        page.fill("#alignGridWidth", "22")
+        page.dispatch_event("#alignGridWidth", "change")
+        page.fill("#alignGridHeight", "34")
+        page.dispatch_event("#alignGridHeight", "change")
+        page.wait_for_function(
+            "() => mapObject.mapArray.length === 34 && mapObject.mapArray[0].length === 22",
             timeout=HANDSHAKE_TIMEOUT,
         )
         stages["created"] = page.evaluate(BACKGROUND_GEOMETRY_JS)
@@ -790,6 +805,15 @@ def battlemap(browser, live_server):
         stages["zoomed"] = page.evaluate(BACKGROUND_GEOMETRY_JS)
         page.evaluate("""() => { zoom = 1;
             document.getElementById("mapGraphic").style.transform = "scale(1)"; }""")
+
+        # Grow the grid with a nudge button, and confirm the image does not
+        # move when the square count does.
+        before_resize = page.evaluate(BACKGROUND_GEOMETRY_JS)
+        page.click("#alignmentControls button:has-text('+') >> nth=0")
+        page.wait_for_function(
+            "(n) => mapObject.mapArray[0].length === n", arg=23, timeout=HANDSHAKE_TIMEOUT)
+        after = page.evaluate(BACKGROUND_GEOMETRY_JS)
+        stages["nudgedGrid"] = {"before": before_resize, "after": after}
 
         # Three edits with no pause between them. Each one is echoed back by
         # the server, and a slow echo must not undo a newer local change.
@@ -873,16 +897,30 @@ class TestBattlemapFromAnImage:
     made to coincide with the play grid, and distances were wrong.
     """
 
-    def test_the_grid_is_laid_over_the_image(self, battlemap):
-        """22 squares at 70px each."""
-        assert battlemap["created"]["backgroundSize"] == "1540px"
+    def test_setup_starts_from_the_image(self, battlemap):
+        """Choosing an image on an empty map lays a grid and opens setup,
+        without the GM having to guess a square count first."""
+        started = battlemap["setupStarted"]
+        assert started["gridAcross"] == 20
+        assert started["setupOpen"]
+
+    def test_the_square_count_can_be_changed_during_setup(self, battlemap):
+        """The count is the hard thing to know before seeing the grid on the
+        artwork, so it has to be adjustable from inside setup."""
+        assert battlemap["created"]["gridAcross"] == 22
+        assert battlemap["created"]["gridDown"] == 34
+
+    def test_resizing_the_grid_leaves_the_image_where_it_was(self, battlemap):
+        """Changing how many squares the map is says nothing about how big the
+        artwork should be. 20 squares at 70px, as setup started it."""
+        assert battlemap["created"]["backgroundSize"] == "1400px"
 
     def test_the_image_starts_on_the_grid_origin(self, battlemap):
-        assert battlemap["created"]["backgroundPosition"] == "0px 0px"
+        assert battlemap["setupStarted"]["backgroundPosition"] == "0px 0px"
 
     def test_it_drops_into_alignment_mode(self, battlemap):
         """A fresh grid almost never matches the image's printed one."""
-        assert battlemap["created"]["aligning"]
+        assert battlemap["setupStarted"]["aligning"]
 
     def test_the_grid_is_visible_to_align_against(self, battlemap):
         """Tiles over an uploaded image are transparent; alignment shows them."""
@@ -1056,7 +1094,7 @@ class TestUploadingABattlemapImage:
         assert uploads["ordinary"]["connected"]
 
     def test_the_gm_is_told_it_worked(self, uploads):
-        assert "Image ready" in uploads["ordinary"]["state"]
+        assert "Image loaded" in uploads["ordinary"]["state"]
 
     def test_an_ordinary_upload_says_nothing_alarming(self, uploads):
         assert uploads["ordinary"]["alerts"] == []
@@ -1079,3 +1117,24 @@ class TestUploadingABattlemapImage:
     def test_the_modal_closes_either_way(self, uploads):
         assert uploads["ordinary"]["modalGone"]
         assert uploads["enormous"]["modalGone"]
+
+
+class TestResizingDuringSetup:
+    """The square count is adjustable throughout setup, because it is rarely
+    obvious until the grid is sitting on the artwork."""
+
+    def test_the_nudge_button_grows_the_grid(self, battlemap):
+        assert battlemap["nudgedGrid"]["after"]["gridAcross"] == 23
+
+    def test_it_leaves_the_other_side_alone(self, battlemap):
+        assert battlemap["nudgedGrid"]["after"]["gridDown"] == \
+            battlemap["nudgedGrid"]["before"]["gridDown"]
+
+    def test_the_image_does_not_move_with_the_grid(self, battlemap):
+        """Changing how many squares the map is says nothing about the artwork."""
+        before, after = battlemap["nudgedGrid"]["before"], battlemap["nudgedGrid"]["after"]
+        assert after["backgroundSize"] == before["backgroundSize"]
+        assert after["backgroundPosition"] == before["backgroundPosition"]
+
+    def test_setup_stays_open_through_a_resize(self, battlemap):
+        assert battlemap["nudgedGrid"]["after"]["setupOpen"]

@@ -114,6 +114,7 @@ window.onload = function() {
         }
     });
     socket.on('gm_map', function(msg) {
+        keepLocalAlignmentIfPending(msg);
         syncFeaturesToMapType(msg.mapBackground);
         drawMap(msg);
         mapObject = msg;
@@ -131,6 +132,13 @@ window.onload = function() {
         if (typeof msg.mapBackground !== "undefined" && msg.mapBackground != previousBackground) {
             syncFeaturesToMapType(msg.mapBackground);
             reportBattlemapImageState(msg.mapBackground);
+            if (currentGridSize().across === 0
+                && msg.mapBackground != "static/images/mapbackground.jpg") {
+                // An image chosen with no map yet is the start of a battlemap.
+                // With a map already up this is the Background button changing
+                // the artwork under it, which must not rebuild anything.
+                startBattlemapSetup(msg.mapBackground);
+            }
         }
         refreshAlignmentFields();
         if (multiSelect)
@@ -322,35 +330,86 @@ function reportBattlemapImageState(mapBackground) {
         return;
     }
     if (mapBackground && mapBackground != "static/images/mapbackground.jpg") {
-        state.innerText = "Image ready. Set how many squares it is, then create the battlemap.";
+        state.innerText = "Image loaded. Adjust the grid and the image in the setup bar below the map.";
     } else {
-        state.innerText = "No image chosen yet.";
+        state.innerText = "No image chosen yet. Choosing one starts the battlemap setup.";
     }
 }
 
-function battlemapCreate() {
-    // Lays a grid over the background image the room already has. The image is
-    // put there first, by the same Choose Image button the Background control
-    // uses, because map_generate would discard it.
+var DEFAULT_BATTLEMAP_SQUARES_ACROSS = 20;
+
+function startBattlemapSetup(mapBackground) {
+    // Choosing an image on an empty map begins setup rather than asking for a
+    // square count first. The count is hard to guess before seeing a grid on
+    // the artwork, and it is adjustable throughout setup, so it starts at
+    // something reasonable for the image's shape and is corrected by eye.
     try {
-        battlemapWidth = parseInt(document.getElementById('battlemapWidth').value);
-        battlemapHeight = parseInt(document.getElementById('battlemapHeight').value);
-        if (isNaN(battlemapWidth) || isNaN(battlemapHeight) || battlemapWidth < 1 || battlemapHeight < 1) {
-            document.getElementById("battlemapImageState").innerText =
-                "Enter how many squares across and down the map is.";
-            return;
-        }
-        socket.emit('map_generate_over_background', {
-            mapWidth: battlemapWidth, mapHeight: battlemapHeight,
-            discovered: document.getElementById("mapIsDiscovered").checked,
-            gmKey: gmKey, room: room});
-        // Drop straight into alignment, since a freshly laid grid almost never
-        // matches the image's printed one.
-        document.getElementById("alignBackground").checked = true;
-        alignmentToggle(document.getElementById("alignBackground"));
+        sizingImage = new Image();
+        sizingImage.onload = function() {
+            across = DEFAULT_BATTLEMAP_SQUARES_ACROSS;
+            down = Math.max(1, Math.round(across * sizingImage.naturalHeight / sizingImage.naturalWidth));
+            createBattlemapGrid(across, down);
+        };
+        sizingImage.onerror = function() {
+            // The shape is only a starting guess, so a broken preview is no
+            // reason to refuse to lay a grid.
+            createBattlemapGrid(DEFAULT_BATTLEMAP_SQUARES_ACROSS, DEFAULT_BATTLEMAP_SQUARES_ACROSS);
+        };
+        sizingImage.src = mapBackground;
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
+}
+
+function createBattlemapGrid(across, down) {
+    socket.emit('map_generate_over_background', {
+        mapWidth: across, mapHeight: down,
+        discovered: document.getElementById("mapIsDiscovered").checked,
+        gmKey: gmKey, room: room});
+    document.getElementById("alignBackground").checked = true;
+    alignmentToggle(document.getElementById("alignBackground"));
+}
+
+function alignmentResize() {
+    // Changing the square count rebuilds the grid, keeping any tiles that are
+    // still inside it, so this can be adjusted as freely as the image itself.
+    try {
+        across = parseInt(document.getElementById("alignGridWidth").value);
+        down = parseInt(document.getElementById("alignGridHeight").value);
+        if (isNaN(across) || isNaN(down) || across < 1 || down < 1) {
+            refreshAlignmentFields();
+            return;
+        }
+        socket.emit('map_resize', {
+            mapWidth: across, mapHeight: down,
+            discovered: document.getElementById("mapIsDiscovered").checked,
+            gmKey: gmKey, room: room});
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
+function alignmentResizeBy(acrossChange, downChange) {
+    try {
+        size = currentGridSize();
+        document.getElementById("alignGridWidth").value = Math.max(1, size.across + acrossChange);
+        document.getElementById("alignGridHeight").value = Math.max(1, size.down + downChange);
+        alignmentResize();
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
+function alignmentFinish() {
+    document.getElementById("alignBackground").checked = false;
+    alignmentToggle(document.getElementById("alignBackground"));
+}
+
+function currentGridSize() {
+    if (typeof mapObject === "undefined" || !mapObject || !mapObject.mapArray || !mapObject.mapArray[0]) {
+        return {across: 0, down: 0};
+    }
+    return {across: mapObject.mapArray[0].length, down: mapObject.mapArray.length};
 }
 
 var aligningBackground = false;
@@ -407,7 +466,7 @@ function exitAlignmentIfNothingToAlign() {
     }
 }
 
-function setAlignmentField(fieldId, value) {
+function setAlignmentField(fieldId, value, places) {
     // Never overwrite the box the GM is typing in. These fields are refreshed
     // on every map update, and a GM part way through typing an offset would
     // otherwise have it replaced mid-keystroke by the value they are editing
@@ -416,7 +475,7 @@ function setAlignmentField(fieldId, value) {
     if (!field || field === document.activeElement) {
         return;
     }
-    field.value = value.toFixed(2);
+    field.value = value.toFixed(typeof places === "number" ? places : 2);
 }
 
 function refreshAlignmentFields() {
@@ -428,6 +487,9 @@ function refreshAlignmentFields() {
         setAlignmentField("alignTilesWide", alignment.backgroundTilesWide);
         setAlignmentField("alignOffsetX", alignment.backgroundOffsetX);
         setAlignmentField("alignOffsetY", alignment.backgroundOffsetY);
+        size = currentGridSize();
+        setAlignmentField("alignGridWidth", size.across, 0);
+        setAlignmentField("alignGridHeight", size.down, 0);
         if (document.getElementById("alignTilesWideSlider") !== document.activeElement) {
             document.getElementById("alignTilesWideSlider").value = alignment.backgroundTilesWide;
         }
@@ -465,6 +527,22 @@ function dropOwnAlignmentEcho(msg) {
     delete msg.backgroundOffsetX;
     delete msg.backgroundOffsetY;
     return true;
+}
+
+function keepLocalAlignmentIfPending(msg) {
+    // A whole map arriving replaces everything, alignment included. Resizing
+    // the grid answers with one, and it carries the alignment as it was when
+    // the resize was handled -- which is stale if the image has been adjusted
+    // since. While any of our own alignment changes are still in flight, keep
+    // the local values on the way in.
+    if (alignmentSendsInFlight < 1 || typeof mapObject === "undefined" || !mapObject) {
+        return;
+    }
+    for (i = 0; i < BACKGROUND_ALIGNMENT_KEYS.length; i++) {
+        if (typeof mapObject[BACKGROUND_ALIGNMENT_KEYS[i]] === "number") {
+            msg[BACKGROUND_ALIGNMENT_KEYS[i]] = mapObject[BACKGROUND_ALIGNMENT_KEYS[i]];
+        }
+    }
 }
 
 function sendAlignment() {

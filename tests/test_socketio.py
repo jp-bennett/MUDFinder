@@ -509,3 +509,130 @@ class TestUploadLimit:
         assert "var MAX_UPLOAD_BYTES = 16 * 1024 * 1024;" in client_side
         assert mudfinder.MAX_UPLOAD_BYTES == 16 * 1024 * 1024
         assert mudfinder.socketio.server.eio.max_http_buffer_size == mudfinder.MAX_UPLOAD_BYTES
+
+
+class TestMapResize:
+    """Changing how many squares a map is, without losing what is on it.
+
+    The square count is the hard thing to know before the grid is sitting on
+    the artwork, so it has to be adjustable during alignment rather than fixed
+    when the map is made.
+    """
+
+    def battlemap(self, gm_client, room, key, width=6, height=5):
+        set_background(gm_client, room)
+        gm_client.emit("map_generate_over_background", {
+            "room": room, "gmKey": key,
+            "mapWidth": width, "mapHeight": height, "discovered": False,
+        })
+        gm_client.get_received()
+
+    def test_growing_the_grid(self, gm):
+        gm_client, room, key = gm
+        self.battlemap(gm_client, room, key)
+        gm_client.emit("map_resize", {"room": room, "gmKey": key, "mapWidth": 9, "mapHeight": 7})
+        grid = mudfinder.ROOMS[room].mapData["mapArray"]
+        assert len(grid) == 7
+        assert all(len(row) == 9 for row in grid)
+
+    def test_shrinking_the_grid(self, gm):
+        gm_client, room, key = gm
+        self.battlemap(gm_client, room, key)
+        gm_client.emit("map_resize", {"room": room, "gmKey": key, "mapWidth": 3, "mapHeight": 2})
+        grid = mudfinder.ROOMS[room].mapData["mapArray"]
+        assert len(grid) == 2
+        assert all(len(row) == 3 for row in grid)
+
+    def test_tiles_inside_the_new_bounds_are_kept(self, gm):
+        """Otherwise adjusting the count would throw away a painted map."""
+        gm_client, room, key = gm
+        self.battlemap(gm_client, room, key)
+        mudfinder.ROOMS[room].mapData["mapArray"][1][2]["tile"] = "wallTile"
+        gm_client.emit("map_resize", {"room": room, "gmKey": key, "mapWidth": 9, "mapHeight": 7})
+        assert mudfinder.ROOMS[room].mapData["mapArray"][1][2]["tile"] == "wallTile"
+
+    def test_new_ground_is_plain_floor(self, gm):
+        gm_client, room, key = gm
+        self.battlemap(gm_client, room, key)
+        gm_client.emit("map_resize", {"room": room, "gmKey": key, "mapWidth": 9, "mapHeight": 7})
+        assert mudfinder.ROOMS[room].mapData["mapArray"][6][8] == {
+            "tile": "floorTile", "walkable": True, "seen": False,
+            "secret": False, "x": 8, "y": 6}
+
+    def test_the_background_and_its_alignment_are_untouched(self, gm):
+        """Resizing says nothing about how big the artwork should be."""
+        gm_client, room, key = gm
+        self.battlemap(gm_client, room, key)
+        gm_client.emit("set_background_alignment", {
+            "room": room, "gmKey": key,
+            "backgroundTilesWide": 12.4, "backgroundOffsetX": -1.2, "backgroundOffsetY": -0.8,
+        })
+        gm_client.emit("map_resize", {"room": room, "gmKey": key, "mapWidth": 9, "mapHeight": 7})
+        map_data = mudfinder.ROOMS[room].mapData
+        assert map_data["mapBackground"] == BATTLEMAP_IMAGE
+        assert map_data["backgroundTilesWide"] == 12.4
+        assert map_data["backgroundOffsetX"] == -1.2
+
+    def test_a_unit_left_outside_is_taken_off_the_map(self, gm):
+        """The views look tiles up by coordinate, so a unit past the edge has
+        nothing to stand on."""
+        gm_client, room, key = gm
+        self.battlemap(gm_client, room, key)
+        gm_client.emit("add_unit", {
+            "room": room, "gmKey": key, "addToInitiative": False,
+            "unit": {"charName": "Goblin", "x": 5, "y": 4},
+        })
+        gm_client.emit("map_resize", {"room": room, "gmKey": key, "mapWidth": 3, "mapHeight": 2})
+        goblin = mudfinder.ROOMS[room].unitList[0]
+        assert (goblin.x, goblin.y) == (-1, -1)
+
+    def test_a_unit_still_inside_keeps_its_place(self, gm):
+        gm_client, room, key = gm
+        self.battlemap(gm_client, room, key)
+        gm_client.emit("add_unit", {
+            "room": room, "gmKey": key, "addToInitiative": False,
+            "unit": {"charName": "Goblin", "x": 1, "y": 1},
+        })
+        gm_client.emit("map_resize", {"room": room, "gmKey": key, "mapWidth": 3, "mapHeight": 2})
+        goblin = mudfinder.ROOMS[room].unitList[0]
+        assert (goblin.x, goblin.y) == (1, 1)
+
+    def test_the_players_are_sent_the_new_map(self, gm):
+        gm_client, room, key = gm
+        self.battlemap(gm_client, room, key)
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        gm_client.emit("map_resize", {"room": room, "gmKey": key, "mapWidth": 3, "mapHeight": 2})
+        assert "draw_map" in event_names(player.get_received())
+
+    def test_wrong_key_cannot_resize(self, gm):
+        gm_client, room, key = gm
+        self.battlemap(gm_client, room, key)
+        gm_client.emit("map_resize", {"room": room, "gmKey": "wrong", "mapWidth": 3, "mapHeight": 2})
+        assert len(mudfinder.ROOMS[room].mapData["mapArray"]) == 5
+
+    @pytest.mark.parametrize("bad", ["abc", None, 0, -4, ""])
+    def test_a_size_that_is_not_a_usable_number_is_refused(self, gm, bad):
+        gm_client, room, key = gm
+        self.battlemap(gm_client, room, key)
+        gm_client.emit("map_resize", {"room": room, "gmKey": key, "mapWidth": bad, "mapHeight": 4})
+        assert len(mudfinder.ROOMS[room].mapData["mapArray"][0]) == 6
+
+    def test_an_absurd_size_is_clamped(self, gm):
+        """The grid is built by iterating this, so a mistyped number would
+        otherwise sit there allocating tiles."""
+        gm_client, room, key = gm
+        self.battlemap(gm_client, room, key)
+        gm_client.emit("map_resize", {
+            "room": room, "gmKey": key, "mapWidth": 100000, "mapHeight": 2})
+        assert len(mudfinder.ROOMS[room].mapData["mapArray"][0]) == mudfinder.MAX_MAP_DIMENSION
+
+    def test_building_over_a_background_is_clamped_too(self, gm):
+        gm_client, room, key = gm
+        set_background(gm_client, room)
+        gm_client.emit("map_generate_over_background", {
+            "room": room, "gmKey": key,
+            "mapWidth": 100000, "mapHeight": 2, "discovered": False,
+        })
+        assert len(mudfinder.ROOMS[room].mapData["mapArray"][0]) == mudfinder.MAX_MAP_DIMENSION
