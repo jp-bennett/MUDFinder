@@ -636,3 +636,265 @@ class TestMapResize:
             "mapWidth": 100000, "mapHeight": 2, "discovered": False,
         })
         assert len(mudfinder.ROOMS[room].mapData["mapArray"][0]) == mudfinder.MAX_MAP_DIMENSION
+
+
+class TestMapUpload:
+    """Pasting a map exported from a dungeon generator.
+
+    The TSV is typed or pasted by hand, so it is the one map source that
+    arrives in whatever shape the GM's clipboard was in.
+    """
+
+    def upload(self, gm_client, room, key, text, discovered=False):
+        gm_client.emit("map_upload", {
+            "room": room, "gmKey": key, "mapText": text, "discovered": discovered,
+        })
+
+    def test_a_pasted_map_becomes_a_grid(self, gm):
+        gm_client, room, key = gm
+        self.upload(gm_client, room, key, "F\tF\tD\nF\tF\tSU\n")
+        grid = mudfinder.ROOMS[room].mapData["mapArray"]
+        assert [tile["tile"] for tile in grid[0]] == ["floorTile", "floorTile", "doorClosed"]
+        assert [tile["tile"] for tile in grid[1]] == ["floorTile", "floorTile", "stairsUp"]
+
+    def test_the_map_is_drawn_without_a_reload(self, gm):
+        """Every other way of making a map redraws; this one used to leave the
+        new grid sitting on the server until someone refreshed the page."""
+        gm_client, room, key = gm
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        self.upload(gm_client, room, key, "F\tF\nF\tF\n")
+        assert "gm_map" in event_names(gm_client.get_received())
+        assert "draw_map" in event_names(player.get_received())
+
+    def test_windows_line_endings_parse(self, gm):
+        """A map saved from a text editor on Windows, or pasted out of one,
+        arrives with a carriage return stuck to the last cell of every row.
+        "F\\r" matched none of the tile codes, so the row was left one tile
+        short and the parse then indexed off the end of it."""
+        gm_client, room, key = gm
+        self.upload(gm_client, room, key, "F\tF\r\nD\tSU\r\n")
+        grid = mudfinder.ROOMS[room].mapData["mapArray"]
+        assert [tile["tile"] for tile in grid[0]] == ["floorTile", "floorTile"]
+        assert [tile["tile"] for tile in grid[1]] == ["doorClosed", "stairsUp"]
+
+    def test_a_trailing_newline_does_not_add_a_row(self, gm):
+        """Text ends with a newline, so the map was a row of walls taller than
+        the one the GM pasted."""
+        gm_client, room, key = gm
+        self.upload(gm_client, room, key, "F\tF\nF\tF\n")
+        assert len(mudfinder.ROOMS[room].mapData["mapArray"]) == 2
+
+    def test_an_unrecognised_code_becomes_a_wall(self, gm):
+        """It used to append no tile at all, and then index off the end of the
+        row it had just failed to fill, taking the whole paste down."""
+        gm_client, room, key = gm
+        self.upload(gm_client, room, key, "F\tQ\tF\n")
+        row = mudfinder.ROOMS[room].mapData["mapArray"][0]
+        assert len(row) == 3
+        assert row[1] == {"tile": "wallTile", "walkable": False, "seen": False,
+                          "secret": False, "x": 1, "y": 0}
+
+    def test_a_blank_cell_is_still_a_wall(self, gm):
+        gm_client, room, key = gm
+        self.upload(gm_client, room, key, "F\t\tF\n")
+        assert mudfinder.ROOMS[room].mapData["mapArray"][0][1]["tile"] == "wallTile"
+
+    def test_a_secret_door_is_marked_secret(self, gm):
+        gm_client, room, key = gm
+        self.upload(gm_client, room, key, "F\tDS\n")
+        assert mudfinder.ROOMS[room].mapData["mapArray"][0][1]["secret"] is True
+
+    def test_an_enormous_paste_is_clamped(self, gm):
+        """Nothing about a clipboard bounds this, and the grid is iterated to
+        build it, so the size has to be capped somewhere."""
+        gm_client, room, key = gm
+        row = "\t".join(["F"] * 1000)
+        self.upload(gm_client, room, key, "\n".join([row] * 1000))
+        grid = mudfinder.ROOMS[room].mapData["mapArray"]
+        assert len(grid) == mudfinder.MAX_MAP_DIMENSION
+        assert len(grid[0]) == mudfinder.MAX_MAP_DIMENSION
+
+    def test_uploading_clears_stale_alignment(self, gm):
+        """The pasted map replaces the background with the default parchment,
+        so alignment measured against the old artwork would misplace it."""
+        gm_client, room, key = gm
+        set_background(gm_client, room)
+        gm_client.emit("map_generate_over_background", {
+            "room": room, "gmKey": key,
+            "mapWidth": 4, "mapHeight": 3, "discovered": False,
+        })
+        self.upload(gm_client, room, key, "F\tF\n")
+        map_data = mudfinder.ROOMS[room].mapData
+        assert map_data["mapBackground"] == DEFAULT_BACKGROUND
+        assert "backgroundTilesWide" not in map_data
+
+    def test_wrong_key_cannot_upload(self, gm):
+        gm_client, room, _ = gm
+        self.upload(gm_client, room, "wrong", "F\tF\n")
+        assert mudfinder.ROOMS[room].mapData["mapArray"] == []
+
+
+class TestMapGenerateLimits:
+    def test_an_absurd_size_is_clamped(self, gm):
+        gm_client, room, key = gm
+        gm_client.emit("map_generate", {
+            "room": room, "gmKey": key,
+            "mapWidth": 100000, "mapHeight": 2, "discovered": False,
+        })
+        assert len(mudfinder.ROOMS[room].mapData["mapArray"][0]) == mudfinder.MAX_MAP_DIMENSION
+
+    @pytest.mark.parametrize("bad", ["abc", None, 0, -4, ""])
+    def test_a_size_that_is_not_a_usable_number_is_refused(self, gm, bad):
+        gm_client, room, key = gm
+        gm_client.emit("map_generate", {
+            "room": room, "gmKey": key,
+            "mapWidth": bad, "mapHeight": 4, "discovered": False,
+        })
+        assert mudfinder.ROOMS[room].mapData["mapArray"] == []
+
+
+def join_second_gm(room, key):
+    """A second GM view of the same room, as a GM with two tabs open has."""
+    other = mudfinder.socketio.test_client(mudfinder.app)
+    other.emit("join_gm", {"room": room, "gmKey": key})
+    other.get_received()
+    return other
+
+
+class TestGmBroadcasts:
+    """A GM with two tabs open, or two people running the game together.
+
+    gmRoom holds the first GM's session id, and later GM views join it. Map
+    events were emitted to the caller rather than to that room, so they only
+    reached everyone by accident -- when the acting tab happened to be the
+    first one. Any other tab acting left the rest showing a map that no longer
+    existed, and clicking on it edited tiles by stale coordinates.
+    """
+
+    def test_generating_from_the_second_tab_reaches_the_first(self, gm):
+        gm_client, room, key = gm
+        other = join_second_gm(room, key)
+        other.emit("map_generate", {
+            "room": room, "gmKey": key,
+            "mapWidth": 3, "mapHeight": 3, "discovered": False,
+        })
+        assert "gm_map" in event_names(gm_client.get_received())
+        other.disconnect()
+
+    def test_generating_from_the_first_tab_reaches_the_second(self, gm):
+        gm_client, room, key = gm
+        other = join_second_gm(room, key)
+        gm_client.emit("map_generate", {
+            "room": room, "gmKey": key,
+            "mapWidth": 3, "mapHeight": 3, "discovered": False,
+        })
+        assert "gm_map" in event_names(other.get_received())
+        other.disconnect()
+
+    def test_resizing_from_the_second_tab_reaches_the_first(self, gm):
+        gm_client, room, key = gm
+        gm_client.emit("map_generate", {
+            "room": room, "gmKey": key,
+            "mapWidth": 3, "mapHeight": 3, "discovered": False,
+        })
+        gm_client.get_received()
+        other = join_second_gm(room, key)
+        other.emit("map_resize", {"room": room, "gmKey": key, "mapWidth": 5, "mapHeight": 5})
+        assert "gm_map" in event_names(gm_client.get_received())
+        other.disconnect()
+
+    def test_a_pasted_map_from_the_second_tab_reaches_the_first(self, gm):
+        gm_client, room, key = gm
+        other = join_second_gm(room, key)
+        other.emit("map_upload", {
+            "room": room, "gmKey": key, "mapText": "F\tF\n", "discovered": False,
+        })
+        assert "gm_map" in event_names(gm_client.get_received())
+        other.disconnect()
+
+    def test_clearing_the_map_from_the_second_tab_reaches_the_first(self, gm):
+        gm_client, room, key = gm
+        other = join_second_gm(room, key)
+        other.emit("clear_map", {"room": room, "gmKey": key})
+        assert "gm_map" in event_names(gm_client.get_received())
+        other.disconnect()
+
+    def test_editing_a_tile_from_the_second_tab_reaches_the_first(self, gm):
+        gm_client, room, key = gm
+        gm_client.emit("map_generate", {
+            "room": room, "gmKey": key,
+            "mapWidth": 3, "mapHeight": 3, "discovered": True,
+        })
+        gm_client.get_received()
+        other = join_second_gm(room, key)
+        other.emit("map_edit", {
+            "room": room, "gmKey": key,
+            "tiles": [{"xCoord": 1, "yCoord": 1, "newTile": "wallTile"}],
+        })
+        assert "gm_map_update" in event_names(gm_client.get_received())
+        other.disconnect()
+
+
+PNG_PIXEL = ("data:image;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+             "AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+OTHER_PIXEL = ("data:image;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFc"
+               "SJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+
+
+class TestImagePruning:
+    """Uploaded images live in a dict that is written into every autosave.
+
+    Nothing ever removed an entry, so a GM trying three battlemaps carried all
+    three in the save file for the rest of the game, at full size.
+    """
+
+    def test_an_uploaded_background_is_stored(self, gm):
+        gm_client, room, _ = gm
+        set_background(gm_client, room, PNG_PIXEL)
+        assert len(mudfinder.ROOMS[room].images) == 1
+
+    def test_replacing_a_background_drops_the_old_one(self, gm):
+        gm_client, room, _ = gm
+        set_background(gm_client, room, PNG_PIXEL)
+        set_background(gm_client, room, OTHER_PIXEL)
+        assert len(mudfinder.ROOMS[room].images) == 1
+
+    def test_the_background_still_in_use_survives(self, gm):
+        gm_client, room, _ = gm
+        set_background(gm_client, room, PNG_PIXEL)
+        set_background(gm_client, room, OTHER_PIXEL)
+        current = mudfinder.ROOMS[room].mapData["mapBackground"]
+        assert current.split("&id=")[1] in mudfinder.ROOMS[room].images
+
+    def test_an_image_a_unit_is_wearing_is_kept(self, gm):
+        """The current background is not the only thing that can hold an image,
+        so pruning cannot simply keep that one and drop the rest."""
+        gm_client, room, key = gm
+        gm_client.emit("add_unit", {
+            "room": room, "gmKey": key, "addToInitiative": False,
+            "unit": {"charName": "Goblin"},
+        })
+        gm_client.emit("image_upload", room, PNG_PIXEL, "unitToken", "0")
+        token = mudfinder.ROOMS[room].unitList[0].token
+        set_background(gm_client, room, OTHER_PIXEL)
+        assert token.split("&id=")[1] in mudfinder.ROOMS[room].images
+
+    def test_an_image_a_saved_encounter_refers_to_is_kept(self, gm):
+        """Saved encounters keep their own copy of mapData, so the background
+        they were saved with is still wanted after the live map moves on."""
+        gm_client, room, key = gm
+        set_background(gm_client, room, PNG_PIXEL)
+        saved_background = mudfinder.ROOMS[room].mapData["mapBackground"]
+        gm_client.emit("save_encounter", {
+            "room": room, "gmKey": key, "encounterName": "Ambush",
+        })
+        set_background(gm_client, room, OTHER_PIXEL)
+        assert saved_background.split("&id=")[1] in mudfinder.ROOMS[room].images
+
+    def test_a_linked_background_stores_nothing_to_prune(self, gm):
+        """A plain URL is not an upload, so there is nothing in the dict."""
+        gm_client, room, _ = gm
+        set_background(gm_client, room)
+        assert mudfinder.ROOMS[room].images == {}
