@@ -799,6 +799,30 @@ function handle_error(e) {
 
     socket.emit("error_handle", room, e);
 }
+// Titles whose chosen image is handed straight back to a caller rather than
+// sent to the server to be attached to a character, a unit or the map. Keyed
+// by title, because the modal carries the title through an onclick as a string.
+//
+// Nothing is stored server-side for these. The caller is filling in a form for
+// something that does not exist yet, and an image stored before anything
+// points at it is exactly what prune_unused_images removes.
+var imageReturnHandlers = {};
+
+function imageUploadReturning(title, handler) {
+    imageReturnHandlers[title] = handler;
+    imageUpload(null, title, "");
+}
+
+function sendChosenImage(image, title, character) {
+    var handler = imageReturnHandlers[title];
+    if (handler) {
+        delete imageReturnHandlers[title];
+        handler(image);
+    } else {
+        socket.emit("image_upload", room, image, title, character);
+    }
+}
+
 function imageUpload(element, title, character) {
     //console.log("imageUpload");
     var modalBackground = document.createElement("div");
@@ -873,7 +897,7 @@ function selectImage (title, character) {
     try {
         if (document.getElementById("imageFileUpload").value == "") {
             //console.log(document.getElementById("imageURL").value)
-            socket.emit("image_upload", room, document.getElementById("imageURL").value, title, character);
+            sendChosenImage(document.getElementById("imageURL").value, title, character);
             document.getElementById('modalBackground').remove()
         } else {
             if (typeof document.getElementById("imageFileUpload").files[0] == "undefined") {
@@ -892,7 +916,7 @@ function selectImage (title, character) {
             }
             var r = new FileReader();
             r.onload = function() {
-                socket.emit("image_upload", room, "data:image;base64, " + btoa(r.result), title, character);
+                sendChosenImage("data:image;base64, " + btoa(r.result), title, character);
                 document.getElementById('modalBackground').remove();
             }
             r.readAsBinaryString(file);

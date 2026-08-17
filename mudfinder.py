@@ -381,13 +381,24 @@ def on_lore_url(room, lore_url, lore_name, lore_text, lore_owner):
         emit("showLore", {"lore": ROOMS[room].lore, "lore_num": None}, room=room)
 
 
+def store_image(room, image):
+    """Take a data URI into the room's image store and hand back its URL.
+
+    Anything that is not a data URI -- a link the GM pasted, or an image
+    already stored -- is returned untouched, so callers can hand this whatever
+    arrived in an image field without inspecting it first.
+    """
+    if image[0:18] != "data:image;base64,":
+        return image
+    image_uuid = str(uuid.uuid4())
+    ROOMS[room].images[image_uuid] = image[19:]
+    return "get_image.html?room=" + room + "&id=" + image_uuid
+
+
 @socketio.on('image_upload')
 def on_image_upload(room, image, title, owner):
     if check_room(room):
-        if image[0:18] == "data:image;base64,":
-            image_uuid = str(uuid.uuid4())
-            ROOMS[room].images[image_uuid] = image[19:]
-            image = "get_image.html?room=" + room + "&id=" + image_uuid
+        image = store_image(room, image)
         if title == "charImage":
             ROOMS[room].playerList[owner].image = image
         if title == "charToken":
@@ -706,6 +717,82 @@ def on_add_unit(data):
             ROOMS[room].unitList.append(unit)
             ROOMS[room].number_units()
             ROOMS[room].send_updates()
+
+
+MAX_UNITS_PER_ADD = 100
+
+
+def clamp_unit_count(value):
+    """How many copies of a creature to add, or None if that is not a number.
+
+    Typed by a GM, and every copy is a Unit that is then serialised into every
+    autosave, so a slipped keypress has to be turned away rather than built.
+    """
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        return None
+    if count < 1:
+        return None
+    return min(count, MAX_UNITS_PER_ADD)
+
+
+def initiative_bonus(value):
+    """A GM-typed initiative modifier, which may be blank, "+2" or "-1"."""
+    try:
+        return int(str(value).strip().lstrip("+") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+@socketio.on('add_units')
+def on_add_units(data):
+    """Add several copies of one creature at once, rolling each initiative.
+
+    A GM putting six goblins on the board was adding them one at a time, and
+    the initiative field wanted the finished count rather than the creature's
+    modifier -- so the roll happened somewhere else and was typed back in six
+    times. Above one copy this takes the modifier and rolls a d20 per creature
+    instead. A single copy keeps meaning what it always did, an exact count,
+    because a GM adding one creature often already knows where it goes.
+    """
+    room = data['room']
+    if not check_room(room) or ROOMS[room].gmKey != data.get('gmKey'):
+        return
+    count = clamp_unit_count(data.get('count'))
+    if count is None:
+        return
+    template = data['unit']
+    # Stored once here rather than per copy, so six goblins sharing a token
+    # hold one image between them instead of six identical ones.
+    token = store_image(room, template.get("token", ""))
+    bonus = initiative_bonus(data.get('initiativeBonus'))
+    rolls = []
+    for _ in range(count):
+        unit_data = dict(template)
+        unit_data["token"] = token
+        # Every copy is its own creature, so it cannot inherit the template's
+        # identity -- the map and the initiative list both track units by uuid.
+        unit_data.pop("uuid", None)
+        if count > 1:
+            die = randint(1, 20)
+            unit_data["initiative"] = die + bonus
+            rolls.append("d20(%d)%+d = %d" % (die, bonus, die + bonus))
+        unit = Unit(unit_data)
+        ROOMS[room].unitList.append(unit)
+        if data.get("addToInitiative"):
+            ROOMS[room].insert_initiative(unit)
+            unit.inInit = True
+            unit.flatFooted = True
+    ROOMS[room].number_units()
+    ROOMS[room].send_updates()
+    if rolls:
+        # To the GM's views alone. Monster initiative is not the players'
+        # business, and gmRoom is a room the player room does not contain.
+        emit_to_gm("chat", {
+            "chat": "%s initiative: %s" % (template.get("charName", "Unit"), ", ".join(rolls)),
+            "charName": "System",
+        }, room)
 
 
 @socketio.on('update_unit')

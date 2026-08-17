@@ -119,6 +119,15 @@ input {
     float:left;
     padding:30px;
 }
+/* A chosen token is either a link or the whole image as a data URI, so the
+   field it sits in says nothing useful about it. This is the part the GM
+   actually needs to check before adding six of them. */
+.unitTokenPreview {
+    max-width: 70px;
+    max-height: 70px;
+    margin-top: 5px;
+    border: 1px solid black;
+}
 
 .selectedEncounter {
     background: cornflowerblue;

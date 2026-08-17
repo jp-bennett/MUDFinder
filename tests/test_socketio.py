@@ -6,6 +6,8 @@ covered: if a dependency bump breaks the wire protocol or the handler
 signatures, these fail rather than the app merely failing to work in a browser.
 """
 
+import re
+
 import pytest
 
 import mudfinder
@@ -898,3 +900,277 @@ class TestImagePruning:
         gm_client, room, _ = gm
         set_background(gm_client, room)
         assert mudfinder.ROOMS[room].images == {}
+
+
+PNG_TOKEN = ("data:image;base64, iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+             "AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+
+
+class TestAddingSeveralCreatures:
+    """Six goblins is one encounter, not six trips through the form.
+
+    Above one copy the initiative field stops meaning the finished count --
+    which six creatures cannot share -- and means the modifier each of them
+    rolls a d20 against.
+    """
+
+    def add(self, gm_client, room, key, count, **overrides):
+        payload = {
+            "room": room, "gmKey": key, "count": count,
+            "addToInitiative": True, "initiativeBonus": 0,
+            "unit": {"charName": "Goblin"},
+        }
+        payload.update(overrides)
+        gm_client.emit("add_units", payload)
+        return mudfinder.ROOMS[room]
+
+    def test_it_adds_the_requested_number(self, gm):
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 6)
+        assert len(session.unitList) == 6
+
+    def test_every_copy_is_the_creature_that_was_asked_for(self, gm):
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 3, unit={"charName": "Orc", "HP": 15})
+        assert [u.charName for u in session.unitList] == ["Orc"] * 3
+        assert [u.HP for u in session.unitList] == [15] * 3
+
+    def test_the_copies_are_separate_creatures(self, gm):
+        """The map and the initiative list both track units by uuid, so sharing
+        one would make the copies the same creature in two places."""
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 4)
+        assert len({u.uuid for u in session.unitList}) == 4
+
+    def test_a_supplied_uuid_is_not_reused_either(self, gm):
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 3,
+                           unit={"charName": "Goblin", "uuid": "template-uuid"})
+        assert "template-uuid" not in {u.uuid for u in session.unitList}
+
+    def test_they_are_numbered(self, gm):
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 4)
+        assert [u.unitNum for u in session.unitList] == [0, 1, 2, 3]
+
+    def test_each_one_rolls_its_own_initiative(self, gm):
+        """Identical scores would mean one roll shared out, which is the thing
+        this replaces."""
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 20, initiativeBonus=0)
+        assert len({u.initiative for u in session.unitList}) > 1
+
+    def test_the_rolls_are_a_d20_plus_the_bonus(self, gm):
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 40, initiativeBonus=5)
+        assert all(6 <= u.initiative <= 25 for u in session.unitList)
+
+    def test_a_bonus_typed_with_a_sign_is_understood(self, gm):
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 40, initiativeBonus="+5")
+        assert all(6 <= u.initiative <= 25 for u in session.unitList)
+
+    def test_a_negative_bonus_is_understood(self, gm):
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 40, initiativeBonus="-2")
+        assert all(-1 <= u.initiative <= 18 for u in session.unitList)
+
+    @pytest.mark.parametrize("bad", ["", None, "abc", "+"])
+    def test_an_unreadable_bonus_counts_as_none(self, gm, bad):
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 40, initiativeBonus=bad)
+        assert all(1 <= u.initiative <= 20 for u in session.unitList)
+
+    def test_they_go_into_the_order_by_their_rolls(self, gm):
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 8, initiativeBonus=3)
+        rolled = [int(u.initiative) for u in session.initiativeList]
+        assert len(rolled) == 8
+        assert rolled == sorted(rolled, reverse=True)
+
+    def test_they_can_be_added_without_joining_the_order(self, gm):
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 5, addToInitiative=False)
+        assert session.initiativeList == []
+        assert len(session.unitList) == 5
+
+    def test_a_single_copy_still_takes_an_exact_initiative(self, gm):
+        """A GM adding one creature often already knows where it goes, so the
+        field keeps the meaning it has always had below two copies."""
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 1,
+                           unit={"charName": "Boss", "initiative": "17"})
+        assert session.unitList[0].initiative == "17"
+
+    def test_wrong_key_cannot_add(self, gm):
+        gm_client, room, _ = gm
+        gm_client.emit("add_units", {
+            "room": room, "gmKey": "wrong", "count": 3, "addToInitiative": False,
+            "initiativeBonus": 0, "unit": {"charName": "Goblin"},
+        })
+        assert mudfinder.ROOMS[room].unitList == []
+
+    def test_unknown_room_is_ignored(self, client):
+        client.emit("add_units", {
+            "room": "no-such-room", "gmKey": GM_KEY, "count": 3,
+            "addToInitiative": False, "initiativeBonus": 0,
+            "unit": {"charName": "Goblin"},
+        })
+        assert client.get_received() == []
+
+    @pytest.mark.parametrize("bad", ["abc", None, 0, -3, ""])
+    def test_a_count_that_is_not_a_usable_number_is_refused(self, gm, bad):
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, bad)
+        assert session.unitList == []
+
+    def test_an_absurd_count_is_clamped(self, gm):
+        """Every copy is a Unit that then goes into every autosave, so a
+        slipped keypress cannot be taken at face value."""
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 100000)
+        assert len(session.unitList) == mudfinder.MAX_UNITS_PER_ADD
+
+
+class TestSharingATokenAcrossCopies:
+    """The token is chosen once for the batch and uploaded with it.
+
+    It cannot be stored when the GM picks it, because the creatures it belongs
+    to do not exist yet and prune_unused_images removes exactly that: an image
+    nothing points at.
+    """
+
+    def add(self, gm_client, room, key, count, token):
+        gm_client.emit("add_units", {
+            "room": room, "gmKey": key, "count": count, "addToInitiative": False,
+            "initiativeBonus": 0, "unit": {"charName": "Goblin", "token": token},
+        })
+        return mudfinder.ROOMS[room]
+
+    def test_an_uploaded_token_is_stored(self, gm):
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 6, PNG_TOKEN)
+        assert len(session.images) == 1
+
+    def test_every_copy_wears_it(self, gm):
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 6, PNG_TOKEN)
+        stored = "get_image.html?room=%s&id=%s" % (room, list(session.images)[0])
+        assert [u.token for u in session.unitList] == [stored] * 6
+
+    def test_they_share_one_copy_of_it(self, gm):
+        """Six creatures holding six identical images would go into every
+        autosave six times."""
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 6, PNG_TOKEN)
+        assert len(session.images) == 1
+
+    def test_it_survives_the_next_prune(self, gm):
+        """Which is what storing it at the picker would not have done."""
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 3, PNG_TOKEN)
+        token_id = list(session.images)[0]
+        gm_client.emit("image_upload", room, "https://example.invalid/map.png",
+                       "mapBackground", "")
+        assert token_id in session.images
+
+    def test_a_linked_token_is_passed_through_untouched(self, gm):
+        gm_client, room, key = gm
+        link = "https://example.invalid/goblin.png"
+        session = self.add(gm_client, room, key, 3, link)
+        assert [u.token for u in session.unitList] == [link] * 3
+        assert session.images == {}
+
+    def test_no_token_is_no_token(self, gm):
+        gm_client, room, key = gm
+        session = self.add(gm_client, room, key, 3, "")
+        assert [u.token for u in session.unitList] == [""] * 3
+
+
+@pytest.fixture
+def browser_style_game(client):
+    """A game whose GM room is genuinely separate from its player room.
+
+    A room is named after the socket that created it, and gmRoom is the socket
+    of the first GM to join. The conftest gm fixture does both from one client,
+    so those two names are the same string there and a GM-only emit reaches
+    everybody. In a browser they are never the same: the lobby page creates the
+    game and gm.html loads as a fresh connection. Anything asserting that a
+    message stopped at the GM has to be set up the way a browser sets it up, or
+    it is asserting nothing.
+
+    Returns (gm_client, room, gmKey).
+    """
+    client.emit("create", {"name": "Test Game", "gmKey": GM_KEY})
+    room = event(client.get_received(), "create_room")["args"][0]["room"]
+    gm_client = join_gm_socket(room)
+    assert mudfinder.ROOMS[room].gmRoom != room
+    yield gm_client, room, GM_KEY
+    if gm_client.is_connected():
+        gm_client.disconnect()
+
+
+def join_gm_socket(room, key=GM_KEY):
+    """A GM view on its own socket, as gm.html is."""
+    gm_client = mudfinder.socketio.test_client(mudfinder.app)
+    gm_client.emit("join_gm", {"room": room, "gmKey": key})
+    gm_client.get_received()
+    return gm_client
+
+
+class TestInitiativeRollsAreTheGMs:
+    """The rolls are reported so the GM can see what the numbers came from.
+
+    Which creature rolled a 3 is not something the party gets to know, so the
+    report goes to the GM's views and no further.
+    """
+
+    def test_the_gm_is_told_what_was_rolled(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        gm_client.emit("add_units", {
+            "room": room, "gmKey": key, "count": 3, "addToInitiative": True,
+            "initiativeBonus": 2, "unit": {"charName": "Goblin"},
+        })
+        chat = event(gm_client.get_received(), "chat")["args"][0]["chat"]
+        assert chat.startswith("Goblin initiative: ")
+        assert chat.count("d20(") == 3
+
+    def test_the_report_shows_the_die_the_bonus_and_the_total(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        gm_client.emit("add_units", {
+            "room": room, "gmKey": key, "count": 100, "addToInitiative": False,
+            "initiativeBonus": 4, "unit": {"charName": "Goblin"},
+        })
+        chat = event(gm_client.get_received(), "chat")["args"][0]["chat"]
+        rolls = chat.split(": ", 1)[1].split(", ")
+        assert len(rolls) == 100
+        assert all(re.fullmatch(r"d20\((\d+)\)\+4 = (\d+)", roll) for roll in rolls)
+
+    def test_the_players_are_not_told(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        gm_client.emit("add_units", {
+            "room": room, "gmKey": key, "count": 3, "addToInitiative": True,
+            "initiativeBonus": 2, "unit": {"charName": "Goblin"},
+        })
+        assert "chat" not in event_names(player.get_received())
+
+    def test_a_second_gm_view_is_told(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        second = join_gm_socket(room, key)
+        second.emit("add_units", {
+            "room": room, "gmKey": key, "count": 2, "addToInitiative": True,
+            "initiativeBonus": 0, "unit": {"charName": "Goblin"},
+        })
+        assert "chat" in event_names(gm_client.get_received())
+
+    def test_a_single_creature_is_not_reported(self, browser_style_game):
+        """Nothing was rolled, so there is nothing to report."""
+        gm_client, room, key = browser_style_game
+        gm_client.emit("add_units", {
+            "room": room, "gmKey": key, "count": 1, "addToInitiative": True,
+            "initiativeBonus": 0, "unit": {"charName": "Boss", "initiative": "17"},
+        })
+        assert "chat" not in event_names(gm_client.get_received())

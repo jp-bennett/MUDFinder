@@ -765,23 +765,85 @@ function requestInit() {
     }
 }
 
+function unitCount() {
+    // A blank or unreadable box means the one creature the form used to add.
+    var typed = parseInt(document.getElementById("unitCount").value, 10);
+    if (isNaN(typed) || typed < 1) {
+        return 1;
+    }
+    return typed;
+}
+
+function refreshInitiativeLabel() {
+    // The same box, but adding several creatures at once it holds the modifier
+    // they each roll against rather than a count they would all share.
+    var multiple = unitCount() > 1;
+    document.getElementById("unitInitLabel").innerText =
+        multiple ? "Initiative Bonus (d20 rolled for each):" : "Initiative Count:";
+}
+
+function previewUnitToken() {
+    // The field holds either a link or, once a file has been chosen, the whole
+    // image as a data URI. Neither is worth reading, so show the picture.
+    var value = document.getElementById("unitToken").value;
+    var preview = document.getElementById("unitTokenPreview");
+    if (value) {
+        preview.src = value;
+        preview.style.display = "inline-block";
+    } else {
+        // Removed rather than blanked: an empty src is a request for the page
+        // itself in some browsers.
+        preview.removeAttribute("src");
+        preview.style.display = "none";
+    }
+}
+
+function chooseUnitToken() {
+    try {
+        // Returned rather than attached to anything: the creatures this token
+        // belongs to do not exist yet, and an image stored before they do
+        // would be pruned as unused by the next upload.
+        imageUploadReturning("unitTokenField", function (image) {
+            document.getElementById("unitToken").value = image;
+            previewUnitToken();
+        });
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
 function addUnit() {
     try {
         var unit = {};
         unit.charName = document.getElementById("unitName").value;
         unit.token = document.getElementById("unitToken").value;
         unit.charShortName = document.getElementById("unitShortName").value;
-        unit.initiative = document.getElementById("unitInit").value;
         unit.controlledBy = document.getElementById("unitControlledBy").value;
         unit.color = document.getElementById("unitColor").value;
         unit.type = document.getElementById("unitType").value;
         unit.HP = parseInt(document.getElementById("unitHP").value);
         unit.maxHP = unit.HP;
-        socket.emit('add_unit', {addToInitiative: document.getElementById("addToInit").checked ,unit: unit, room: room, gmKey: gmKey});
+        var count = unitCount();
+        var typedInitiative = document.getElementById("unitInit").value;
+        // One creature keeps the old meaning, an exact initiative count. More
+        // than one and the same box is the modifier the server rolls against.
+        unit.initiative = count > 1 ? 0 : typedInitiative;
+        socket.emit('add_units', {
+            addToInitiative: document.getElementById("addToInit").checked,
+            unit: unit,
+            count: count,
+            initiativeBonus: count > 1 ? typedInitiative : 0,
+            room: room,
+            gmKey: gmKey,
+        });
         document.getElementById("unitName").value = "";
         document.getElementById("unitName").focus();
         document.getElementById("unitShortName").value = "";
         document.getElementById("unitInit").value = "";
+        document.getElementById("unitToken").value = "";
+        document.getElementById("unitCount").value = "1";
+        previewUnitToken();
+        refreshInitiativeLabel();
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
