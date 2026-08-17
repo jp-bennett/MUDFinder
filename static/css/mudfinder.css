@@ -421,6 +421,50 @@ width:100%;
     background: rgba(255, 255, 255, 0.65);
     pointer-events: none;
 }
+/* Pathfinder light levels, painted by the GM and seen by everyone. Its own
+   element over the tile for the same reasons as the undiscovered wash above:
+   the tile's background belongs to its type and its opacity to Show Features.
+   Normal light has no class and no element. See drawLightWash in shared.js. */
+/* Above the tile, unlike the undiscovered wash, which sits behind one and
+   shows through its transparency. That works for a white wash but cannot work
+   for a dark one: a tile is 0.6 opaque over the default parchment, so even a
+   fully opaque black behind it comes out mid-grey. An explicit z-index rather
+   than a position in the document, because the wash is appended tile by tile
+   and its order against everything else is not something to depend on. */
+.lightWash {
+    border: 1px solid transparent;
+    pointer-events: none;
+    z-index: 4;
+}
+.lightBright {
+    background: rgba(255, 236, 160, 0.28);
+}
+.lightDim {
+    background: rgba(6, 10, 34, 0.40);
+}
+.lightDarkness {
+    background: rgba(1, 2, 10, 0.72);
+}
+/* The GM's own switch, for getting the tint out of the way while painting
+   terrain under it. One class on the map rather than the stylesheet surgery
+   that Show Features does, because there is nothing here to keep in step. */
+#mapGraphic.hideLight .lightWash {
+    display: none;
+}
+/* Palette swatches for the four levels. Solid, not the translucent wash
+   colours above -- at 20 pixels square a 45% tint reads as nothing at all. */
+.swatchBright {
+    background: rgb(255, 241, 176);
+}
+.swatchNormal {
+    background: white;
+}
+.swatchDim {
+    background: rgb(96, 102, 130);
+}
+.swatchDarkness {
+    background: rgb(20, 22, 34);
+}
 .unseenTileTransparent {
     background: transparent;
     border:none;

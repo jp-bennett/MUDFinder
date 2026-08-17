@@ -680,6 +680,24 @@ function seenOverlayToggle(obj) {
     }
 }
 
+function lightToggle(obj) {
+    // Hides the light tint so the GM can see the terrain under a dark cavern
+    // they have just painted. One class on the map, and the wash elements stay
+    // exactly where they are -- unlike Show Features, which edits the
+    // stylesheet, and unlike the discovered overlay, which redraws the map.
+    // There is nothing here that could fall out of step, which is the point.
+    try {
+        mapGraphic = document.getElementById("mapGraphic");
+        if (obj.checked) {
+            mapGraphic.classList.remove("hideLight");
+        } else {
+            mapGraphic.classList.add("hideLight");
+        }
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
 function featuresToggle(obj) {
     try {
         //console.log(obj);
