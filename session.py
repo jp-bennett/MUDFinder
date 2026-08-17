@@ -234,6 +234,14 @@ class Session(object):
                     tmpMapLine[x] = {"tile": "wallTile", "walkable": False}
                 if not self.mapData["mapArray"][y][x]["seen"]:
                     tmpMapLine[x] = {"tile": "unseenTile", "walkable": False}
+                # After the masking, deliberately, and only where a player has
+                # been. Before it, an undiscovered square would carry its light
+                # level and draw the shape of an unexplored room through the
+                # fog. After it, a secret door still matches the wall it is
+                # pretending to be -- the one un-dimmed square in a dim wall
+                # would be a tell.
+                if self.mapData["mapArray"][y][x]["seen"] and "light" in self.mapData["mapArray"][y][x]:
+                    tmpMapLine[x]["light"] = self.mapData["mapArray"][y][x]["light"]
             tmpMapData["mapArray"].append(tmpMapLine)
         return tmpMapData
 

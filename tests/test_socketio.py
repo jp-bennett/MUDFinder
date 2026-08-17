@@ -1174,3 +1174,291 @@ class TestInitiativeRollsAreTheGMs:
             "initiativeBonus": 0, "unit": {"charName": "Boss", "initiative": "17"},
         })
         assert "chat" not in event_names(gm_client.get_received())
+
+
+class TestPaintingLight:
+    """Pathfinder light levels, painted a square at a time.
+
+    Pathfinder keeps bright and normal apart where 5e folds them together,
+    because they drive different rules -- dim light gives concealment, darkness
+    blinds anyone without darkvision, bright light dazzles the light-sensitive.
+    So there are four levels to paint, and normal is the one every square
+    starts as.
+    """
+
+    def mapped(self, gm_client, room, key, width=4, height=3, discovered=True):
+        gm_client.emit("map_generate", {
+            "room": room, "gmKey": key,
+            "mapWidth": width, "mapHeight": height, "discovered": discovered,
+        })
+        gm_client.get_received()
+        return mudfinder.ROOMS[room]
+
+    def paint(self, gm_client, room, key, tool, *squares):
+        gm_client.emit("map_edit", {
+            "room": room, "gmKey": key,
+            "tiles": [{"newTile": tool, "xCoord": x, "yCoord": y} for x, y in squares],
+        })
+
+    def test_a_new_map_is_lit(self, gm):
+        """Normal light is the absence of the key, so a fresh square carries
+        nothing at all -- which is also what makes every map that existed
+        before this feature a fully lit one."""
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        assert "light" not in session.mapData["mapArray"][0][0]
+
+    @pytest.mark.parametrize("tool,level", [
+        ("lightBright", "bright"),
+        ("lightDim", "dim"),
+        ("lightDarkness", "darkness"),
+    ])
+    def test_painting_a_level(self, gm, tool, level):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, tool, (1, 1))
+        assert session.mapData["mapArray"][1][1]["light"] == level
+
+    def test_painting_normal_removes_the_key(self, gm):
+        """Rather than storing "normal", so that there is exactly one way to
+        spell an unlit square."""
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "lightDim", (1, 1))
+        self.paint(gm_client, room, key, "lightNormal", (1, 1))
+        assert "light" not in session.mapData["mapArray"][1][1]
+
+    def test_painting_normal_over_nothing_is_harmless(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "lightNormal", (1, 1))
+        assert "light" not in session.mapData["mapArray"][1][1]
+
+    def test_a_level_can_be_changed(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "lightDim", (1, 1))
+        self.paint(gm_client, room, key, "lightBright", (1, 1))
+        assert session.mapData["mapArray"][1][1]["light"] == "bright"
+
+    def test_a_marquee_paints_every_square_in_it(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "lightDarkness", (0, 2), (1, 2), (2, 2), (3, 2))
+        assert [tile.get("light") for tile in session.mapData["mapArray"][2]] == ["darkness"] * 4
+
+    def test_an_unrecognised_level_is_ignored(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "lightPuce", (1, 1))
+        assert "light" not in session.mapData["mapArray"][1][1]
+
+    def test_light_leaves_the_tile_type_alone(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "wallTile", (1, 1))
+        self.paint(gm_client, room, key, "lightDim", (1, 1))
+        tile = session.mapData["mapArray"][1][1]
+        assert (tile["tile"], tile["walkable"], tile["light"]) == ("wallTile", False, "dim")
+
+    def test_the_tile_type_leaves_light_alone(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "lightDim", (1, 1))
+        self.paint(gm_client, room, key, "wallTile", (1, 1))
+        assert session.mapData["mapArray"][1][1]["light"] == "dim"
+
+    @pytest.mark.parametrize("tool,expected", [
+        ("wallTile", "wallTile"),
+        ("floorTile", "floorTile"),
+        ("stairsUp", "stairsUp"),
+    ])
+    def test_the_other_tools_still_dispatch(self, gm, tool, expected):
+        """map_edit dispatches on substrings of newTile, so a light branch in
+        front of that chain could swallow the tools that follow it."""
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, tool, (1, 1))
+        assert session.mapData["mapArray"][1][1]["tile"] == expected
+
+    def test_the_secret_toggle_still_works(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "secret", (1, 1))
+        assert session.mapData["mapArray"][1][1]["secret"] is True
+
+    def test_light_survives_a_resize(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "lightDim", (1, 1))
+        gm_client.emit("map_resize", {"room": room, "gmKey": key, "mapWidth": 8, "mapHeight": 6})
+        assert session.mapData["mapArray"][1][1]["light"] == "dim"
+
+    def test_light_rides_along_into_a_saved_encounter(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "lightDarkness", (1, 1))
+        gm_client.emit("save_encounter", {
+            "room": room, "gmKey": key, "encounterName": "The Cavern"})
+        saved = session.savedEncounters["The Cavern"]["mapData"]["mapArray"]
+        assert saved[1][1]["light"] == "darkness"
+
+    def test_generating_a_new_map_starts_lit_again(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "lightDarkness", (1, 1))
+        self.mapped(gm_client, room, key)
+        assert all("light" not in tile for row in session.mapData["mapArray"] for tile in row)
+
+    def test_the_gm_is_sent_the_change(self, gm):
+        gm_client, room, key = gm
+        self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "lightDim", (1, 1))
+        updated = event(gm_client.get_received(), "gm_map_update")["args"][0]["mapArray"]
+        assert [tile["light"] for tile in updated] == ["dim"]
+
+    def test_wrong_key_cannot_paint(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        gm_client.emit("map_edit", {
+            "room": room, "gmKey": "wrong",
+            "tiles": [{"newTile": "lightDim", "xCoord": 1, "yCoord": 1}],
+        })
+        assert "light" not in session.mapData["mapArray"][1][1]
+
+    def test_unknown_room_is_ignored(self, client):
+        client.emit("map_edit", {
+            "room": "no-such-room", "gmKey": GM_KEY,
+            "tiles": [{"newTile": "lightDim", "xCoord": 0, "yCoord": 0}],
+        })
+        assert client.get_received() == []
+
+
+class TestLightAndTheFogOfWar:
+    """What the players are told about light, and what they are not.
+
+    A light level on a square nobody has explored would draw the shape of the
+    room through the fog, which is the whole thing the fog is for.
+    """
+
+    def lit_map(self, gm_client, room, key):
+        gm_client.emit("map_generate", {
+            "room": room, "gmKey": key,
+            "mapWidth": 4, "mapHeight": 3, "discovered": False,
+        })
+        gm_client.get_received()
+        session = mudfinder.ROOMS[room]
+        for x, y in [(0, 0), (1, 1), (2, 2)]:
+            session.mapData["mapArray"][y][x]["seen"] = True
+        return session
+
+    def paint(self, gm_client, room, key, tool, x, y):
+        gm_client.emit("map_edit", {
+            "room": room, "gmKey": key,
+            "tiles": [{"newTile": tool, "xCoord": x, "yCoord": y}],
+        })
+
+    def test_a_seen_square_carries_its_light(self, gm):
+        gm_client, room, key = gm
+        session = self.lit_map(gm_client, room, key)
+        session.mapData["mapArray"][0][0]["light"] = "dim"
+        assert session.player_map()["mapArray"][0][0]["light"] == "dim"
+
+    def test_an_unseen_square_carries_none(self, gm):
+        gm_client, room, key = gm
+        session = self.lit_map(gm_client, room, key)
+        session.mapData["mapArray"][0][3]["light"] = "darkness"
+        assert "light" not in session.player_map()["mapArray"][0][3]
+
+    def test_a_secret_door_is_lit_like_the_wall_it_pretends_to_be(self, gm):
+        """The masking replaces it with a plain wall. The one un-dimmed square
+        in a dim wall would be a tell."""
+        gm_client, room, key = gm
+        session = self.lit_map(gm_client, room, key)
+        tile = session.mapData["mapArray"][1][1]
+        tile["secret"] = True
+        tile["light"] = "dim"
+        masked = session.player_map()["mapArray"][1][1]
+        assert masked["tile"] == "wallTile"
+        assert masked["light"] == "dim"
+
+    def test_a_live_paint_reaches_the_players(self, gm):
+        gm_client, room, key = gm
+        self.lit_map(gm_client, room, key)
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        self.paint(gm_client, room, key, "lightDim", 0, 0)
+        updated = event(player.get_received(), "player_map_update")["args"][0]["mapArray"]
+        assert [tile["light"] for tile in updated] == ["dim"]
+
+    def test_a_live_paint_on_an_unseen_square_does_not(self, gm):
+        """This mask edits the tile in place rather than rebuilding it, so
+        anything not explicitly removed reaches the players untouched."""
+        gm_client, room, key = gm
+        self.lit_map(gm_client, room, key)
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        self.paint(gm_client, room, key, "lightDarkness", 3, 0)
+        updated = event(player.get_received(), "player_map_update")["args"][0]["mapArray"]
+        assert updated[0]["tile"] == "unseenTile"
+        assert "light" not in updated[0]
+
+    def test_the_gm_sees_what_the_players_do_not(self, gm):
+        """The contrast, so the two cannot quietly converge."""
+        gm_client, room, key = gm
+        self.lit_map(gm_client, room, key)
+        self.paint(gm_client, room, key, "lightDarkness", 3, 0)
+        updated = event(gm_client.get_received(), "gm_map_update")["args"][0]["mapArray"]
+        assert updated[0]["light"] == "darkness"
+
+    def test_discovering_a_square_hands_over_its_light(self, gm):
+        """Painted while unexplored, revealed later -- the level was on the
+        server the whole time and arrives with the reveal."""
+        gm_client, room, key = gm
+        session = self.lit_map(gm_client, room, key)
+        session.mapData["mapArray"][0][3]["light"] = "darkness"
+        assert "light" not in session.player_map()["mapArray"][0][3]
+        session.mapData["mapArray"][0][3]["seen"] = True
+        assert session.player_map()["mapArray"][0][3]["light"] == "darkness"
+
+
+class TestUpdatingVision:
+    def add_goblin(self, gm_client, room, key):
+        gm_client.emit("add_unit", {
+            "room": room, "gmKey": key, "addToInitiative": False,
+            "unit": {"charName": "Goblin"},
+        })
+        gm_client.get_received()
+        return mudfinder.ROOMS[room].unitList[0]
+
+    def update(self, gm_client, room, key, **fields):
+        payload = {"room": room, "gmKey": key, "unitNum": 0}
+        payload.update(fields)
+        gm_client.emit("update_unit", payload)
+
+    def test_the_gm_can_give_a_creature_darkvision(self, gm):
+        gm_client, room, key = gm
+        goblin = self.add_goblin(gm_client, room, key)
+        self.update(gm_client, room, key, darkvision=True, lowLight=True)
+        assert (goblin.darkvision, goblin.lowLight) == (True, True)
+
+    def test_the_setting_reaches_the_gm_view(self, gm):
+        """It is to_json that carries this, and the field used to be missing
+        from it -- so the checkbox reverted on the next update."""
+        gm_client, room, key = gm
+        self.add_goblin(gm_client, room, key)
+        self.update(gm_client, room, key, darkvision=True)
+        state = event(gm_client.get_received(), "gm_update")["args"][0]
+        assert state["unitList"][0]["darkvision"] is True
+
+    def test_an_update_that_omits_a_field_leaves_it_alone(self, gm):
+        """A tab opened before a field was added to the sheet should not be
+        able to take the handler down, or silently blank the value."""
+        gm_client, room, key = gm
+        goblin = self.add_goblin(gm_client, room, key)
+        self.update(gm_client, room, key, darkvision=True)
+        self.update(gm_client, room, key, color="red")
+        assert goblin.darkvision is True
+        assert goblin.color == "red"

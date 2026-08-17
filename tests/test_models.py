@@ -309,3 +309,100 @@ class TestBackgroundAlignmentPersistence:
         for key in BACKGROUND_ALIGNMENT_KEYS:
             del aligned.mapData[key]
         assert not any(key in aligned.player_map() for key in BACKGROUND_ALIGNMENT_KEYS)
+
+
+class TestLightLevelPersistence:
+    """A painted light level is a key on the tile, and its absence is normal.
+
+    Absence rather than an explicit "normal" is what makes every map saved
+    before the feature existed a fully lit one, with no migration to run.
+    """
+
+    @pytest.fixture
+    def lit(self):
+        session = Session("room-1", "key-1", "Cavern")
+        session.mapData["mapArray"] = [[
+            {"tile": "floorTile", "walkable": True, "seen": True,
+             "secret": False, "x": x, "y": 0}
+            for x in range(3)]]
+        session.mapData["mapArray"][0][0]["light"] = "darkness"
+        session.mapData["mapArray"][0][1]["light"] = "bright"
+        return session
+
+    def test_light_survives_a_save_and_load(self, lit):
+        restored = Session("room-1", "key-1", "placeholder")
+        restored.from_json(lit.gen_save())
+        row = restored.mapData["mapArray"][0]
+        assert [tile.get("light") for tile in row] == ["darkness", "bright", None]
+
+    def test_a_normally_lit_square_stores_nothing(self, lit):
+        assert "light" not in lit.mapData["mapArray"][0][2]
+
+    def test_a_save_written_before_the_feature_loads_lit(self, lit):
+        """The compatibility hinge. Every tile in an older save arrives without
+        the key, and every read has to cope with that rather than default it
+        in -- an unlit map is exactly what those games were."""
+        blob = lit.gen_save()
+        for tile in blob["mapData"]["mapArray"][0]:
+            tile.pop("light", None)
+        restored = Session("room-1", "key-1", "placeholder")
+        restored.from_json(blob)
+        assert all("light" not in tile for tile in restored.mapData["mapArray"][0])
+
+    def test_players_are_given_the_light_they_can_see(self, lit):
+        row = lit.player_map()["mapArray"][0]
+        assert [tile.get("light") for tile in row] == ["darkness", "bright", None]
+
+    def test_players_are_given_none_of_the_light_they_cannot(self, lit):
+        for tile in lit.mapData["mapArray"][0]:
+            tile["seen"] = False
+        assert all("light" not in tile for tile in lit.player_map()["mapArray"][0])
+
+
+class TestVisionFields:
+    """How a creature copes with the light on the map.
+
+    The checkboxes for these have been on the GM's sheet, and on the wire, and
+    assigned by the update handler -- but the fields were in neither Unit's
+    constructor nor its to_json, so the value reached no client and survived no
+    save. The GM's setting appeared to revert the moment the next update landed.
+    """
+
+    def test_a_creature_starts_with_neither(self, ):
+        unit = make_unit()
+        assert unit.darkvision is False
+        assert unit.lowLight is False
+
+    def test_they_can_be_set(self):
+        unit = make_unit(darkvision=True, lowLight=True)
+        assert unit.darkvision is True
+        assert unit.lowLight is True
+
+    def test_they_reach_the_clients(self):
+        """to_json is what gm_update carries, so a field missing from it is a
+        field the sheet can never show."""
+        saved = make_unit(darkvision=True, lowLight=True).to_json()
+        assert saved["darkvision"] is True
+        assert saved["lowLight"] is True
+
+    def test_they_survive_a_round_trip(self):
+        unit = Unit(make_unit(darkvision=True, lowLight=True).to_json())
+        assert unit.darkvision is True
+        assert unit.lowLight is True
+
+    def test_the_other_two_that_had_the_same_defect(self):
+        saved = make_unit(trapfinding=True, permanentAbilities="Regeneration 5").to_json()
+        assert saved["trapfinding"] is True
+        assert saved["permanentAbilities"] == "Regeneration 5"
+
+    def test_players_have_them_too(self):
+        """Player subclasses Unit, so the party gets the same fields."""
+        assert make_player(darkvision=True).darkvision is True
+
+    def test_a_unit_saved_before_the_fields_existed_loads(self):
+        saved = make_unit().to_json()
+        for key in ["darkvision", "lowLight", "trapfinding", "permanentAbilities"]:
+            del saved[key]
+        unit = Unit(saved)
+        assert unit.darkvision is False
+        assert unit.permanentAbilities == ""

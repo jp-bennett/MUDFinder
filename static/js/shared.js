@@ -227,6 +227,50 @@ function drawUndiscoveredWash(x, y) {
     document.getElementById("mapGraphic").appendChild(tileWash);
 }
 
+// The light levels a square can carry, mapped to the class that tints it.
+// Keep in step with LIGHT_TOOLS in mudfinder.py. Normal light is the absence of
+// a level, so it has no entry and no element.
+var LIGHT_WASH_CLASSES = {
+    bright: "lightBright",
+    dim: "lightDim",
+    darkness: "lightDarkness",
+};
+
+function clearLightWash(x, y) {
+    lightWash = document.getElementById(`light${x},${y}`);
+    if (lightWash) {
+        lightWash.remove();
+    }
+}
+
+function drawLightWash(x, y, level) {
+    // Tints a square by its Pathfinder light level, for GM and players alike.
+    //
+    // Built the same way as the undiscovered wash immediately above, and for
+    // the same two reasons -- the tile's background belongs to its type and its
+    // opacity belongs to Show Features, so a tint written onto the tile would
+    // either erase what the tile was drawing or vanish with the feature layer.
+    //
+    // It differs from that wash in one way: it is stacked above the tile rather
+    // than behind it. A white wash reads perfectly well through a tile that is
+    // 0.6 opaque, but a dark one cannot -- behind the tile, even solid black
+    // comes out mid-grey, so darkness and dim were indistinguishable. See the
+    // z-index on .lightWash.
+    clearLightWash(x, y);
+    if (!LIGHT_WASH_CLASSES[level]) {
+        return;
+    }
+    lightWash = document.createElement("div");
+    lightWash.id = `light${x},${y}`;
+    lightWash.className = "lightWash " + LIGHT_WASH_CLASSES[level];
+    lightWash.style.position = "absolute";
+    lightWash.style.top = y * zoomSize + "px";
+    lightWash.style.left = x * zoomSize + "px";
+    lightWash.style.width = zoomSize - 2 + "px";
+    lightWash.style.height = zoomSize - 2 + "px";
+    document.getElementById("mapGraphic").appendChild(lightWash);
+}
+
 function drawSingleTile(mapData, x, y) {
     mapArray = mapData.mapArray
     newMapTile = document.createElement("div");
@@ -337,6 +381,10 @@ function drawSingleTile(mapData, x, y) {
             else {newMapTile.style.background += "linear-gradient(to bottom, transparent calc(80%), black calc(80%) calc(100%))";}
         }
     }
+    // Light first, so the undiscovered wash lands on top of it. drawLightWash
+    // clears any previous one itself, which is what returns a square repainted
+    // back to normal light to having no element at all.
+    drawLightWash(x, y, mapArray[y][x].light);
     // Any wash left from an earlier render of this tile goes regardless of
     // what happens next, so that a tile which has just been discovered stops
     // being marked. updateMap redraws one tile at a time without clearing the

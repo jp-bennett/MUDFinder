@@ -1443,3 +1443,425 @@ class TestWhoSeesTheRolls:
 class TestTheEncounterFormStillWorks:
     def test_nothing_raised(self, encounter):
         assert encounter["errors"] == []
+
+
+LIGHT_PROBE_JS = """
+(xy) => {
+  const [x, y] = xy;
+  const tile = document.getElementById(`tile${x},${y}`);
+  const wash = document.getElementById(`light${x},${y}`);
+  return {
+    tileBackground: tile.style.background,
+    tileOpacity: getComputedStyle(tile).opacity,
+    tileClass: tile.className,
+    washClass: wash ? wash.className : null,
+    washColor: wash ? getComputedStyle(wash).backgroundColor : null,
+    washPointerEvents: wash ? getComputedStyle(wash).pointerEvents : null,
+    washDisplay: wash ? getComputedStyle(wash).display : null,
+    washZ: wash ? getComputedStyle(wash).zIndex : null,
+    tileZ: getComputedStyle(tile).zIndex,
+    washCount: document.querySelectorAll("#mapGraphic .lightWash").length,
+  };
+}
+"""
+
+LIGHT_LIST_JS = """
+() => Array.from(document.querySelectorAll("#mapGraphic .lightWash"))
+       .map(element => element.id + ":" + element.className).sort()
+"""
+
+
+def paint_square(page, tool, x, y):
+    """Pick a tool from the palette and click a square, as a GM does."""
+    page.click("#" + tool)
+    page.click('[id="tile%d,%d"]' % (x, y))
+
+
+@pytest.fixture(scope="module")
+def lighting(browser, live_server):
+    """Paint light levels through the real palette and measure what happens.
+
+    Light is a wash over the square, and this codebase has already learned the
+    hard way what a wash must not do: the tile's background belongs to its type
+    and the tile's opacity belongs to Show Features, so an overlay that touches
+    either one erases what the tile was drawing or vanishes with the feature
+    layer. Everything below is that lesson applied to a second overlay.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 950})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "lighting")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+
+        page.fill("#mapWidth", "5")
+        page.fill("#mapHeight", "4")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 20",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages = {"unlit": page.evaluate(LIGHT_PROBE_JS, [1, 1])}
+
+        paint_square(page, "lightDim", 1, 1)
+        page.wait_for_function(
+            "() => document.getElementById('light1,1') !== null",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["dim"] = page.evaluate(LIGHT_PROBE_JS, [1, 1])
+
+        # Paint a wall underneath. Proves the wash does not swallow the click,
+        # and that a redraw of the tile keeps the wash.
+        paint_square(page, "wallTile", 1, 1)
+        page.wait_for_function(
+            """() => document.getElementById("tile1,1").className.includes("wallTile")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["wallUnderneath"] = page.evaluate(LIGHT_PROBE_JS, [1, 1])
+
+        paint_square(page, "lightBright", 0, 0)
+        paint_square(page, "lightDarkness", 2, 2)
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .lightWash').length === 3",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["bright"] = page.evaluate(LIGHT_PROBE_JS, [0, 0])
+        stages["darkness"] = page.evaluate(LIGHT_PROBE_JS, [2, 2])
+
+        # Back to normal light: the element has to go, not merely turn clear.
+        paint_square(page, "lightNormal", 1, 1)
+        page.wait_for_function(
+            "() => document.getElementById('light1,1') === null",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["backToNormal"] = page.evaluate(LIGHT_PROBE_JS, [1, 1])
+
+        page.set_checked("#showLight", False)
+        page.wait_for_timeout(300)
+        stages["lightHidden"] = page.evaluate(LIGHT_PROBE_JS, [0, 0])
+        page.set_checked("#showLight", True)
+        page.wait_for_timeout(300)
+        stages["lightShown"] = page.evaluate(LIGHT_PROBE_JS, [0, 0])
+
+        # The discovered overlay redraws the whole map when it is toggled.
+        page.set_checked("#seenOverlay", False)
+        page.wait_for_timeout(400)
+        stages["overlayOff"] = page.evaluate(LIGHT_PROBE_JS, [0, 0])
+        page.set_checked("#seenOverlay", True)
+        page.wait_for_timeout(400)
+        stages["overlayOn"] = page.evaluate(LIGHT_PROBE_JS, [0, 0])
+
+        # Show Features drives the tile's own opacity to zero.
+        page.set_checked("#showFeatures", False)
+        page.wait_for_timeout(400)
+        stages["featuresOff"] = page.evaluate(LIGHT_PROBE_JS, [0, 0])
+        page.set_checked("#showFeatures", True)
+        page.wait_for_timeout(400)
+
+        # And over an uploaded battlemap, where the tile is fully transparent.
+        page.evaluate(
+            """(url) => socket.emit("image_upload", room, url, "mapBackground", "")""",
+            "https://example.invalid/cavern.png",
+        )
+        page.wait_for_timeout(1200)
+        page.evaluate("() => drawMap(mapObject)")
+        page.wait_for_timeout(400)
+        stages["overBattlemap"] = page.evaluate(LIGHT_PROBE_JS, [0, 0])
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestPaintingLightLevels:
+    def test_a_fresh_square_has_no_wash(self, lighting):
+        assert lighting["unlit"]["washClass"] is None
+
+    def test_painting_dim_adds_one(self, lighting):
+        assert lighting["dim"]["washClass"] == "lightWash lightDim"
+
+    def test_bright_and_darkness_are_told_apart(self, lighting):
+        assert lighting["bright"]["washClass"] == "lightWash lightBright"
+        assert lighting["darkness"]["washClass"] == "lightWash lightDarkness"
+        assert lighting["bright"]["washColor"] != lighting["darkness"]["washColor"]
+
+    def test_the_dark_levels_are_told_apart_from_each_other(self, lighting):
+        assert lighting["dim"]["washColor"] != lighting["darkness"]["washColor"]
+
+    def test_the_wash_is_stacked_above_the_tile(self, lighting):
+        """The one thing measuring classes and colours does not catch. Behind
+        the tile -- where the undiscovered wash sits -- a dark tint is filtered
+        through a tile that is 0.6 opaque, and even solid black comes out
+        mid-grey. Dim and darkness were indistinguishable on screen while every
+        other assertion here passed."""
+        assert int(lighting["darkness"]["washZ"]) > int(lighting["darkness"]["tileZ"])
+
+    def test_painting_normal_removes_the_element(self, lighting):
+        """Not merely makes it transparent -- a stale overlay div outlives
+        every redraw, which is a bug this map has had before."""
+        assert lighting["backToNormal"]["washClass"] is None
+        assert lighting["backToNormal"]["washCount"] == 2
+
+
+class TestTheLightWashLeavesTheTileAlone:
+    """The rule the discovered overlay took four attempts to learn."""
+
+    def test_it_does_not_touch_the_tiles_background(self, lighting):
+        """Floors, doors, stairs and thin walls all paint through it."""
+        assert lighting["dim"]["tileBackground"] == lighting["unlit"]["tileBackground"]
+
+    def test_it_does_not_touch_the_tiles_opacity(self, lighting):
+        """That belongs to Show Features."""
+        assert lighting["dim"]["tileOpacity"] == lighting["unlit"]["tileOpacity"]
+
+    def test_it_does_not_touch_the_tiles_classes(self, lighting):
+        assert lighting["dim"]["tileClass"] == lighting["unlit"]["tileClass"]
+
+    def test_it_does_not_swallow_clicks(self, lighting):
+        """The GM has to be able to paint the terrain under a dark cavern."""
+        assert lighting["dim"]["washPointerEvents"] == "none"
+        assert "wallTile" in lighting["wallUnderneath"]["tileClass"]
+
+    def test_the_wash_survives_the_tile_being_repainted(self, lighting):
+        """updateMap replaces the tile element; the wash has to come back."""
+        assert lighting["wallUnderneath"]["washClass"] == "lightWash lightDim"
+
+    def test_no_wash_is_left_behind(self, lighting):
+        assert lighting["overBattlemap"]["washCount"] == 2
+
+
+class TestLightComposesWithTheOtherOverlays:
+    def test_the_discovered_overlay_redraw_keeps_the_light(self, lighting):
+        assert lighting["overlayOff"]["washClass"] == "lightWash lightBright"
+        assert lighting["overlayOn"]["washClass"] == "lightWash lightBright"
+
+    def test_show_features_does_not_take_the_light_with_it(self, lighting):
+        """It hides the feature layer by zeroing the tile's opacity. Anything
+        living on the tile goes with it; this does not live on the tile."""
+        assert lighting["featuresOff"]["tileOpacity"] == "0"
+        assert lighting["featuresOff"]["washClass"] == "lightWash lightBright"
+
+    def test_the_tint_lands_over_an_uploaded_battlemap(self, lighting):
+        """Where the tile itself is fully transparent, so the wash is tinting
+        the artwork rather than the tile."""
+        assert lighting["overBattlemap"]["tileOpacity"] == "0"
+        assert lighting["overBattlemap"]["washClass"] == "lightWash lightBright"
+
+
+class TestTheShowLightSwitch:
+    def test_it_hides_the_tint(self, lighting):
+        assert lighting["lightHidden"]["washDisplay"] == "none"
+
+    def test_it_leaves_the_elements_alone(self, lighting):
+        """One class on the map, so there is nothing to fall out of step."""
+        assert lighting["lightHidden"]["washCount"] == 2
+
+    def test_it_brings_the_tint_back(self, lighting):
+        assert lighting["lightShown"]["washDisplay"] == "block"
+
+
+class TestLightingRaisedNothing:
+    def test_nothing_raised(self, lighting):
+        assert lighting["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def lit_player_view(browser, live_server):
+    """What a player is shown of the GM's lighting.
+
+    The level of a square nobody has explored would draw the shape of the room
+    through the fog, which is what the fog is for.
+    """
+    context = browser.new_context(viewport={"width": 1400, "height": 900})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append("gm: " + str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "lit player view")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1) for pair in page.url.split("?", 1)[1].split("&"))["room"]
+
+        page.fill("#mapWidth", "5")
+        page.fill("#mapHeight", "4")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 20",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        # Discover everything except the far corner, which stays unexplored.
+        page.evaluate(
+            """() => { for (let y = 0; y < 4; y++) for (let x = 0; x < 5; x++) {
+                 if (x === 4 && y === 0) continue;
+                 socket.emit("map_edit", {room: room, gmKey: gmKey,
+                   tiles: [{newTile: "seen", xCoord: x, yCoord: y}]});
+               } }"""
+        )
+        page.wait_for_timeout(1500)
+
+        paint_square(page, "lightDarkness", 1, 1)
+        paint_square(page, "lightBright", 3, 3)
+        paint_square(page, "lightDarkness", 4, 0)   # the unexplored square
+        page.wait_for_timeout(800)
+        stages = {"gm": page.evaluate(LIGHT_LIST_JS)}
+
+        player = context.new_page()
+        player.on("pageerror", lambda error: errors.append("player: " + str(error)))
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        player.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .lightWash').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["playerOnJoin"] = player.evaluate(LIGHT_LIST_JS)
+
+        # A paint made while the player is watching.
+        paint_square(page, "lightDim", 0, 0)
+        player.wait_for_function(
+            "() => document.getElementById('light0,0') !== null",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["playerAfterLivePaint"] = player.evaluate(LIGHT_LIST_JS)
+        # Waited for separately: the GM page is in the background now that the
+        # player page exists, and a backgrounded tab is throttled enough that
+        # it can still be a beat behind one that is on screen.
+        page.wait_for_function(
+            "() => document.getElementById('light0,0') !== null",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["gmAfterLivePaint"] = page.evaluate(LIGHT_LIST_JS)
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestWhatThePlayersSeeOfTheLight:
+    def test_the_gm_painted_four_squares(self, lit_player_view):
+        assert len(lit_player_view["gmAfterLivePaint"]) == 4
+
+    def test_the_player_is_shown_the_explored_ones(self, lit_player_view):
+        assert "light1,1:lightWash lightDarkness" in lit_player_view["playerOnJoin"]
+        assert "light3,3:lightWash lightBright" in lit_player_view["playerOnJoin"]
+
+    def test_the_player_is_not_shown_the_unexplored_one(self, lit_player_view):
+        """It would draw the shape of a room nobody has been in."""
+        assert "light4,0:lightWash lightDarkness" in lit_player_view["gm"]
+        assert not any("light4,0" in wash for wash in lit_player_view["playerOnJoin"])
+
+    def test_a_live_paint_reaches_the_player(self, lit_player_view):
+        assert "light0,0:lightWash lightDim" in lit_player_view["playerAfterLivePaint"]
+
+    def test_the_two_views_differ_by_exactly_the_unexplored_square(self, lit_player_view):
+        assert len(lit_player_view["gmAfterLivePaint"]) == 4
+        assert len(lit_player_view["playerAfterLivePaint"]) == 3
+
+    def test_nothing_raised(self, lit_player_view):
+        assert lit_player_view["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def vision_checkboxes(browser, live_server):
+    """Tick Darkvision on a creature and see whether it stays ticked.
+
+    It did not. The checkbox was on the sheet, updateChar put it on the wire
+    and the handler assigned it, but the field was in neither Unit's
+    constructor nor its to_json -- so the value reached no client, and the very
+    next gm_update repainted the sheet from a unit that had never heard of it.
+    """
+    context = browser.new_context(viewport={"width": 1400, "height": 900})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "vision")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+
+        page.click("div.tab:text-is('Encounter')")
+        page.wait_for_selector("#unitName", state="visible")
+        page.fill("#unitName", "Grimlock")
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(unit => unit.charName === "Grimlock")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        # The sheet lives in the Units tab, and populateEditChar only fills it
+        # in while that tab is closed -- so open it after selecting.
+        page.evaluate("() => selectUnit({shiftKey: false}, 0)")
+        page.click("div.tab:text-is('Units')")
+        page.wait_for_selector("#darkvision", state="visible")
+        page.evaluate("() => populateEditChar(gmData, 0)")
+        page.wait_for_timeout(400)
+        stages = {"beforeTicking": page.is_checked("#darkvision")}
+
+        page.set_checked("#darkvision", True)
+        page.set_checked("#lowLight", True)
+        page.click("#updateCharButton")
+        # The update comes back as gm_update, which repaints the sheet. That
+        # repaint is what used to undo it.
+        page.wait_for_timeout(1200)
+        stages["afterUpdate"] = {
+            "darkvision": page.is_checked("#darkvision"),
+            "lowLight": page.is_checked("#lowLight"),
+        }
+        stages["onTheUnit"] = page.evaluate(
+            """() => { const u = gmData.unitList.find(x => x.charName === "Grimlock");
+                       return {darkvision: u.darkvision, lowLight: u.lowLight}; }"""
+        )
+
+        # And it survives the sheet being repainted from scratch.
+        page.evaluate("() => populateEditChar(gmData, 0)")
+        page.wait_for_timeout(300)
+        stages["afterRepopulate"] = page.is_checked("#darkvision")
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestVisionCheckboxesStick:
+    def test_a_new_creature_has_neither(self, vision_checkboxes):
+        assert vision_checkboxes["beforeTicking"] is False
+
+    def test_the_setting_survives_the_update(self, vision_checkboxes):
+        assert vision_checkboxes["afterUpdate"]["darkvision"] is True
+        assert vision_checkboxes["afterUpdate"]["lowLight"] is True
+
+    def test_it_reached_the_unit_the_client_holds(self, vision_checkboxes):
+        """to_json is what gm_update carries; the field used to be missing."""
+        assert vision_checkboxes["onTheUnit"]["darkvision"] is True
+        assert vision_checkboxes["onTheUnit"]["lowLight"] is True
+
+    def test_it_survives_the_sheet_being_repainted(self, vision_checkboxes):
+        assert vision_checkboxes["afterRepopulate"] is True
+
+    def test_nothing_raised(self, vision_checkboxes):
+        assert vision_checkboxes["errors"] == []
