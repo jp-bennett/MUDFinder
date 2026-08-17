@@ -1138,3 +1138,120 @@ class TestResizingDuringSetup:
 
     def test_setup_stays_open_through_a_resize(self, battlemap):
         assert battlemap["nudgedGrid"]["after"]["setupOpen"]
+
+
+@pytest.fixture(scope="module")
+def two_gm_tabs(browser, live_server):
+    """One game, two GM views of it, each taking a turn at changing the map.
+
+    A GM with the map open on a laptop and a tablet, or two people running the
+    game together. Map events were sent to whichever socket had asked rather
+    than to the room every GM view joins, so they reached everyone only when
+    the acting view happened to be the first one to connect. From any other
+    view the map changed on screen for the person who clicked and nowhere
+    else -- and the stale tabs went on editing tiles by coordinates that no
+    longer existed.
+    """
+    context = browser.new_context(viewport={"width": 1100, "height": 700})
+    try:
+        first = context.new_page()
+        errors = []
+        first.on("pageerror", lambda error: errors.append(str(error)))
+        first.goto(live_server + "/")
+        first.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        first.fill("#gameName", "two tabs")
+        first.click("text=Create Game")
+        first.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        first.wait_for_selector("#mapForm", state="attached")
+
+        second = context.new_page()
+        second.on("pageerror", lambda error: errors.append(str(error)))
+        second.goto(first.url)
+        second.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        second.wait_for_selector("#mapForm", state="attached")
+
+        def tiles(page):
+            return page.eval_on_selector_all("#mapGraphic .mapTile", "els => els.length")
+
+        def generate(page, width, height):
+            """Send what the Generate Map form sends.
+
+            The form itself is only on screen while the map is blank, so once a
+            tab has a map -- which is the state this fixture is testing for --
+            there is no button left to click.
+            """
+            page.evaluate(
+                """([w, h]) => socket.emit("map_generate", {room: room, gmKey: gmKey,
+                     mapWidth: w, mapHeight: h, discovered: false})""",
+                [width, height],
+            )
+
+        stages = {}
+
+        # The first tab acts. This is the case that always worked, because the
+        # room the events went to is named after this tab's socket.
+        first.fill("#mapWidth", "5")
+        first.fill("#mapHeight", "4")
+        first.click("text=Generate Map")
+        first.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 20",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        second.wait_for_timeout(500)
+        stages["firstActed"] = {"first": tiles(first), "second": tiles(second)}
+
+        # The second tab acts. This is the case that did not.
+        generate(second, 3, 3)
+        second.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 9",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        first.wait_for_timeout(500)
+        stages["secondActed"] = {"first": tiles(first), "second": tiles(second)}
+
+        # A tile edit from the second tab, which travels as a partial update
+        # rather than a whole map.
+        second.evaluate(
+            """() => socket.emit("map_edit", {room: room, gmKey: gmKey,
+                 tiles: [{xCoord: 1, yCoord: 1, newTile: "wallTile"}]})"""
+        )
+        first.wait_for_timeout(500)
+
+        def tile_kind(page):
+            return page.evaluate(
+                """() => mapObject.mapArray[1][1].tile"""
+            )
+
+        stages["edited"] = {"first": tile_kind(first), "second": tile_kind(second)}
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestTwoGmTabs:
+    def test_the_first_tab_sees_its_own_map(self, two_gm_tabs):
+        assert two_gm_tabs["firstActed"]["first"] == 20
+
+    def test_the_second_tab_sees_the_first_tabs_map(self, two_gm_tabs):
+        assert two_gm_tabs["firstActed"]["second"] == 20
+
+    def test_the_second_tab_sees_its_own_map(self, two_gm_tabs):
+        assert two_gm_tabs["secondActed"]["second"] == 9
+
+    def test_the_first_tab_sees_the_second_tabs_map(self, two_gm_tabs):
+        """The failure: the first tab stayed on a 20-tile map that no longer
+        existed on the server."""
+        assert two_gm_tabs["secondActed"]["first"] == 9
+
+    def test_a_tile_edit_from_the_second_tab_reaches_the_first(self, two_gm_tabs):
+        assert two_gm_tabs["edited"]["first"] == "wallTile"
+
+    def test_nothing_raised(self, two_gm_tabs):
+        assert two_gm_tabs["errors"] == []

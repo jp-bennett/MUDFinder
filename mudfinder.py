@@ -196,6 +196,46 @@ def savegame_thread():
 # https://github.com/miguelgrinberg/Flask-SocketIO/issues/651 https://github.com/miguelgrinberg/Flask-SocketIO/issues/651
 
 
+IMAGE_REFERENCE = re.compile(r"get_image\.html\?room=[^&\"'\\\\ ]*&id=([^&\"'\\\\ ]+)")
+
+
+def prune_unused_images(session):
+    """Drop uploaded images nothing points at any more, returning their ids.
+
+    Replacing a map background left the old one in the images dict for good,
+    and that dict is written into every autosave, so a GM trying a few
+    battlemaps grew the save file by the size of each one for the rest of the
+    game.
+
+    Which images are still wanted is not a question a single caller can answer:
+    a token, a character portrait, a saved encounter's background, and a piece
+    of lore can all hold the same kind of URL. So the whole session is
+    serialised, every id mentioned anywhere in it is collected, and only images
+    nobody named at all are removed.
+    """
+    saved = session.gen_save()
+    saved.pop("images", None)
+    referenced = set(IMAGE_REFERENCE.findall(json.dumps(saved)))
+    unused = [image_id for image_id in session.images if image_id not in referenced]
+    for image_id in unused:
+        del session.images[image_id]
+    return unused
+
+
+def emit_to_gm(event, payload, room):
+    """Send to every GM view of a room, not just the one that asked.
+
+    gmRoom holds the first GM's session id and later GM tabs join it, so
+    emitting to the caller happens to reach them all as long as the first tab
+    is the one acting. When any other tab acts, the rest are left showing a map
+    that no longer exists.
+    """
+    if ROOMS[room].gmRoom:
+        emit(event, payload, room=ROOMS[room].gmRoom)
+    else:
+        emit(event, payload)
+
+
 def check_room(room):
     global ROOMS
     if room in ROOMS:
@@ -358,6 +398,10 @@ def on_image_upload(room, image, title, owner):
             return image
         if title == "mapBackground":
             ROOMS[room].mapData["mapBackground"] = image
+            # The background just replaced may have been the only thing holding
+            # the previous image. Trying several battlemaps otherwise leaves all
+            # of them in the save file for the rest of the game.
+            prune_unused_images(ROOMS[room])
             tmpMapData = {}
             tmpMapData["showBackground"] = ROOMS[room].mapData["showBackground"]
             tmpMapData["mapBackground"] = ROOMS[room].mapData["mapBackground"]
@@ -450,7 +494,7 @@ def on_join_gm(data):
         if ROOMS[room].gmRoom == "":
             ROOMS[room].gmRoom = request.sid
         join_room(ROOMS[room].gmRoom)
-        emit('gm_map', ROOMS[room].mapData)
+        emit_to_gm('gm_map', ROOMS[room].mapData, room)
         emit('gm_update', ROOMS[room].to_json())
     else:
         emit('error', {'error': 'Unable to join room. Room does not exist.'})
@@ -598,7 +642,7 @@ def on_load_encounter(data):
         for x in ROOMS[room].savedEncounters[data['encounterName']]["unitList"]:
             ROOMS[room].unitList.append(Unit(copy.deepcopy(x)))
         ROOMS[room].number_units()
-        emit('gm_map', ROOMS[room].mapData)
+        emit_to_gm('gm_map', ROOMS[room].mapData, room)
         emit('draw_map', ROOMS[room].player_map(), room=room)
         ROOMS[room].send_updates()
 
@@ -637,7 +681,7 @@ def on_clear_map(data):
         ROOMS[room].initiativeCount = 0
         ROOMS[room].initiativeList = []
         ROOMS[room].number_units()
-        emit('gm_map', ROOMS[room].mapData)
+        emit_to_gm('gm_map', ROOMS[room].mapData, room)
         emit('draw_map', ROOMS[room].player_map(), room=room)
         ROOMS[room].send_updates()
 
@@ -1050,12 +1094,15 @@ def build_map_grid(width, height, discovered):
 def on_map_generate(data):
     room = data['room']
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
+        width = clamp_map_dimension(data["mapWidth"])
+        height = clamp_map_dimension(data["mapHeight"])
+        if width is None or height is None:
+            return
         ROOMS[room].mapData["mapBackground"] = "static/images/mapbackground.jpg"
         for key in BACKGROUND_ALIGNMENT_KEYS:
             ROOMS[room].mapData.pop(key, None)
-        ROOMS[room].mapData["mapArray"] = build_map_grid(
-            data["mapWidth"], data["mapHeight"], data["discovered"])
-        emit('gm_map', ROOMS[room].mapData)
+        ROOMS[room].mapData["mapArray"] = build_map_grid(width, height, data["discovered"])
+        emit_to_gm('gm_map', ROOMS[room].mapData, room)
         emit('draw_map', ROOMS[room].player_map(), room=room)
         ROOMS[room].send_updates()
 
@@ -1082,7 +1129,7 @@ def on_map_generate_over_background(data):
         ROOMS[room].mapData["backgroundTilesWide"] = float(width)
         ROOMS[room].mapData["backgroundOffsetX"] = 0.0
         ROOMS[room].mapData["backgroundOffsetY"] = 0.0
-        emit('gm_map', ROOMS[room].mapData)
+        emit_to_gm('gm_map', ROOMS[room].mapData, room)
         emit('draw_map', ROOMS[room].player_map(), room=room)
         ROOMS[room].send_updates()
 
@@ -1114,7 +1161,7 @@ def on_map_resize(data):
             if unit.x >= width or unit.y >= height:
                 unit.x = -1
                 unit.y = -1
-        emit('gm_map', ROOMS[room].mapData)
+        emit_to_gm('gm_map', ROOMS[room].mapData, room)
         emit('draw_map', ROOMS[room].player_map(), room=room)
         ROOMS[room].send_updates()
 
@@ -1245,7 +1292,7 @@ def on_map_edit(data_pack):
                     updatedTiles.extend(revealedTiles)
             updatedTiles.append(ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]])
         updatedMap["mapArray"] = updatedTiles
-        emit('gm_map_update', updatedMap)
+        emit_to_gm('gm_map_update', updatedMap, room)
         tmpUpdatedTiles = copy.deepcopy(updatedTiles)
         for index, y in enumerate(tmpUpdatedTiles):
             if not y["seen"]:
@@ -1265,30 +1312,45 @@ def on_map_upload(data):
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         ROOMS[room].mapData["mapArray"] = []
         ROOMS[room].mapData["mapBackground"] = "static/images/mapbackground.jpg"
+        for key in BACKGROUND_ALIGNMENT_KEYS:
+            ROOMS[room].mapData.pop(key, None)
         mapText = data['mapText']
-        mapLines = mapText.split("\n")
+        # splitlines rather than split("\n"): a map pasted from a text file or
+        # from Windows arrives with carriage returns, which used to leave a \r
+        # stuck to the last cell of every row and take the parse down with it.
+        mapLines = mapText.splitlines()[:MAX_MAP_DIMENSION]
         for y in range(len(mapLines)):
-            mapLine = mapLines[y].split("\t")
+            mapLine = mapLines[y].split("\t")[:MAX_MAP_DIMENSION]
             map_line_list = []
             for x in range(len(mapLine)):
-                if mapLine[x] == "F":
-                    map_line_list.append({"tile": "floorTile", "walkable": True})
-                elif mapLine[x] == "":
-                    map_line_list.append({"tile": "wallTile", "walkable": False})
-                elif mapLine[x][0:2] == "SD":
-                    map_line_list.append({"tile": "stairsDown", "walkable": True})
-                elif mapLine[x][0:2] == "SU":
-                    map_line_list.append({"tile": "stairsUp", "walkable": True})
-                elif mapLine[x][0] == "D":
-                    map_line_list.append({"tile": "doorClosed", "walkable": False})
-                    if mapLine[x][:2] == "DS":
-                        map_line_list[x]["secret"] = True
-                map_line_list[x]["seen"] = data["discovered"]
-                map_line_list[x]["x"] = x
-                map_line_list[x]["y"] = y
-                if "secret" not in map_line_list[x].keys():
-                    map_line_list[x]["secret"] = False
+                cell = mapLine[x].strip()
+                if cell == "F":
+                    tile = {"tile": "floorTile", "walkable": True}
+                elif cell[0:2] == "SD":
+                    tile = {"tile": "stairsDown", "walkable": True}
+                elif cell[0:2] == "SU":
+                    tile = {"tile": "stairsUp", "walkable": True}
+                elif cell[0:1] == "D":
+                    tile = {"tile": "doorClosed", "walkable": False}
+                    if cell[:2] == "DS":
+                        tile["secret"] = True
+                else:
+                    # Anything unrecognised becomes solid ground. donjon emits
+                    # codes this does not know, and an empty cell is a wall
+                    # already; previously an unknown one appended nothing and
+                    # the next line indexed off the end of the row.
+                    tile = {"tile": "wallTile", "walkable": False}
+                tile["seen"] = data["discovered"]
+                tile["x"] = x
+                tile["y"] = y
+                if "secret" not in tile:
+                    tile["secret"] = False
+                map_line_list.append(tile)
             ROOMS[room].mapData["mapArray"].append(map_line_list)
+        # Every other way of making a map redraws. Without this the pasted map
+        # sits on the server until someone reloads the page.
+        emit_to_gm('gm_map', ROOMS[room].mapData, room)
+        emit('draw_map', ROOMS[room].player_map(), room=room)
         ROOMS[room].send_updates()
 
 
