@@ -416,6 +416,41 @@ width:100%;
     background: transparent;
     border:none;
 }
+/* While the GM is lining a battlemap image up with the grid. Over an uploaded
+   image every tile is fullyTransparent, so the play grid would be invisible at
+   exactly the moment it needs to be matched against the artwork. This shows the
+   tile borders and nothing else, giving a bare lattice over the image. */
+#mapGraphic.aligning .mapTile {
+    opacity: 1 !important;
+    background: none !important;
+    border-color: red;
+    cursor: move;
+}
+
+/* Sits directly above #mapTools, which is absolutely positioned along the
+   bottom. A sibling left in normal flow would land at the top of the wrapper,
+   behind the absolutely positioned #mapContainer. */
+#alignmentControls {
+    position: absolute;
+    bottom: 10%;
+    width: 100%;
+    padding: 5px;
+    background: lightgray;
+    border-top: 1px solid black;
+    z-index: 5;
+}
+
+#alignmentControls input[type=text] {
+    width: 45px;
+}
+
+/* Keeps each set of related controls together when the bar has to wrap. */
+.alignmentGroup {
+    display: inline-block;
+    margin-right: 18px;
+    white-space: nowrap;
+}
+
 .slightlyTransparent {
     opacity: 0.6;
 }
