@@ -492,3 +492,20 @@ class TestBackgroundAlignment:
         self.align(gm_client, room, key)
         gm_client.emit("clear_map", {"room": room, "gmKey": key, "clearLocations": True})
         assert "backgroundTilesWide" not in mudfinder.ROOMS[room].mapData
+
+
+class TestUploadLimit:
+    """Images arrive over the socket, and the transport's own cap decides
+    whether an ordinary battlemap survives the trip."""
+
+    def test_the_transport_accepts_more_than_the_default_megabyte(self):
+        """A megabyte is roughly a 750kB image once base64 has grown it."""
+        assert mudfinder.socketio.server.eio.max_http_buffer_size > 1000000
+
+    def test_it_matches_what_the_client_enforces(self):
+        """shared.js refuses anything larger before it reaches the wire, so the
+        two numbers have to agree or one of them is decorative."""
+        client_side = open("static/js/shared.js").read()
+        assert "var MAX_UPLOAD_BYTES = 16 * 1024 * 1024;" in client_side
+        assert mudfinder.MAX_UPLOAD_BYTES == 16 * 1024 * 1024
+        assert mudfinder.socketio.server.eio.max_http_buffer_size == mudfinder.MAX_UPLOAD_BYTES

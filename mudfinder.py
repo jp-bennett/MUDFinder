@@ -134,7 +134,16 @@ def roll_dice(input_roll_string):
 app = Flask(__name__)
 # threading mode keeps the dependency list to Flask-SocketIO and
 # simple-websocket. eventlet, the previous driver, is deprecated upstream.
-socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
+
+# Battlemap images arrive over the socket as base64, which is a third larger
+# again than the file. The default cap is a megabyte, and a payload over it
+# drops the connection rather than failing the message, so a GM uploading an
+# ordinary battlemap lost the socket and the page stopped responding with
+# nothing said. Keep MAX_UPLOAD_BYTES in shared.js in step with this.
+MAX_UPLOAD_BYTES = 16 * 1024 * 1024
+
+socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*",
+                    max_http_buffer_size=MAX_UPLOAD_BYTES)
 ROOMS = {}  # dict to track active rooms
 thread = None
 thread_lock = Lock()

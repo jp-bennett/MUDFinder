@@ -130,6 +130,7 @@ window.onload = function() {
         updateMap(msg, mapObject);
         if (typeof msg.mapBackground !== "undefined" && msg.mapBackground != previousBackground) {
             syncFeaturesToMapType(msg.mapBackground);
+            reportBattlemapImageState(msg.mapBackground);
         }
         refreshAlignmentFields();
         if (multiSelect)
@@ -310,6 +311,21 @@ function mapGenerate() {
     }
 }
 function showMapBackgroundSelect() {
+}
+
+function reportBattlemapImageState(mapBackground) {
+    // Confirmation that the image actually arrived. The server echoing the new
+    // background is the only honest evidence of that, so it is said here
+    // rather than when the file was handed over.
+    state = document.getElementById("battlemapImageState");
+    if (!state) {
+        return;
+    }
+    if (mapBackground && mapBackground != "static/images/mapbackground.jpg") {
+        state.innerText = "Image ready. Set how many squares it is, then create the battlemap.";
+    } else {
+        state.innerText = "No image chosen yet.";
+    }
 }
 
 function battlemapCreate() {

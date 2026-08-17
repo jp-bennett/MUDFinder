@@ -982,3 +982,100 @@ class TestTypingIntoAlignmentFields:
     def test_the_other_fields_still_refresh(self, battlemap):
         """Only the focused box is protected, not the whole panel."""
         assert battlemap["typing"]["other"] == "-1.20"
+
+
+def write_blob(path, size):
+    """A file of a given size. Only its size matters to the upload guard, and
+    generating megabytes of valid PNG per test run is not worth the seconds."""
+    with open(path, "wb") as blob:
+        blob.write(b"\0" * size)
+    return str(path)
+
+
+@pytest.fixture(scope="module")
+def uploads(browser, live_server, tmp_path_factory):
+    """Upload images through the real Choose Image modal, at two sizes.
+
+    Over the socket a file becomes base64, a third larger again. The transport
+    used to cap a message at a megabyte and drop the connection when one went
+    over, so an ordinary battlemap killed the websocket and the page stopped
+    responding without saying anything.
+    """
+    directory = tmp_path_factory.mktemp("uploads")
+    ordinary = write_blob(directory / "battlemap.png", 3 * 1024 * 1024)
+    enormous = write_blob(directory / "enormous.png", 20 * 1024 * 1024)
+
+    context = browser.new_context(viewport={"width": 1200, "height": 800})
+    try:
+        results = {}
+        for label, path in (("ordinary", ordinary), ("enormous", enormous)):
+            page = context.new_page()
+            alerts = []
+            page.on("dialog", lambda dialog: (alerts.append(dialog.message), dialog.dismiss()))
+            page.goto(live_server + "/")
+            page.wait_for_function(
+                "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+                timeout=HANDSHAKE_TIMEOUT,
+            )
+            page.fill("#gameName", "upload " + label)
+            page.click("text=Create Game")
+            page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+            page.wait_for_selector("#mapForm", state="attached")
+
+            page.click("text=Choose Image")
+            page.wait_for_selector("#imageFileUpload")
+            page.set_input_files("#imageFileUpload", path)
+            page.click('#modalBackground button:has-text("Select")')
+            page.wait_for_timeout(3000)
+
+            results[label] = {
+                "connected": page.evaluate("() => socket && socket.connected"),
+                "background": page.evaluate(
+                    """() => (typeof mapObject !== 'undefined' && mapObject)
+                             ? String(mapObject.mapBackground) : null"""),
+                "state": page.inner_text("#battlemapImageState"),
+                "alerts": alerts,
+                "modalGone": page.evaluate("() => !document.getElementById('modalBackground')"),
+            }
+            page.close()
+        return results
+    finally:
+        context.close()
+
+
+class TestUploadingABattlemapImage:
+    """Choosing an image has to either work or say why not."""
+
+    def test_an_ordinary_battlemap_uploads(self, uploads):
+        """Three megabytes is unremarkable for a battlemap and used to be four
+        times over the transport's limit."""
+        assert uploads["ordinary"]["background"].startswith("get_image.html")
+
+    def test_the_socket_survives_it(self, uploads):
+        """Losing this is what made the page stop responding entirely."""
+        assert uploads["ordinary"]["connected"]
+
+    def test_the_gm_is_told_it_worked(self, uploads):
+        assert "Image ready" in uploads["ordinary"]["state"]
+
+    def test_an_ordinary_upload_says_nothing_alarming(self, uploads):
+        assert uploads["ordinary"]["alerts"] == []
+
+    def test_an_enormous_image_is_refused(self, uploads):
+        assert uploads["enormous"]["background"] == "static/images/mapbackground.jpg"
+
+    def test_the_refusal_is_explained(self, uploads):
+        assert uploads["enormous"]["alerts"]
+        assert "too large" in uploads["enormous"]["alerts"][0]
+
+    def test_the_reason_stays_on_screen(self, uploads):
+        """The alert is dismissed; the panel still has to say what happened."""
+        assert "too large" in uploads["enormous"]["state"]
+
+    def test_the_socket_survives_a_refusal_too(self, uploads):
+        """Refused before sending, so nothing reaches the transport."""
+        assert uploads["enormous"]["connected"]
+
+    def test_the_modal_closes_either_way(self, uploads):
+        assert uploads["ordinary"]["modalGone"]
+        assert uploads["enormous"]["modalGone"]

@@ -822,7 +822,7 @@ function imageUpload(element, title, character) {
     <button>Preview</button>
     <br>
     Or upload a file: <input type="file" id="imageFileUpload" onchange="previewImageFile(this)"><br>
-    <img id="imagePreview" src="" style = "padding:20px;"><br>
+    <img id="imagePreview" src="" style = "padding:20px;max-width:80%;max-height:50vh;"><br>
     <button onClick = "selectImage('${title}', '${character}')">Select</button>
     `;
 
@@ -845,6 +845,30 @@ function previewImageFile (callingElement) {
         socket.emit("error_handle", room, e);
     }
 }
+// Keep in step with MAX_UPLOAD_BYTES in mudfinder.py.
+var MAX_UPLOAD_BYTES = 16 * 1024 * 1024;
+
+function uploadSizeOf(file) {
+    // What the file becomes on the wire: base64 is four bytes per three, plus
+    // the data URI prefix and the rest of the event.
+    return Math.ceil(file.size / 3) * 4 + 256;
+}
+
+function megabytes(bytes) {
+    return (bytes / 1024 / 1024).toFixed(1);
+}
+
+function reportUploadTooLarge(file) {
+    message = "That image is " + megabytes(file.size) + " MB, which is too large to upload. "
+        + "The limit is about " + megabytes(MAX_UPLOAD_BYTES * 3 / 4) + " MB. "
+        + "Scaling it down or saving it as a JPEG will usually be enough.";
+    state = document.getElementById("battlemapImageState");
+    if (state) {
+        state.innerText = message;
+    }
+    alert(message);
+}
+
 function selectImage (title, character) {
     try {
         if (document.getElementById("imageFileUpload").value == "") {
@@ -858,6 +882,14 @@ function selectImage (title, character) {
             //FReader = new FileReader();
             Name = document.getElementById('imageFileUpload').value;
             file = document.getElementById('imageFileUpload').files[0];
+            // Checked before reading the file rather than after. An oversized
+            // payload does not fail the message, it drops the websocket, and
+            // the page then sits there doing nothing with no way to tell why.
+            if (uploadSizeOf(file) > MAX_UPLOAD_BYTES) {
+                reportUploadTooLarge(file);
+                document.getElementById('modalBackground').remove();
+                return;
+            }
             var r = new FileReader();
             r.onload = function() {
                 socket.emit("image_upload", room, "data:image;base64, " + btoa(r.result), title, character);
