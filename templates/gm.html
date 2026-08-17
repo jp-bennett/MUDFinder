@@ -74,9 +74,13 @@
           <div id="addDiv">
             Creature Name:<br />
             <input type="text" id="unitName"><br>
-            token link:<br />
-            <input type="text" id="unitToken"><br>
-            Initiative Count:<br />
+            Token:<br />
+            <input type="text" id="unitToken" placeholder="image link" onchange="previewUnitToken()">
+            <button type="button" onclick="chooseUnitToken()">Choose Token</button><br>
+            <img id="unitTokenPreview" class="unitTokenPreview" alt="" style="display:none;"><br>
+            How many:<br />
+            <input type="text" id="unitCount" value="1" onchange="refreshInitiativeLabel()" oninput="refreshInitiativeLabel()"><br>
+            <span id="unitInitLabel">Initiative Count:</span><br />
             <input type="text" id="unitInit"><br>
             Short Name:<br />
             <input type="text" id="unitShortName"><br>

@@ -1255,3 +1255,191 @@ class TestTwoGmTabs:
 
     def test_nothing_raised(self, two_gm_tabs):
         assert two_gm_tabs["errors"] == []
+
+
+# A player is in the unit list too, so everything here counts the creatures
+# that were added by name rather than counting the list.
+ENCOUNTER_REPORT_JS = """
+(name) => ({
+  initiativeLabel: document.getElementById("unitInitLabel").innerText,
+  listedNames: Array.from(document.getElementById("unitsDiv").children)
+    .map(entry => entry.innerText.trim().split("\\n")[0]),
+  added: (typeof gmData !== "undefined" && gmData)
+    ? gmData.unitList.filter(unit => unit.charName === name) : [],
+  initiatives: (typeof gmData !== "undefined" && gmData)
+    ? gmData.initiativeList.filter(unit => unit.charName === name)
+        .map(unit => Number(unit.initiative)) : [],
+  tokenField: document.getElementById("unitToken").value,
+  tokenPreviewShown: document.getElementById("unitTokenPreview").style.display !== "none",
+  countField: document.getElementById("unitCount").value,
+  chat: document.getElementById("chatText").innerText,
+})
+"""
+
+
+@pytest.fixture(scope="module")
+def encounter(browser, live_server, tmp_path_factory):
+    """Add a group of creatures at once, with an uploaded token, and watch.
+
+    Six goblins used to be six trips through this form, and the initiative
+    field wanted the finished count -- a number six creatures cannot share --
+    so the rolling happened somewhere else and was typed back in six times.
+    """
+    token_file = write_blob(tmp_path_factory.mktemp("tokens") / "goblin.png", 2048)
+
+    context = browser.new_context(viewport={"width": 1400, "height": 900})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "encounter")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1) for pair in page.url.split("?", 1)[1].split("&"))["room"]
+
+        # A player, to check the rolls stop at the GM. Joined before anything
+        # is added, so it is listening the whole time.
+        player = context.new_page()
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        page.click("div.tab:text-is('Encounter')")
+        page.wait_for_selector("#unitCount", state="visible")
+        stages = {"opened": page.evaluate(ENCOUNTER_REPORT_JS, "Goblin")}
+
+        page.fill("#unitCount", "6")
+        page.dispatch_event("#unitCount", "change")
+        stages["multipleRequested"] = page.evaluate(ENCOUNTER_REPORT_JS, "Goblin")
+
+        page.click("text=Choose Token")
+        page.wait_for_selector("#imageFileUpload")
+        page.set_input_files("#imageFileUpload", token_file)
+        page.click('#modalBackground button:has-text("Select")')
+        page.wait_for_function(
+            "() => document.getElementById('unitToken').value.startsWith('data:image')",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["tokenChosen"] = page.evaluate(ENCOUNTER_REPORT_JS, "Goblin")
+
+        page.fill("#unitName", "Goblin")
+        page.fill("#unitInit", "+3")
+        page.fill("#unitHP", "6")
+        page.set_checked("#addToInit", True)
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData &&
+                 gmData.unitList.filter(unit => unit.charName === "Goblin").length === 6""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(500)
+        stages["added"] = page.evaluate(ENCOUNTER_REPORT_JS, "Goblin")
+
+        # One creature, whose initiative the GM already knows.
+        page.fill("#unitName", "Boss")
+        page.fill("#unitInit", "17")
+        page.fill("#unitHP", "60")
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData &&
+                 gmData.unitList.some(unit => unit.charName === "Boss")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(500)
+        stages["singleAdded"] = page.evaluate(ENCOUNTER_REPORT_JS, "Boss")
+
+        stages["playerChat"] = player.inner_text("#chatText")
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestAddingAGroupOfCreatures:
+    def test_the_field_asks_for_a_count_for_one_creature(self, encounter):
+        assert encounter["opened"]["initiativeLabel"] == "Initiative Count:"
+
+    def test_the_field_asks_for_a_bonus_for_several(self, encounter):
+        """Six creatures cannot share one initiative count, so above one copy
+        the same box means the modifier they each roll against."""
+        assert "Bonus" in encounter["multipleRequested"]["initiativeLabel"]
+
+    def test_all_six_are_added_at_once(self, encounter):
+        assert len(encounter["added"]["added"]) == 6
+
+    def test_they_all_reach_the_gm_unit_list(self, encounter):
+        listed = [name for name in encounter["added"]["listedNames"] if name == "Goblin"]
+        assert listed == ["Goblin"] * 6
+
+    def test_they_all_reach_the_initiative_order(self, encounter):
+        assert len(encounter["added"]["initiatives"]) == 6
+
+    def test_they_rolled_separately(self, encounter):
+        """One roll shared out is the thing this replaces."""
+        assert len(set(encounter["added"]["initiatives"])) > 1
+
+    def test_the_rolls_are_a_d20_plus_the_typed_bonus(self, encounter):
+        assert all(4 <= score <= 23 for score in encounter["added"]["initiatives"])
+
+    def test_the_order_is_sorted_by_the_rolls(self, encounter):
+        scores = encounter["added"]["initiatives"]
+        assert scores == sorted(scores, reverse=True)
+
+    def test_a_single_creature_still_takes_an_exact_count(self, encounter):
+        assert [unit["initiative"] for unit in encounter["singleAdded"]["added"]] == ["17"]
+
+    def test_the_form_resets_to_one(self, encounter):
+        """Otherwise the next creature quietly arrives six times."""
+        assert encounter["added"]["countField"] == "1"
+        assert encounter["added"]["initiativeLabel"] == "Initiative Count:"
+
+
+class TestUploadingATokenForTheGroup:
+    def test_choosing_a_file_fills_the_token_field(self, encounter):
+        assert encounter["tokenChosen"]["tokenField"].startswith("data:image")
+
+    def test_the_gm_can_see_what_they_picked(self, encounter):
+        """The field holds the whole image as a data URI, which tells the GM
+        nothing about it."""
+        assert encounter["tokenChosen"]["tokenPreviewShown"]
+
+    def test_every_creature_wears_it(self, encounter):
+        tokens = [unit["token"] for unit in encounter["added"]["added"]]
+        assert len(tokens) == 6
+        assert all(token.startswith("get_image.html") for token in tokens)
+
+    def test_they_share_one_stored_image(self, encounter):
+        """Six copies of the same token would go into every autosave six
+        times."""
+        assert len({unit["token"] for unit in encounter["added"]["added"]}) == 1
+
+    def test_the_field_clears_for_the_next_creature(self, encounter):
+        assert encounter["singleAdded"]["tokenField"] == ""
+        assert not encounter["singleAdded"]["tokenPreviewShown"]
+
+
+class TestWhoSeesTheRolls:
+    def test_the_gm_is_shown_the_breakdown(self, encounter):
+        assert "Goblin initiative:" in encounter["added"]["chat"]
+        assert encounter["added"]["chat"].count("d20(") == 6
+
+    def test_the_players_are_not(self, encounter):
+        """Which goblin rolled a 2 is not the party's business."""
+        assert "initiative:" not in encounter["playerChat"]
+
+    def test_a_single_creature_adds_no_line(self, encounter):
+        """Nothing was rolled, so there is nothing to report."""
+        assert encounter["singleAdded"]["chat"].count("initiative:") == 1
+
+
+class TestTheEncounterFormStillWorks:
+    def test_nothing_raised(self, encounter):
+        assert encounter["errors"] == []
