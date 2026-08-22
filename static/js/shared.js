@@ -271,6 +271,31 @@ function drawLightWash(x, y, level) {
     document.getElementById("mapGraphic").appendChild(lightWash);
 }
 
+function lightToggle(obj) {
+    // Turns the light tint off in whichever view asked. The GM uses it to see
+    // the terrain under a dark cavern they have just painted; a player uses it
+    // to read a map their character is standing in the dark of.
+    //
+    // Purely local, and it hides nothing the viewer was not already sent -- so
+    // it lives here rather than on the server, and a player switching it off
+    // tells nobody else anything.
+    //
+    // One class on the map, and the wash elements stay exactly where they are:
+    // unlike Show Features, which edits the stylesheet, and unlike the
+    // discovered overlay, which redraws the map. There is nothing here that
+    // could fall out of step, which is the point.
+    try {
+        mapGraphic = document.getElementById("mapGraphic");
+        if (obj.checked) {
+            mapGraphic.classList.remove("hideLight");
+        } else {
+            mapGraphic.classList.add("hideLight");
+        }
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
 function drawSingleTile(mapData, x, y) {
     mapArray = mapData.mapArray
     newMapTile = document.createElement("div");

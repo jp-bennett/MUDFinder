@@ -1749,6 +1749,30 @@ def lit_player_view(browser, live_server):
         )
         stages["gmAfterLivePaint"] = page.evaluate(LIGHT_LIST_JS)
 
+        # The player's own Show light switch, and whether it is genuinely their
+        # own -- two people looking at the same room should be able to disagree
+        # about whether they want the tint painted.
+        display = """(id) => getComputedStyle(document.getElementById(id)).display"""
+        # Where the switch actually landed, not merely whether it rendered.
+        # Anchored to the bottom of the map area it sat six pixels below the
+        # fold, which is invisible to a player and invisible to is_visible.
+        stages["switchBox"] = player.locator("#playerMapTools").bounding_box()
+        stages["viewport"] = player.viewport_size
+        stages["playerLightOn"] = player.evaluate(display, "light1,1")
+        player.set_checked("#showLight", False)
+        player.wait_for_timeout(300)
+        stages["playerLightOff"] = player.evaluate(display, "light1,1")
+        stages["playerWashesKept"] = len(player.evaluate(LIGHT_LIST_JS))
+        stages["gmUnaffected"] = page.evaluate(display, "light1,1")
+        player.set_checked("#showLight", True)
+        player.wait_for_timeout(300)
+        stages["playerLightBack"] = player.evaluate(display, "light1,1")
+
+        page.set_checked("#showLight", False)
+        page.wait_for_timeout(300)
+        stages["gmOff"] = page.evaluate(display, "light1,1")
+        stages["playerUnaffected"] = player.evaluate(display, "light1,1")
+
         stages["errors"] = errors
         return stages
     finally:
@@ -1777,6 +1801,41 @@ class TestWhatThePlayersSeeOfTheLight:
 
     def test_nothing_raised(self, lit_player_view):
         assert lit_player_view["errors"] == []
+
+
+class TestThePlayersOwnShowLightSwitch:
+    """Players get the same switch the GM has, over the top-right of their map.
+
+    It hides nothing they were not already sent -- the levels are on their
+    client either way -- so it is a view preference, not a server round trip,
+    and one person turning it off tells the rest of the table nothing.
+    """
+
+    def test_the_switch_is_actually_on_screen(self, lit_player_view):
+        """A control below the fold still reports visible, still answers a
+        click from a test, and cannot be found by a person."""
+        box, viewport = lit_player_view["switchBox"], lit_player_view["viewport"]
+        assert 0 <= box["x"] and box["x"] + box["width"] <= viewport["width"]
+        assert 0 <= box["y"] and box["y"] + box["height"] <= viewport["height"]
+
+    def test_the_tint_is_painted_by_default(self, lit_player_view):
+        assert lit_player_view["playerLightOn"] == "block"
+
+    def test_the_player_can_turn_it_off(self, lit_player_view):
+        assert lit_player_view["playerLightOff"] == "none"
+
+    def test_turning_it_off_keeps_the_elements(self, lit_player_view):
+        assert lit_player_view["playerWashesKept"] == 3
+
+    def test_the_player_can_turn_it_back_on(self, lit_player_view):
+        assert lit_player_view["playerLightBack"] == "block"
+
+    def test_the_players_switch_does_not_reach_the_gm(self, lit_player_view):
+        assert lit_player_view["gmUnaffected"] == "block"
+
+    def test_the_gms_switch_does_not_reach_the_player(self, lit_player_view):
+        assert lit_player_view["gmOff"] == "none"
+        assert lit_player_view["playerUnaffected"] == "block"
 
 
 @pytest.fixture(scope="module")

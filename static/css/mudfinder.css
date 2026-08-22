@@ -437,7 +437,7 @@ width:100%;
     z-index: 4;
 }
 .lightBright {
-    background: rgba(255, 236, 160, 0.28);
+    background: rgba(255, 246, 170, 0.55);
 }
 .lightDim {
     background: rgba(6, 10, 34, 0.40);
@@ -450,6 +450,20 @@ width:100%;
    that Show Features does, because there is nothing here to keep in step. */
 #mapGraphic.hideLight .lightWash {
     display: none;
+}
+/* The player's Show light switch. The player map has no toolbar to put it in,
+   so it floats over the top-right corner of the map, the way leftPopButton
+   floats over the left edge. Top rather than bottom: the map area runs to the
+   bottom of the window, and an element anchored there lands below the fold. */
+#playerMapTools {
+    background: white;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    z-index: 5;
+    white-space: nowrap;
 }
 /* Palette swatches for the four levels. Solid, not the translucent wash
    colours above -- at 20 pixels square a 45% tint reads as nothing at all. */

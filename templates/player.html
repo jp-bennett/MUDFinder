@@ -82,6 +82,10 @@
           <div id="bottomPopupButton">
             <img src="static/images/up.svg">
           </div>
+          <!-- The player's own view switch. The light levels are already on
+               their client; this only decides whether they are painted, so it
+               tells the table nothing either way. -->
+          <div id="playerMapTools">Show light: <input type="checkbox" id="showLight" value="showLight" onchange="lightToggle(this)" checked></div>
 
         </div><!--mapWrapper-->
         <div id="charWrapper" style="line-height: 1.7; overflow:auto;">
