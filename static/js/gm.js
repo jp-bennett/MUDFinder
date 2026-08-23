@@ -272,20 +272,41 @@ window.onload = function() {
             // populate player list
             // This replaces the whole panel, so the heading is built here --
             // anything put in the template is wiped on the first update.
-            document.getElementById("links").innerHTML =
-                '<div class="sectionHeading">Player Links</div>';
+            // Built as elements rather than as markup: a player names
+            // themselves, so their name reaches here as untrusted text, and
+            // through innerHTML a name with a quote in it becomes script.
+            linksDiv = document.getElementById("links");
+            linksDiv.innerHTML = "";
+            linksHeading = document.createElement("div");
+            linksHeading.classList.add("sectionHeading");
+            linksHeading.innerText = "Player Links";
+            linksDiv.appendChild(linksHeading);
             document.getElementById("connectedPlayers").innerHTML = "";
             document.getElementById("unitControlledBy").innerHTML =  '<option value="gm" selected="selected">gm</option>';
             for (var i = 0; i < Object.keys(gmData.playerList).length; i++) {
                 tmpPlayerName = Object.keys(gmData.playerList)[i];
-                document.getElementById("links").innerHTML +=
-                    `<div class="linkRow">` +
-                    `<a href="player.html?room=${room}&charName=${tmpPlayerName}">${tmpPlayerName}</a>` +
-                    `<button onclick="deleteUser('${tmpPlayerName}')">Delete</button>` +
-                    `</div>`;
-                document.getElementById("unitControlledBy").innerHTML += `<option value="${tmpPlayerName}">${tmpPlayerName}</option>`;
+
+                tmpLinkRow = document.createElement("div");
+                tmpLinkRow.classList.add("linkRow");
+                tmpPlayerLink = document.createElement("a");
+                tmpPlayerLink.href = "player.html?room=" + encodeURIComponent(room) +
+                    "&charName=" + encodeURIComponent(tmpPlayerName);
+                tmpPlayerLink.innerText = tmpPlayerName;
+                tmpLinkRow.appendChild(tmpPlayerLink);
+                tmpDeleteButton = document.createElement("button");
+                tmpDeleteButton.innerText = "Delete";
+                tmpDeleteButton.addEventListener("click", deleteUser.bind(null, tmpPlayerName));
+                tmpLinkRow.appendChild(tmpDeleteButton);
+                linksDiv.appendChild(tmpLinkRow);
+
+                tmpControlOption = document.createElement("option");
+                tmpControlOption.value = tmpPlayerName;
+                tmpControlOption.innerText = tmpPlayerName;
+                document.getElementById("unitControlledBy").appendChild(tmpControlOption);
                 if (gmData.playerList[tmpPlayerName].connected) {
-                    document.getElementById("connectedPlayers").innerHTML += tmpPlayerName + "<br >";
+                    tmpConnected = document.getElementById("connectedPlayers");
+                    tmpConnected.appendChild(document.createTextNode(tmpPlayerName));
+                    tmpConnected.appendChild(document.createElement("br"));
                 }
             }
         } catch (e) {

@@ -10,6 +10,8 @@ Run just these:      pytest -m browser
 Run everything else: pytest -m "not browser"
 """
 
+from urllib.parse import quote
+
 import pytest
 
 pytest.importorskip("playwright.sync_api")
@@ -106,6 +108,79 @@ class TestPlayerJoin:
         wait_for_socket(player)
         player.page.wait_for_timeout(1000)
         assert player.page_errors == []
+
+
+class TestThePlayerLinksPanel:
+    """The GM's panel of per-player links, and the Delete button beside each.
+
+    A player names itself, and the server stores that name as it is given, so
+    the name arrives here as untrusted text. The panel is built as elements
+    for that reason; assembled as markup, a name carrying a quote or a tag
+    escaped its row and ran as script.
+    """
+
+    HOSTILE_NAME = "Ari'a<img src=x onerror=\"window.pwned=1\">"
+
+    def test_a_player_gets_a_row_with_a_link_and_a_delete_button(
+        self, live_server, new_client, gm_client
+    ):
+        gm, room, _ = gm_client
+        new_client("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        gm.page.wait_for_function(
+            "() => document.querySelector('#links .linkRow') !== null",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        row = gm.page.query_selector("#links .linkRow")
+        assert row.query_selector("a").inner_text() == "Aria"
+        assert row.query_selector("button").inner_text() == "Delete"
+
+    def test_the_link_carries_the_room_and_the_name(self, live_server, new_client, gm_client):
+        gm, room, _ = gm_client
+        new_client("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        gm.page.wait_for_function(
+            "() => document.querySelector('#links .linkRow a') !== null",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        href = gm.page.get_attribute("#links .linkRow a", "href")
+        assert "room=%s" % room in href
+        assert "charName=Aria" in href
+
+    def test_a_name_full_of_markup_stays_text(self, live_server, new_client, gm_client):
+        """The name lands in the row as a word, not as the tag it spells.
+
+        Scoped to the panel on purpose. Other lists on this page still build
+        their rows out of markup and do run the tag -- #unitsDiv is one -- so
+        an assertion about the whole document would be reporting those, not
+        this.
+        """
+        gm, room, _ = gm_client
+        new_client(
+            "%s/player.html?room=%s&charName=%s"
+            % (live_server, room, quote(self.HOSTILE_NAME, safe=""))
+        )
+        gm.page.wait_for_function(
+            """(name) => Array.from(document.querySelectorAll("#links .linkRow a"))
+                 .some(a => a.innerText === name)""",
+            arg=self.HOSTILE_NAME,
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        assert gm.page.query_selector("#links img") is None
+        assert gm.page.eval_on_selector(
+            "#links", "el => el.querySelectorAll('*').length"
+        ) == gm.page.eval_on_selector(
+            "#links",
+            # heading + one row per player, each holding an anchor and a button
+            "el => 1 + el.querySelectorAll('.linkRow').length * 3",
+        )
+
+    def test_the_panel_builds_without_raising(self, live_server, new_client, gm_client):
+        gm, room, _ = gm_client
+        new_client(
+            "%s/player.html?room=%s&charName=%s"
+            % (live_server, room, quote(self.HOSTILE_NAME, safe=""))
+        )
+        gm.page.wait_for_timeout(1000)
+        assert gm.page_errors == []
 
 
 class TestMapSync:
