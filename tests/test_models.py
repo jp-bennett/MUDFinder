@@ -703,10 +703,14 @@ class TestStrippingTheStatblockMarkup:
     def test_a_script_and_its_contents_go(self):
         assert self.strip("<script>alert(1)</script>Kept") == "Kept"
 
-    @pytest.mark.parametrize("closing", ["</script>", "</script >", "</SCRIPT\t>"])
-    def test_a_closing_tag_with_whitespace_still_matches(self, closing):
-        """"</script >" is valid HTML, and a pattern anchored on "</script>"
-        alone leaves the tag sitting in the text."""
+    @pytest.mark.parametrize("closing", [
+        "</script>", "</script >", "</SCRIPT\t>", "</ script>",
+        "</script\n foo=bar>",
+    ])
+    def test_an_end_tag_is_matched_as_html_defines_it(self, closing):
+        """Whitespace is allowed after the slash and anything up to the bracket
+        is ignored, so all of these are end tags. A pattern anchored on a bare
+        "</script>" leaves the rest sitting in the text."""
         assert self.strip("<script>bad()" + closing + "Kept") == "Kept"
 
     def test_a_style_block_goes_the_same_way(self):

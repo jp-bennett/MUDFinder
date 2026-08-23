@@ -115,13 +115,19 @@ def statblock_text(full_text):
     if not full_text:
         return ""
     # Element and all for the two that carry content rather than describe it.
-    # The closing tags allow whitespace before the bracket -- "</script >" is
-    # valid HTML, and a pattern that misses it leaves the tag behind. Nothing
-    # here is a security boundary: the result is stored as text and rendered
-    # with textContent, never as markup, and the catch-all below would strip
-    # what survived anyway. It is written properly because it is cheap to.
-    text = re.sub(r"<link\b[^>]*>|<script\b[^>]*>.*?</script\s*>|<style\b[^>]*>.*?</style\s*>",
-                  "", full_text, flags=re.S | re.I)
+    #
+    # The closing tags are matched as HTML actually defines them: whitespace is
+    # allowed after the slash, and anything up to the bracket is ignored, so
+    # "</script >" and "</script\n foo=bar>" are both end tags. A pattern
+    # anchored on a bare "</script>" misses those and leaves the tag in the
+    # text. Nothing here is a security boundary -- the result is stored as text
+    # and rendered with textContent, never as markup, and the catch-all below
+    # would strip whatever survived -- but it is cheap to write correctly.
+    text = re.sub(
+        r"<link\b[^>]*>"
+        r"|<script\b[^>]*>.*?</\s*script\b[^>]*>"
+        r"|<style\b[^>]*>.*?</\s*style\b[^>]*>",
+        "", full_text, flags=re.S | re.I)
     # The block tags are where the line breaks belong; everything else goes.
     text = re.sub(r"</(h5|div|p|tr|li)\s*>", "\n", text, flags=re.I)
     text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
