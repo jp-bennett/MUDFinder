@@ -786,6 +786,15 @@ def battlemap(browser, live_server):
         # was measured one stage late and two assertions swapped their answers.
         page.wait_for_function(
             "() => mapObject.backgroundTilesWide === 24.5", timeout=HANDSHAKE_TIMEOUT)
+        # And then on the paint. The number is set locally the moment the field
+        # changes, but the artwork is only resized when the change comes back
+        # from the server -- so waiting on the number alone reads the stage
+        # before the one being asserted, and any change in how long the page
+        # takes to load decides which of the two is measured.
+        page.wait_for_function(
+            """(was) => getComputedStyle(
+                 document.getElementById("mapBackgroundDiv")).backgroundSize !== was""",
+            arg=stages["created"]["backgroundSize"], timeout=HANDSHAKE_TIMEOUT)
         stages["scaled"] = page.evaluate(BACKGROUND_GEOMETRY_JS)
 
         # Drag two squares right and one down, at 70px per square.
@@ -2605,3 +2614,436 @@ class TestWhoSeesTheAttackRolls:
 
     def test_nothing_raised(self, attacks):
         assert attacks["errors"] == []
+
+
+CASTING_REPORT_JS = """
+() => ({
+  labels: Array.from(document.querySelectorAll("#unitCastings .castingLabel"))
+    .map(e => e.innerText),
+  spells: Array.from(document.querySelectorAll("#unitCastings .castingSpells"))
+    .map(e => e.innerText),
+  buttons: document.querySelectorAll("#unitCastings .castingUse").length,
+  spent: document.querySelectorAll("#unitCastings .castingRowSpent").length,
+  chat: document.getElementById("chatText").innerText,
+})
+"""
+
+
+@pytest.fixture(scope="module")
+def castings(browser, live_server):
+    """Spend an Aboleth's three castings of dominate monster and put them back.
+
+    A monster with a limited spell had nowhere to record that it had used one,
+    so the GM kept it on paper.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "castings")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        url = page.url
+        room = dict(pair.split("=", 1) for pair in url.split("?", 1)[1].split("&"))["room"]
+
+        player = context.new_page()
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        page.click("div.tab:text-is('Encounter')")
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+        page.fill("#creatureSearchName", "aboleth")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#creatureRows tr').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.click("#creatureRows tr:first-child button")
+        page.wait_for_function(
+            "() => !document.getElementById('modalBackground')", timeout=HANDSHAKE_TIMEOUT)
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Aboleth")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(500)
+
+        def show():
+            page.evaluate("""() => populateEditChar(gmData,
+                gmData.unitList.find(u => u.charName === "Aboleth").unitNum)""")
+
+        page.click("div.tab:text-is('Units')")
+        page.wait_for_selector("#unitCastings", state="visible")
+        show()
+        page.wait_for_function(
+            "() => document.querySelectorAll('#unitCastings .castingRow').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages = {"fresh": page.evaluate(CASTING_REPORT_JS)}
+
+        # No redraw by hand from here on. The GM presses cast with the sheet in
+        # front of them, and the panel has to answer on its own -- an earlier
+        # version of this test called show() after every press, which is what
+        # let the panel not refresh at all.
+        def buttons_settle(n):
+            page.wait_for_function(
+                "(n) => document.querySelectorAll('#unitCastings .castingUse').length === n",
+                arg=n, timeout=HANDSHAKE_TIMEOUT)
+
+        page.click("#unitCastings .castingUse")
+        buttons_settle(2)
+        page.wait_for_function(
+            """() => document.getElementById("chatText").innerText.indexOf("2 left") !== -1""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["afterOne"] = page.evaluate(CASTING_REPORT_JS)
+
+        for left in [1, 0]:
+            page.click("#unitCastings .castingUse")
+            buttons_settle(left)
+        stages["spent"] = page.evaluate(CASTING_REPORT_JS)
+        player.wait_for_timeout(400)
+        stages["playerChat"] = player.inner_text("#chatText")
+
+        # The count lives on the server, so it has to survive the page going
+        # away -- which is the thing a browser-side counter would get wrong.
+        page.reload()
+        page.wait_for_function(
+            "() => typeof gmData !== 'undefined' && gmData && gmData.unitList.length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.click("div.tab:text-is('Units')")
+        show()
+        page.wait_for_timeout(400)
+        stages["afterReload"] = page.evaluate(CASTING_REPORT_JS)
+
+        page.click(".castingReset")
+        buttons_settle(3)
+        stages["afterReset"] = page.evaluate(CASTING_REPORT_JS)
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestTheCastingPanel:
+    def test_the_limited_casting_is_listed(self, castings):
+        assert castings["fresh"]["spells"] == ["dominate monster (DC 22)"]
+
+    def test_it_is_grouped_under_how_often(self, castings):
+        assert castings["fresh"]["labels"] == ["3/day"]
+
+    def test_there_is_a_button_per_remaining_use(self, castings):
+        """The buttons are the count, rather than a number written beside
+        one -- the same idea the player's spell slots use."""
+        assert castings["fresh"]["buttons"] == 3
+
+    def test_the_at_will_spells_are_not_here(self, castings):
+        """An Aboleth has seven of them, and none needs a counter."""
+        assert "hypnotic pattern" not in " ".join(castings["fresh"]["spells"])
+
+
+class TestSpendingACasting:
+    def test_casting_takes_a_button_away(self, castings):
+        assert castings["afterOne"]["buttons"] == 2
+
+    def test_it_says_what_was_cast(self, castings):
+        assert "dominate monster" in castings["afterOne"]["chat"]
+        assert "2 left" in castings["afterOne"]["chat"]
+
+    def test_spending_them_all_leaves_the_row_showing(self, castings):
+        """Greyed rather than gone, so it is clear the creature has it and has
+        used it up."""
+        assert castings["spent"]["buttons"] == 0
+        assert castings["spent"]["spent"] == 1
+        assert castings["spent"]["spells"] == ["dominate monster (DC 22)"]
+
+    def test_the_players_are_not_told(self, castings):
+        assert "dominate monster" not in castings["playerChat"]
+
+    def test_the_count_survives_a_reload(self, castings):
+        """It lives on the server for this reason."""
+        assert castings["afterReload"]["buttons"] == 0
+        assert castings["afterReload"]["spent"] == 1
+
+    def test_resetting_gives_them_back(self, castings):
+        assert castings["afterReset"]["buttons"] == 3
+        assert castings["afterReset"]["spent"] == 0
+
+    def test_nothing_raised(self, castings):
+        assert castings["errors"] == []
+
+
+STATBLOCK_PANEL_JS = """() => {
+  const panel = document.getElementById("unitStatblock");
+  const named = panel.querySelector(".sbName");
+  const empty = panel.querySelector(".statblockEmpty");
+  return {
+    name: named ? named.innerText : "",
+    empty: empty ? empty.innerText : "",
+    hasBlock: panel.querySelector(".statblock") !== null,
+    text: panel.innerText,
+    sheetName: document.getElementById("charactername").innerText,
+    unitsTab: document.getElementById("units").style.display,
+    scrolls: getComputedStyle(panel).overflowY,
+  };
+}"""
+
+
+@pytest.fixture(scope="module")
+def unit_statblock(browser, live_server):
+    """Reach a monster's bestiary entry from the encounter, four ways.
+
+    The GM could see the full entry while choosing a creature and never again;
+    once it was on the board the only way back to its special abilities was to
+    search the picker for it a second time.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "statblocks")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1) for pair in page.url.split("?", 1)[1].split("&"))["room"]
+
+        page.fill("#mapWidth", "5")
+        page.fill("#mapHeight", "4")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 20",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        # A player, so there is a unit that never came out of the bestiary.
+        player = context.new_page()
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Aria")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        page.click("div.tab:text-is('Encounter')")
+        page.check("#addToInit")
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+        page.fill("#creatureSearchName", "dire ape")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#creatureRows tr').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.click("#creatureRows tr:first-child button")
+        page.wait_for_function(
+            "() => !document.getElementById('modalBackground')", timeout=HANDSHAKE_TIMEOUT)
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Dire Ape")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(500)
+
+        def sheet_ready(name):
+            page.wait_for_function(
+                """(who) => document.getElementById("charactername").innerText === who
+                     && document.getElementById("unitStatblock").firstChild !== null""",
+                arg=name, timeout=HANDSHAKE_TIMEOUT)
+
+        stages = {}
+
+        # 1. The sheet itself.
+        page.click("div.tab:text-is('Units')")
+        page.evaluate("""() => populateEditChar(gmData,
+            gmData.unitList.find(u => u.charName === "Dire Ape").unitNum)""")
+        sheet_ready("Dire Ape")
+        stages["sheet"] = page.evaluate(STATBLOCK_PANEL_JS)
+
+        # A player's own character has no bestiary entry behind it, and the
+        # panel has to say so rather than keep showing the last monster.
+        page.evaluate("""() => populateEditChar(gmData,
+            gmData.unitList.find(u => u.charName === "Aria").unitNum)""")
+        sheet_ready("Aria")
+        stages["player"] = page.evaluate(STATBLOCK_PANEL_JS)
+
+        # 2. The Info button on the All Creatures list, from another tab.
+        page.click("div.tab:text-is('Encounter')")
+        page.wait_for_function(
+            """() => document.getElementById("units").style.display === "none" """,
+            timeout=HANDSHAKE_TIMEOUT)
+        page.click("#unitsDiv .unitListEntry:has-text('Dire Ape') button:text-is('Info')")
+        sheet_ready("Dire Ape")
+        stages["fromList"] = page.evaluate(STATBLOCK_PANEL_JS)
+        stages["listSelected"] = page.evaluate("() => selectedUnits.slice()")
+        # Where it landed, not merely whether it is displayed. The first cut of
+        # this put the panel under the whole form, where it opened six pixels
+        # below the fold and every assertion here still passed.
+        stages["box"] = page.evaluate("""() => {
+            const r = document.getElementById("unitStatblock").getBoundingClientRect();
+            return {top: r.top, left: r.left, right: r.right, bottom: r.bottom,
+                    vw: window.innerWidth, vh: window.innerHeight,
+                    sideways: document.documentElement.scrollWidth > window.innerWidth};
+        }""")
+
+        # 3. The Info button in the initiative order, which is what the GM is
+        #    actually looking at during a fight.
+        page.evaluate("""() => populateEditChar(gmData,
+            gmData.unitList.find(u => u.charName === "Aria").unitNum)""")
+        sheet_ready("Aria")
+        page.click("div.tab:text-is('Encounter')")
+        page.click("#initiativeDiv .InitEntry:has-text('Dire Ape') button:text-is('Info')")
+        sheet_ready("Dire Ape")
+        stages["fromInitiative"] = page.evaluate(STATBLOCK_PANEL_JS)
+
+        # 4. The token on the map. Put the ape on a tile first.
+        page.evaluate("""() => populateEditChar(gmData,
+            gmData.unitList.find(u => u.charName === "Aria").unitNum)""")
+        page.click("div.tab:text-is('Encounter')")
+        # Info left the ape selected and clicking its row is a toggle, so
+        # without this the click would deselect it and the square do nothing.
+        page.evaluate("() => deselectAll()")
+        page.click("#unitsDiv .unitListEntry:has-text('Dire Ape')")
+        # Opening any tab collapses the map to nothing, so it has to come back
+        # before a square can be clicked.
+        page.click("div.tab:text-is('Map')")
+        page.click('[id="tile2,2"]')
+        page.wait_for_function(
+            """() => document.getElementById("tile2,2").attributes.units !== "" """,
+            timeout=HANDSHAKE_TIMEOUT)
+        page.evaluate("""() => populateEditChar(gmData,
+            gmData.unitList.find(u => u.charName === "Aria").unitNum)""")
+        sheet_ready("Aria")
+        page.dblclick('[id="tile2,2"]')
+        sheet_ready("Dire Ape")
+        stages["fromMap"] = page.evaluate(STATBLOCK_PANEL_JS)
+
+        # The panel is redrawn on every update from the server. Repainting an
+        # unchanged entry would flicker and lose the GM's place in it, so this
+        # counts what the sheet actually asks the server for.
+        page.evaluate("""() => {
+            window.creatureFetches = 0;
+            const real = window.fetchCreature;
+            window.fetchCreature = function (id) {
+                window.creatureFetches += 1;
+                return real(id);
+            };
+        }""")
+        page.evaluate(
+            """() => { window.blockNode = document.getElementById("unitStatblock").firstChild; }""")
+        page.evaluate("""() => {
+            for (var n = 0; n < 5; n++) {
+                populateEditChar(gmData,
+                    gmData.unitList.find(u => u.charName === "Dire Ape").unitNum);
+            }
+        }""")
+        page.wait_for_timeout(400)
+        stages["refetches"] = page.evaluate("() => window.creatureFetches")
+        # The cache alone would still tear the panel down and build it again on
+        # every update. This is the same node or it is not.
+        stages["sameNode"] = page.evaluate(
+            """() => document.getElementById("unitStatblock").firstChild === window.blockNode""")
+        stages["stillDrawn"] = page.evaluate(STATBLOCK_PANEL_JS)
+
+        # The players' own sheet has no such panel, and drawing must not throw
+        # in a page that does not have one.
+        player.wait_for_timeout(300)
+        stages["playerHasPanel"] = player.evaluate(
+            "() => document.getElementById('unitStatblock') !== null")
+        stages["playerErrors"] = player.evaluate(
+            "() => document.getElementById('chatText').innerText")
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestTheStatblockOnTheUnitSheet:
+    def test_a_monster_shows_its_bestiary_entry(self, unit_statblock):
+        assert unit_statblock["sheet"]["hasBlock"]
+        assert unit_statblock["sheet"]["name"] == "Dire Ape"
+
+    def test_it_carries_what_the_unit_does_not(self, unit_statblock):
+        """The point of the panel. A Unit keeps only the fields the app reads,
+        so the feats and the prose exist nowhere but the database."""
+        assert "Iron Will" in unit_statblock["sheet"]["text"]
+        assert "stymied" in unit_statblock["sheet"]["text"]
+
+    def test_a_hand_made_unit_says_so(self, unit_statblock):
+        assert not unit_statblock["player"]["hasBlock"]
+        assert "bestiary" in unit_statblock["player"]["empty"]
+
+    def test_the_panel_scrolls(self, unit_statblock):
+        """A dragon's entry is longer than the sheet above it, and the fields
+        have to stay reachable."""
+        assert unit_statblock["sheet"]["scrolls"] == "auto"
+
+
+class TestReachingTheStatblock:
+    def test_the_creature_list_has_an_info_button(self, unit_statblock):
+        assert unit_statblock["fromList"]["name"] == "Dire Ape"
+        assert unit_statblock["fromList"]["unitsTab"] == "block"
+
+    def test_the_info_button_also_selects_the_unit(self, unit_statblock):
+        """It stops the row's own click, so it has to do the selecting itself
+        or the GM loses the unit they were moving."""
+        assert unit_statblock["listSelected"] != []
+
+    def test_it_opens_where_the_gm_can_see_it(self, unit_statblock):
+        """Being in the document is not the same as being on the screen, and
+        the difference does not show up in any of the assertions above."""
+        box = unit_statblock["box"]
+        assert box["top"] >= 0 and box["bottom"] <= box["vh"]
+        assert box["left"] >= 0 and box["right"] <= box["vw"]
+        assert box["sideways"] is False
+
+    def test_the_initiative_order_has_one_too(self, unit_statblock):
+        assert unit_statblock["fromInitiative"]["name"] == "Dire Ape"
+        assert unit_statblock["fromInitiative"]["unitsTab"] == "block"
+
+    def test_double_clicking_the_token_opens_it(self, unit_statblock):
+        """Single click is already select-and-move, so this needs its own
+        gesture."""
+        assert unit_statblock["fromMap"]["name"] == "Dire Ape"
+        assert unit_statblock["fromMap"]["unitsTab"] == "block"
+
+
+class TestTheStatblockIsNotRedrawn:
+    def test_the_creature_is_only_asked_for_once(self, unit_statblock):
+        """populateEditChar runs on every update from the server, including
+        while the tab is shut."""
+        assert unit_statblock["refetches"] == 0
+
+    def test_an_unchanged_entry_is_left_where_it_is(self, unit_statblock):
+        """Rebuilding it would flicker and throw away wherever the GM had
+        scrolled to in a long entry."""
+        assert unit_statblock["sameNode"] is True
+
+    def test_and_stays_on_screen(self, unit_statblock):
+        assert unit_statblock["stillDrawn"]["name"] == "Dire Ape"
+
+    def test_the_players_sheet_has_no_panel(self, unit_statblock):
+        assert unit_statblock["playerHasPanel"] is False
+
+    def test_nothing_raised(self, unit_statblock):
+        assert unit_statblock["errors"] == []

@@ -8,12 +8,14 @@ signatures, these fail rather than the app merely failing to work in a browser.
 
 import json
 import re
+import sqlite3
 
 import pytest
 
 import mudfinder
 from helpers import GM_KEY, event, event_names
 from session import Session
+from unit import Unit
 
 
 class TestConnection:
@@ -2101,3 +2103,155 @@ class TestSavingEditedAttacks:
         gm_client.get_received()
         gm_client.emit("update_unit", {"room": room, "gmKey": key, "unitNum": 0, "color": "red"})
         assert mudfinder.ROOMS[room].unitList[0].weapons[0][1] == "+6"
+
+
+class TestCastingASpell:
+    """Spending one of a unit's castings.
+
+    Counted on the server rather than in the browser, so the number survives a
+    reload and two GM views cannot disagree about it.
+    """
+
+    def aboleth(self, gm_client, room, key):
+        db = sqlite3.connect("mudfinder.sql")
+        db.row_factory = sqlite3.Row
+        creature = dict(db.execute(
+            "select rowid as id, * from creatures where Name = 'Aboleth' limit 1").fetchone())
+        gm_client.emit("add_units", {
+            "room": room, "gmKey": key, "count": 1, "addToInitiative": False,
+            "initiativeBonus": 0, "unit": mudfinder.creature_to_unit(creature)})
+        gm_client.get_received()
+        return mudfinder.ROOMS[room].unitList[0]
+
+    def cast(self, gm_client, room, key, casting=0, unit_num=0, **overrides):
+        payload = {"room": room, "gmKey": key, "unitNum": unit_num, "casting": casting}
+        payload.update(overrides)
+        gm_client.emit("cast_spell", payload)
+        return gm_client.get_received()
+
+    def test_casting_spends_one(self, gm):
+        gm_client, room, key = gm
+        unit = self.aboleth(gm_client, room, key)
+        self.cast(gm_client, room, key)
+        assert unit.castings[0]["uses"] == 2
+
+    def test_the_daily_number_is_untouched(self, gm):
+        gm_client, room, key = gm
+        unit = self.aboleth(gm_client, room, key)
+        self.cast(gm_client, room, key)
+        assert unit.castings[0]["daily"] == 3
+
+    def test_casting_says_what_was_cast(self, gm):
+        gm_client, room, key = gm
+        self.aboleth(gm_client, room, key)
+        chat = event(self.cast(gm_client, room, key), "chat")["args"][0]["chat"]
+        assert "dominate monster" in chat
+        assert "2 left" in chat
+
+    def test_a_pool_is_not_reported_as_casting_everything_in_it(self, gm):
+        """Naming all five spells of a 3/day pool reads as though every one of
+        them was cast."""
+        gm_client, room, key = gm
+        gm_client.emit("add_units", {
+            "room": room, "gmKey": key, "count": 1, "addToInitiative": False,
+            "initiativeBonus": 0, "unit": {"charName": "Planetar", "castings": [
+                {"label": "3/day", "spells": "blade barrier, flame strike, raise dead",
+                 "uses": 3, "daily": 3}]}})
+        gm_client.get_received()
+        chat = event(self.cast(gm_client, room, key), "chat")["args"][0]["chat"]
+        assert "used a 3/day casting" in chat
+        assert "blade barrier" not in chat
+
+    def test_spending_the_last_one_leaves_none(self, gm):
+        gm_client, room, key = gm
+        unit = self.aboleth(gm_client, room, key)
+        for _ in range(3):
+            self.cast(gm_client, room, key)
+        assert unit.castings[0]["uses"] == 0
+
+    def test_it_cannot_go_below_zero(self, gm):
+        """A second GM tab can be holding a stale count and offering a button
+        for a casting that has already gone."""
+        gm_client, room, key = gm
+        unit = self.aboleth(gm_client, room, key)
+        for _ in range(6):
+            self.cast(gm_client, room, key)
+        assert unit.castings[0]["uses"] == 0
+
+    def test_a_spent_casting_says_nothing(self, gm):
+        gm_client, room, key = gm
+        self.aboleth(gm_client, room, key)
+        for _ in range(3):
+            self.cast(gm_client, room, key)
+        assert "chat" not in event_names(self.cast(gm_client, room, key))
+
+    def test_resetting_restores_everything(self, gm):
+        gm_client, room, key = gm
+        unit = self.aboleth(gm_client, room, key)
+        self.cast(gm_client, room, key)
+        gm_client.emit("reset_castings", {"room": room, "gmKey": key, "unitNum": 0})
+        assert unit.castings[0]["uses"] == 3
+
+    def test_wrong_key_casts_nothing(self, gm):
+        gm_client, room, key = gm
+        unit = self.aboleth(gm_client, room, key)
+        self.cast(gm_client, room, "wrong")
+        assert unit.castings[0]["uses"] == 3
+
+    def test_wrong_key_resets_nothing(self, gm):
+        gm_client, room, key = gm
+        unit = self.aboleth(gm_client, room, key)
+        self.cast(gm_client, room, key)
+        gm_client.emit("reset_castings", {"room": room, "gmKey": "wrong", "unitNum": 0})
+        assert unit.castings[0]["uses"] == 2
+
+    @pytest.mark.parametrize("bad", ["abc", None, -1, 99, ""])
+    def test_a_casting_that_is_not_there_does_not_raise(self, gm, bad):
+        gm_client, room, key = gm
+        unit = self.aboleth(gm_client, room, key)
+        self.cast(gm_client, room, key, casting=bad)
+        assert unit.castings[0]["uses"] == 3
+
+    @pytest.mark.parametrize("bad", ["abc", None, -1, 99])
+    def test_a_unit_that_is_not_there_does_not_raise(self, gm, bad):
+        gm_client, room, key = gm
+        unit = self.aboleth(gm_client, room, key)
+        self.cast(gm_client, room, key, unit_num=bad)
+        assert unit.castings[0]["uses"] == 3
+
+    def test_unknown_room_is_ignored(self, client):
+        client.emit("cast_spell", {"room": "no-such-room", "gmKey": GM_KEY,
+                                   "unitNum": 0, "casting": 0})
+        assert client.get_received() == []
+
+    def test_the_count_is_on_the_unit_not_the_browser(self, gm):
+        """Which is what makes it survive a reload."""
+        gm_client, room, key = gm
+        unit = self.aboleth(gm_client, room, key)
+        self.cast(gm_client, room, key)
+        assert Unit(unit.to_json()).castings[0]["uses"] == 2
+
+
+class TestWhoSeesACast:
+    def test_the_gm_is_told(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        gm_client.emit("add_units", {
+            "room": room, "gmKey": key, "count": 1, "addToInitiative": False,
+            "initiativeBonus": 0, "unit": {"charName": "Aboleth", "castings": [
+                {"label": "3/day", "spells": "dominate monster", "uses": 3, "daily": 3}]}})
+        gm_client.get_received()
+        gm_client.emit("cast_spell", {"room": room, "gmKey": key, "unitNum": 0, "casting": 0})
+        assert "chat" in event_names(gm_client.get_received())
+
+    def test_the_players_are_not(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        gm_client.emit("add_units", {
+            "room": room, "gmKey": key, "count": 1, "addToInitiative": False,
+            "initiativeBonus": 0, "unit": {"charName": "Aboleth", "castings": [
+                {"label": "3/day", "spells": "dominate monster", "uses": 3, "daily": 3}]}})
+        gm_client.get_received()
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        gm_client.emit("cast_spell", {"room": room, "gmKey": key, "unitNum": 0, "casting": 0})
+        assert "chat" not in event_names(player.get_received())

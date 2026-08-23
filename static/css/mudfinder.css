@@ -653,6 +653,60 @@ width:100%;
     opacity: 0.6;
 }
 
+/* A unit's castings. One button per remaining use, so the buttons are the
+   count -- the same idea the player's spell slots use. Scrolls, because the
+   busiest creature in the table has 122 of them. */
+.unitCastings {
+    max-width: 620px;
+    margin: 2px 0 6px;
+}
+.castingList {
+    max-height: 260px;
+    overflow-y: auto;
+    border: 1px solid black;
+    padding: 4px 6px;
+}
+/* The level or frequency, printed once above the rows that share it. */
+.castingLabel {
+    font-weight: bold;
+    font-variant: small-caps;
+    letter-spacing: 0.05em;
+    margin-top: 4px;
+}
+.castingLabel:first-child {
+    margin-top: 0;
+}
+.castingRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 1px 0 1px 10px;
+}
+.castingSpells {
+    flex: 1 1 auto;
+}
+.castingUses {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+.castingUse {
+    margin: 0 0 0 3px;
+    padding: 0 5px;
+    font-size: 85%;
+}
+/* Used up, and left on screen so it is clear the creature has it. */
+.castingRowSpent {
+    opacity: 0.5;
+}
+.castingSpent {
+    font-style: italic;
+    font-size: 85%;
+}
+.castingReset {
+    margin-top: 4px;
+}
+
 /* The creature picker. Its markup is built in chooseCreature (shared.js), which
    used to set all of this inline; it is here so the layout can be adjusted
    without editing JavaScript. */
@@ -967,4 +1021,23 @@ input.hp {
     border-bottom: thin solid;
     padding-top:5px;
     padding-bottom:5px;
+}
+/* The bestiary entry on the unit sheet, beside the fields rather than under
+   them: a dragon's entry is longer than the whole form, so at the bottom it
+   opened below the fold and scrolled the page instead of itself. */
+.unitStatblock {
+    float: right;
+    width: 400px;
+    max-width: 45%;
+    max-height: calc(100vh - 90px);
+    overflow-y: auto;
+    margin: 0 8px 8px 12px;
+}
+.unitStatblock .statblock {
+    margin: 0;
+}
+.statblockEmpty {
+    font-style: italic;
+    opacity: 0.7;
+    padding: 4px 0;
 }

@@ -644,6 +644,11 @@ function populateEditChar (Data, unitNum) {
             drawAttacks(document.getElementById("unitAttacks"),
                         Data.unitList[playerUnitNum].weapons,
                         Data.unitList[playerUnitNum].charName);
+            drawCastings(document.getElementById("unitCastings"),
+                         Data.unitList[playerUnitNum],
+                         Data.unitList[playerUnitNum].unitNum);
+            drawStatblock(document.getElementById("unitStatblock"),
+                          Data.unitList[playerUnitNum]);
         } else {
         document.getElementById("sheetCharName").value = Data.unitList[playerUnitNum].charName;
         }
@@ -740,6 +745,145 @@ function drawAttacks(container, weapons, owner) {
     for (var w = 0; w < weapons.length; w++) {
         container.appendChild(attackRow(weapons[w], owner));
     }
+}
+
+// The castings a unit has left, one button per remaining use -- the idea
+// displaySpellSlots uses on the player sheet, where the buttons are the count
+// rather than a number written beside one.
+//
+// Only things that run out are here. At-will and constant spells are in the
+// statblock the picker shows and need no counter.
+function drawCastings(container, unit, unitNumber) {
+    removeContents(container);
+    var castings = (unit && unit.castings) || [];
+    if (castings.length === 0) {
+        var empty = document.createElement("div");
+        empty.className = "attackRowEmpty";
+        empty.innerText = "Nothing with a limited number of uses.";
+        container.appendChild(empty);
+        return;
+    }
+
+    var list = document.createElement("div");
+    list.className = "castingList";
+    var previousLabel = null;
+    for (var c = 0; c < castings.length; c++) {
+        var casting = castings[c];
+        // A prepared caster has a row per spell, so the level is printed once
+        // and the rows under it carry only their spell.
+        if (casting.label !== previousLabel) {
+            var heading = document.createElement("div");
+            heading.className = "castingLabel";
+            heading.innerText = casting.label;
+            list.appendChild(heading);
+            previousLabel = casting.label;
+        }
+        list.appendChild(castingRow(casting, c, unitNumber));
+    }
+    container.appendChild(list);
+
+    var reset = document.createElement("button");
+    reset.className = "castingReset";
+    reset.innerText = "Reset spells";
+    reset.onclick = function () {
+        socket.emit("reset_castings", {room: room, gmKey: gmKey, unitNum: unitNumber});
+    };
+    container.appendChild(reset);
+}
+
+function castingRow(casting, index, unitNumber) {
+    var row = document.createElement("div");
+    row.className = "castingRow";
+
+    var name = document.createElement("span");
+    name.className = "castingSpells";
+    name.innerText = casting.spells;
+    row.appendChild(name);
+
+    var uses = document.createElement("span");
+    uses.className = "castingUses";
+    for (var u = 0; u < casting.uses; u++) {
+        var button = document.createElement("button");
+        button.className = "castingUse";
+        button.innerText = "cast";
+        button.title = casting.uses + " of " + casting.daily + " left";
+        button.onclick = (function (index) { return function () {
+            socket.emit("cast_spell", {room: room, gmKey: gmKey,
+                                       unitNum: unitNumber, casting: index});
+        }})(index);
+        uses.appendChild(button);
+    }
+    if (casting.uses === 0) {
+        // Kept on screen rather than removed, so it is clear the creature has
+        // it and has used it up.
+        row.classList.add("castingRowSpent");
+        var spent = document.createElement("span");
+        spent.className = "castingSpent";
+        spent.innerText = "spent";
+        uses.appendChild(spent);
+    }
+    row.appendChild(uses);
+    return row;
+}
+
+// Bestiary rows already fetched, keyed by id. populateEditChar runs on every
+// update -- including while the Units tab is closed -- so without this the
+// sheet would ask the server for the same creature over and over.
+var creatureCache = {};
+
+function fetchCreatureCached(creatureId) {
+    if (creatureCache[creatureId]) {
+        return Promise.resolve(creatureCache[creatureId]);
+    }
+    return fetchCreature(creatureId).then(function (full) {
+        if (full) {
+            creatureCache[creatureId] = full;
+        }
+        return full;
+    });
+}
+
+// The creature a unit came from, in full, on its own sheet. A unit carries
+// only the fields the app reads, so everything else -- the ecology, the
+// special abilities, the prose -- has to be looked up by creatureId.
+function drawStatblock(container, unit) {
+    if (!container) {
+        // The player's sheet has no statblock panel.
+        return;
+    }
+    var wanted = (unit && unit.creatureId) ? String(unit.creatureId) : "";
+    // This is redrawn on every update from the server. Repainting a statblock
+    // that has not changed would flicker and throw away wherever the GM had
+    // scrolled to. An empty panel with the id already set is a fetch still in
+    // flight, which will fill it, so that is left alone too.
+    if (container.dataset.creatureId === wanted && container.firstChild) {
+        return;
+    }
+    container.dataset.creatureId = wanted;
+    removeContents(container);
+    if (!wanted) {
+        var none = document.createElement("div");
+        none.className = "statblockEmpty";
+        // Units made by hand, and the players' own characters.
+        none.innerText = "Not from the bestiary, so there is no statblock to show.";
+        container.appendChild(none);
+        return;
+    }
+    fetchCreatureCached(unit.creatureId).then(function (full) {
+        // A different unit may have been picked while this was in flight.
+        if (container.dataset.creatureId !== wanted) {
+            return;
+        }
+        removeContents(container);
+        if (full) {
+            container.appendChild(statblockElement(full.creature));
+        } else {
+            var gone = document.createElement("div");
+            gone.className = "statblockEmpty";
+            gone.innerText = "That bestiary entry could not be found.";
+            container.appendChild(gone);
+        }
+    });
 }
 
 function updateImages (unitInfo) {

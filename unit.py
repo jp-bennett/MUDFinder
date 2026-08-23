@@ -70,6 +70,16 @@ class Unit(object):
         self.SR = default(unitdict, "SR", "")
         self.ER = default(unitdict, "ER", "")
         self.weapons = default(unitdict, "weapons", [])
+        # What this creature can cast a limited number of times, and how many
+        # it has left. Its own field rather than an entry in spellcasting,
+        # which is shaped around player caster classes -- spellSlots1 through
+        # spellSlots9, hasSpellbook, Vancian -- and "3/day dominate monster" is
+        # not a spell level.
+        self.castings = default(unitdict, "castings", [])
+        # Which bestiary row this came from, so a monster on the map can be
+        # traced back to its full statblock. The unit carries only the mapped
+        # fields; without this there is nothing to look the rest up by.
+        self.creatureId = default(unitdict, "creatureId", None)
         self.spellcasting = default(unitdict, "spellcasting", [])
         self.flatFooted = default(unitdict, "flatFooted", True)
 
@@ -141,6 +151,8 @@ class Unit(object):
             "SR": self.SR,
             "ER": self.ER,
             "weapons": self.weapons,
+            "castings": self.castings,
+            "creatureId": self.creatureId,
             "spellcasting": self.spellcasting,
             "flatFooted": self.flatFooted,
             "uuid": self.uuid

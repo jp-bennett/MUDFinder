@@ -80,6 +80,9 @@ window.onload = function() {
     // and swallowing clicks there would disable its buttons while aligning.
     document.getElementById("mapGraphic").addEventListener("mousedown", alignmentDragStart);
     document.getElementById("mapGraphic").addEventListener("click", alignmentSwallowClick, true);
+    // Double-click a token for its statblock. The single click is already
+    // spoken for by select-and-move, so this needs a gesture of its own.
+    document.getElementById("mapGraphic").addEventListener("dblclick", mapDoubleClick);
     window.addEventListener("mousemove", alignmentDragMove);
     window.addEventListener("mouseup", alignmentDragEnd);
 
@@ -168,6 +171,16 @@ window.onload = function() {
                 } else {
                     populateEditChar(gmData, 0)
                 }
+            } else if (typeof playerUnitNum !== "undefined"
+                       && typeof gmData.unitList[playerUnitNum] !== "undefined") {
+                // An open sheet is deliberately not repopulated: it would wipe
+                // whatever the GM was half-way through typing into it. The
+                // castings are not a field the GM types into, though -- they
+                // are a display of what the server holds, and pressing cast is
+                // exactly when the sheet is open.
+                drawCastings(document.getElementById("unitCastings"),
+                             gmData.unitList[playerUnitNum],
+                             gmData.unitList[playerUnitNum].unitNum);
             }
             for (var i = 0; i < gmData.unitList.length; i++) {
                 tmpUnit = `
@@ -186,6 +199,9 @@ window.onload = function() {
                               Remove
                             </button>`;
                           }
+                          tmpUnit += `<button onclick="showUnitInfoEvent(event, ${gmData.unitList[i].unitNum})">
+                            Info
+                          </button>`;
                         tmpUnit +=`</div>
                       </div>
                   </div>`;
@@ -215,6 +231,7 @@ window.onload = function() {
                                           Del
                                         </button>`;
                           }
+                          tmpHTML += `<button onclick="showUnitInfoEvent(event, ${gmData.initiativeList[i].unitNum})">Info</button>`;
                         tmpHTML += `</div>
                         <div style="float:right;"> <span style="cursor: default;" onclick="earlierInit(event, ${i})">&#9650;</span> <br> <span style="cursor: default;" onclick="laterInit(event, ${i})">&#9660;</span></div>
                       </div>
@@ -1066,6 +1083,62 @@ function selectInitiative(initiativeNum) {
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
+}
+
+function mapDoubleClick(e) {
+    // One listener on the map rather than a handler per square: a battlemap
+    // is several hundred tiles and every one of them is rebuilt on redraw.
+    try {
+        var tile = e.target.closest(".mapTile");
+        if (tile === null || tile.attributes.units == "") {
+            return;
+        }
+        e.stopPropagation();
+        // The tile records positions in unitList, not unit numbers.
+        var onTile = parseInt(tile.attributes.units.split(" ")[0]);
+        showUnitInfo(gmData.unitList[onTile].unitNum);
+    } catch (error) {
+        socket.emit("error_handle", room, error);
+    }
+}
+
+function showUnitInfo(unitNum) {
+    // Select the unit, open the tab its sheet is on, and let populateEditChar
+    // draw it. The statblock lives in one place; the buttons on the creature
+    // list, the initiative order and the map are all just routes to it.
+    //
+    // Takes a unitNum rather than a position in unitList, because the
+    // initiative order is in its own order and only the number is common to
+    // both lists.
+    try {
+        if (typeof gmData === "undefined" || !gmData) {
+            return;
+        }
+        var index = -1;
+        for (var u = 0; u < gmData.unitList.length; u++) {
+            if (gmData.unitList[u].unitNum == unitNum) {
+                index = u;
+                break;
+            }
+        }
+        if (index < 0) {
+            return;
+        }
+        selectedTool = undefined;
+        selectedUnits = [index];
+        enableTab("units");
+        populateEditChar(gmData, unitNum);
+        document.getElementById("unitStatblock").scrollIntoView({block: "nearest"});
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
+function showUnitInfoEvent(e, unitNum) {
+    // The row underneath selects the unit for the map; this must not do that
+    // as well.
+    e.stopPropagation();
+    showUnitInfo(unitNum);
 }
 
 function selectUnit(e, unitNum) {
