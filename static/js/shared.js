@@ -1728,6 +1728,21 @@ function statblockText(creature) {
     return lines.join("\n");
 }
 
+// The picker's columns, in order. `field` is both the key on a result row and
+// the sort the server is asked for, so the two cannot drift apart.
+//
+// Source earns its place: 364 names appear more than once now that the
+// bestiary and the adventure statblocks share a table, and it is often the
+// only thing telling two rows apart.
+var CREATURE_COLUMNS = [
+    {field: "Name", heading: "Name"},
+    {field: "CR", heading: "CR"},
+    {field: "TypeNorm", heading: "Type"},
+    {field: "Size", heading: "Size"},
+    {field: "HP", heading: "HP"},
+    {field: "Source", heading: "Source"},
+];
+
 function searchCreatures(criteria) {
     // An ack rather than a named response event. The CR browser used to listen
     // for one, and registered a fresh listener on every search -- they piled up
@@ -1790,11 +1805,59 @@ async function chooseCreature() {
 
         var creatureTable = document.createElement("table");
         creatureTable.id = "creatureTable";
+        var creatureHead = document.createElement("thead");
+        creatureTable.appendChild(creatureHead);
+        var creatureRows = document.createElement("tbody");
+        creatureRows.id = "creatureRows";
+        creatureTable.appendChild(creatureRows);
         creatureListDiv.appendChild(creatureTable);
+
+        // Which column the list is ordered by. The server does the ordering,
+        // because the result is capped -- sorting the rows already here would
+        // give the first 300 by name rearranged, not the first 300 by CR.
+        var sortField = "Name";
+        var sortDescending = false;
+
+        function drawHeadings() {
+            removeContents(creatureHead);
+            var headingRow = document.createElement("tr");
+            for (var c = 0; c < CREATURE_COLUMNS.length; c++) {
+                var column = CREATURE_COLUMNS[c];
+                var heading = document.createElement("th");
+                heading.className = "creatureHeading";
+                heading.innerText = column.heading
+                    + (sortField === column.field ? (sortDescending ? " \u25be" : " \u25b4") : "");
+                if (sortField === column.field) {
+                    heading.classList.add("sortedBy");
+                }
+                heading.onclick = (function (field) { return function () {
+                    // Clicking the column already sorted on turns it around.
+                    if (sortField === field) {
+                        sortDescending = !sortDescending;
+                    } else {
+                        sortField = field;
+                        sortDescending = false;
+                    }
+                    drawHeadings();
+                    runSearch();
+                }})(column.field);
+                headingRow.appendChild(heading);
+            }
+            // The select button's column, which nothing sorts by.
+            headingRow.appendChild(document.createElement("th"));
+            creatureHead.appendChild(headingRow);
+        }
+        drawHeadings();
 
         var creatureDetailDiv = document.createElement("div");
         creatureDetailDiv.id = "creatureDetail";
         modaldiv.appendChild(creatureDetailDiv);
+
+        function detailPrompt() {
+            creatureDetailDiv.innerText = "Click a creature to read its statblock.";
+            creatureDetailDiv.classList.add("creatureDetailPrompt");
+        }
+        detailPrompt();
 
         function appendOptions(select, values) {
             for (var v = 0; v < values.length; v++) {
@@ -1822,8 +1885,11 @@ async function chooseCreature() {
                 cr: crSelect.selectedIndex > 0 ? crSelect.value : "",
                 type: typeSelect.selectedIndex > 0 ? typeSelect.value : "",
             };
-            removeContents(creatureTable);
+            criteria.sort = sortField;
+            criteria.descending = sortDescending;
+            removeContents(creatureRows);
             removeContents(creatureDetailDiv);
+            detailPrompt();
             if (!criteria.name && !criteria.cr && !criteria.type) {
                 countDiv.innerText = "Search by name, or pick a CR or a type.";
                 return;
@@ -1839,21 +1905,17 @@ async function chooseCreature() {
                 ? creatures.length + " shown, and there are more — narrow the search"
                 : creatures.length + (creatures.length === 1 ? " creature" : " creatures");
             for (var i = 0; i < creatures.length; i++) {
-                creatureTable.appendChild(creatureRow(creatures[i]));
+                creatureRows.appendChild(creatureRow(creatures[i]));
             }
         }
 
         function creatureRow(creature) {
             var tableRow = document.createElement("tr");
             tableRow.className = "creatureRow";
-            // Source is here because it is often the only thing telling two
-            // rows apart: 612 names appear more than once, and eleven of them
-            // are "Goblin Leader".
-            var fields = [creature.Name, "CR " + creature.CR, creature.TypeNorm,
-                          creature.Size, "hp " + creature.HP, creature.Source];
-            for (var f = 0; f < fields.length; f++) {
+            for (var f = 0; f < CREATURE_COLUMNS.length; f++) {
+                var value = creature[CREATURE_COLUMNS[f].field];
                 var tableData = document.createElement("td");
-                tableData.innerText = fields[f] === null ? "" : fields[f];
+                tableData.innerText = (value === null || value === undefined) ? "" : value;
                 tableRow.appendChild(tableData);
             }
             var buttonCell = document.createElement("td");
@@ -1868,8 +1930,16 @@ async function chooseCreature() {
             buttonCell.appendChild(button);
             tableRow.appendChild(buttonCell);
             tableRow.onclick = async function () {
+                // The row stays marked after the mouse moves away, so it is
+                // clear which creature the statblock below belongs to.
+                var previous = creatureRows.querySelector(".creatureRowChosen");
+                if (previous) {
+                    previous.classList.remove("creatureRowChosen");
+                }
+                tableRow.classList.add("creatureRowChosen");
                 var full = await fetchCreature(creature.id);
                 removeContents(creatureDetailDiv);
+                creatureDetailDiv.classList.remove("creatureDetailPrompt");
                 if (full) {
                     // innerText throughout: this is text out of the database,
                     // and none of it is ours to trust as markup.

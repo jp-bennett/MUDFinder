@@ -667,10 +667,39 @@ width:100%;
     padding: 3px 8px;
     text-align: left;
 }
+/* Clickable column headings. Sticky so they stay put while a long result list
+   scrolls under them, and opaque so the rows do not show through. */
+.creatureHeading {
+    padding: 4px 8px;
+    text-align: left;
+    cursor: pointer;
+    position: sticky;
+    top: 0;
+    background: white;
+    border-bottom: 1px solid black;
+    user-select: none;
+    white-space: nowrap;
+}
+.creatureHeading:hover {
+    background: #e8eefc;
+}
+.creatureHeading.sortedBy {
+    font-weight: bold;
+}
+.creatureDetailPrompt {
+    font-style: italic;
+    opacity: 0.6;
+}
 .creatureRow {
     cursor: pointer;
 }
 .creatureRow:hover {
+    background: #e8eefc;
+}
+/* The row whose statblock is being shown. Declared after the hover rule so it
+   wins at equal specificity, and stronger than the hover tint so the two can
+   be told apart when the mouse is over a different row. */
+.creatureRow.creatureRowChosen {
     background: cornflowerblue;
 }
 /* The statblock of whichever row is being looked at. Pre-wrap because the text

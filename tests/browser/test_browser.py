@@ -1935,7 +1935,13 @@ class TestVisionCheckboxesStick:
 
 MONSTER_REPORT_JS = """
 (name) => ({
-  rows: Array.from(document.querySelectorAll("#creatureTable tr td:first-child"))
+  rows: Array.from(document.querySelectorAll("#creatureRows tr td:first-child"))
+    .map(cell => cell.innerText),
+  headings: Array.from(document.querySelectorAll(".creatureHeading"))
+    .map(cell => cell.innerText),
+  crColumn: Array.from(document.querySelectorAll("#creatureRows tr td:nth-child(2)"))
+    .map(cell => cell.innerText),
+  hpColumn: Array.from(document.querySelectorAll("#creatureRows tr td:nth-child(5)"))
     .map(cell => cell.innerText),
   countText: document.getElementById("creatureSearchCount")
     ? document.getElementById("creatureSearchCount").innerText : "",
@@ -1944,6 +1950,9 @@ MONSTER_REPORT_JS = """
   detailHead: document.getElementById("creatureDetail")
     ? document.getElementById("creatureDetail").innerText.slice(0, 40) : "",
   modalOpen: !!document.getElementById("modalBackground"),
+  chosenRows: document.querySelectorAll("#creatureRows .creatureRowChosen").length,
+  chosenRowName: document.querySelector("#creatureRows .creatureRowChosen td")
+    ? document.querySelector("#creatureRows .creatureRowChosen td").innerText : "",
   chosen: document.getElementById("chosenCreature").innerText,
   unitName: document.getElementById("unitName").value,
   unitHP: document.getElementById("unitHP").value,
@@ -1995,7 +2004,7 @@ def monsters(browser, live_server):
         page.wait_for_selector("#creatureSearchName")
         page.fill("#creatureSearchName", "dire ape")
         page.wait_for_function(
-            "() => document.querySelectorAll('#creatureTable tr').length > 0",
+            "() => document.querySelectorAll('#creatureRows tr').length > 0",
             timeout=HANDSHAKE_TIMEOUT,
         )
         stages["searched"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
@@ -2009,18 +2018,18 @@ def monsters(browser, live_server):
         stages["filteredAway"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
         page.select_option("#creatureSearchType", "animal")
         page.wait_for_function(
-            "() => document.querySelectorAll('#creatureTable tr').length > 0",
+            "() => document.querySelectorAll('#creatureRows tr').length > 0",
             timeout=HANDSHAKE_TIMEOUT,
         )
 
-        page.click("#creatureTable tr:first-child td:first-child")
+        page.click("#creatureRows tr:first-child td:first-child")
         page.wait_for_function(
             "() => document.getElementById('creatureDetail').innerText.length > 100",
             timeout=HANDSHAKE_TIMEOUT,
         )
         stages["detail"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
 
-        page.click("#creatureTable tr:first-child button")
+        page.click("#creatureRows tr:first-child button")
         page.wait_for_function(
             "() => !document.getElementById('modalBackground')", timeout=HANDSHAKE_TIMEOUT)
         stages["picked"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
@@ -2036,6 +2045,40 @@ def monsters(browser, live_server):
         stages["added"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
         player.wait_for_timeout(400)
         stages["playerChat"] = player.inner_text("#chatText")
+
+        # The column headings, which re-run the search rather than reordering
+        # the rows already here -- the result is capped, so those are not the
+        # same thing.
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+        page.fill("#creatureSearchName", "dragon")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#creatureRows tr').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["byName"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
+        page.click(".creatureHeading:nth-child(2)")
+        page.wait_for_function(
+            """() => document.querySelectorAll('.creatureHeading')[1].innerText.indexOf('\u25b4') !== -1""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(400)
+        stages["byCR"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
+        page.click(".creatureHeading:nth-child(2)")
+        page.wait_for_function(
+            """() => document.querySelectorAll('.creatureHeading')[1].innerText.indexOf('\u25be') !== -1""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(400)
+        stages["byCRDescending"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
+        page.click(".creatureHeading:nth-child(5)")
+        page.wait_for_timeout(700)
+        stages["byHP"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
+        # A corner of the backdrop: its centre is where the picker sits, and
+        # the picker stops the click from reaching it.
+        page.click("#modalBackground", position={"x": 5, "y": 5})
+        page.wait_for_function(
+            "() => !document.getElementById('modalBackground')", timeout=HANDSHAKE_TIMEOUT)
 
         # Searching repeatedly must not pile up socket listeners, which is what
         # the CR browser this replaced did on every change.
@@ -2076,6 +2119,45 @@ class TestSearchingForAMonster:
     def test_clicking_a_row_shows_its_statblock(self, monsters):
         assert monsters["detail"]["detailLength"] > 100
         assert monsters["detail"]["detailHead"].startswith("Dire Ape")
+
+    def test_the_clicked_row_stays_marked(self, monsters):
+        """Hover alone would leave it unclear which creature the statblock
+        below belongs to the moment the mouse moves away."""
+        assert monsters["detail"]["chosenRows"] == 1
+        assert monsters["detail"]["chosenRowName"] == "Dire Ape"
+
+    def test_only_one_row_is_marked_at_a_time(self, monsters):
+        assert monsters["byCR"]["chosenRows"] == 0
+
+    def test_the_columns_all_have_headings(self, monsters):
+        assert [h.replace(" \u25b4", "").replace(" \u25be", "")
+                for h in monsters["byName"]["headings"]] == \
+            ["Name", "CR", "Type", "Size", "HP", "Source"]
+
+    def test_the_sorted_column_is_marked(self, monsters):
+        assert "\u25b4" in monsters["byName"]["headings"][0]
+
+    def test_clicking_a_heading_sorts_by_it(self, monsters):
+        crs = [float(c) for c in monsters["byCR"]["crColumn"] if "/" not in c]
+        assert crs == sorted(crs)
+
+    def test_the_mark_moves_to_the_column_clicked(self, monsters):
+        assert "\u25b4" in monsters["byCR"]["headings"][1]
+        assert "\u25b4" not in monsters["byCR"]["headings"][0]
+
+    def test_clicking_it_again_turns_it_around(self, monsters):
+        crs = [float(c) for c in monsters["byCRDescending"]["crColumn"] if "/" not in c]
+        assert crs == sorted(crs, reverse=True)
+        assert "\u25be" in monsters["byCRDescending"]["headings"][1]
+
+    def test_hp_sorts_as_a_number(self, monsters):
+        """Sorted as text, 9 would come after 500."""
+        hp = [float(h) for h in monsters["byHP"]["hpColumn"] if h and h[0].isdigit()]
+        assert hp == sorted(hp)
+
+    def test_sorting_asks_the_server_rather_than_shuffling_the_page(self, monsters):
+        """The list is capped, so the rows themselves have to change."""
+        assert monsters["byCR"]["rows"] != monsters["byName"]["rows"]
 
     def test_repeated_searches_do_not_pile_up_listeners(self, monsters):
         """The picker this replaced registered one per search, for the life of

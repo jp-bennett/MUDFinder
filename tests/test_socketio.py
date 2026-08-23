@@ -1658,3 +1658,112 @@ class TestAddingMonstersFromTheDatabase:
             "initiativeBonus": 0, "unit": {"charName": "Boss", "initiative": "17"},
         })
         assert mudfinder.ROOMS[room].unitList[0].initiative == "17"
+
+
+class TestSortingTheCreatureList:
+    """The picker's column headings.
+
+    Sorted in the query rather than in the browser, because the result is
+    capped: re-ordering the three hundred rows already sent would give the
+    first three hundred by name rearranged, which is not the same as the three
+    hundred lowest-CR creatures.
+    """
+
+    def search(self, client, **criteria):
+        criteria.setdefault("name", "dragon")
+        return client.emit("database_creature_search", criteria,
+                           callback=True)["creatures"]
+
+    def column(self, client, field, **criteria):
+        return [c[field] for c in self.search(client, **criteria)]
+
+    def test_the_default_is_by_name(self, client):
+        names = self.column(client, "Name")
+        assert names == sorted(names, key=str.lower)
+
+    def test_by_name_reversed(self, client):
+        names = self.column(client, "Name", sort="Name", descending=True)
+        assert names == sorted(names, key=str.lower, reverse=True)
+
+    def test_by_cr_is_numeric_not_alphabetical(self, client):
+        """Sorted as the text it is stored as, 10 comes before 2 and the
+        fractions land somewhere among the twenties."""
+        crs = [float(c) for c in self.column(client, "CR", sort="CR") if "/" not in c]
+        assert crs == sorted(crs)
+
+    def test_by_cr_puts_the_fractions_first(self, client):
+        crs = self.column(client, "CR", name="goblin", sort="CR")
+        assert crs[0] in ("1/8", "1/6", "1/4", "1/3", "1/2")
+
+    def test_by_cr_reversed(self, client):
+        crs = [float(c) for c in self.column(client, "CR", sort="CR", descending=True)
+               if "/" not in c]
+        assert crs == sorted(crs, reverse=True)
+
+    def test_a_creature_with_no_cr_sorts_to_the_end(self, client):
+        crs = self.column(client, "CR", name="fiendish", sort="CR")
+        if "-" in crs:
+            assert crs.index("-") == len(crs) - crs.count("-")
+
+    def test_by_hp_is_numeric(self, client):
+        hp = [float(h) for h in self.column(client, "HP", sort="HP") if h and h[0].isdigit()]
+        assert hp == sorted(hp)
+
+    def test_by_size_follows_the_scale(self, client):
+        """Not the alphabet, which starts at Colossal and ends at Tiny."""
+        order = ["Fine", "Diminutive", "Tiny", "Small", "Medium", "Large",
+                 "Huge", "Gargantuan", "Colossal"]
+        sizes = [order.index(s) for s in self.column(client, "Size", sort="Size") if s in order]
+        assert sizes == sorted(sizes)
+
+    def test_by_size_reversed_starts_at_the_biggest(self, client):
+        sizes = self.column(client, "Size", sort="Size", descending=True)
+        assert sizes[0] in ("Colossal", "Gargantuan", "Huge")
+
+    def test_by_type(self, client):
+        types = self.column(client, "TypeNorm", name="goblin", sort="TypeNorm")
+        assert types == sorted(types, key=str.lower)
+
+    def test_by_source(self, client):
+        sources = self.column(client, "Source", sort="Source")
+        assert sources == sorted(sources, key=str.lower)
+
+    def test_ties_break_on_the_name(self, client):
+        """So sorting by CR gives an order that can be read down rather than
+        one that reshuffles every time the same query is run."""
+        first = [c["Name"] for c in self.search(client, sort="CR")]
+        again = [c["Name"] for c in self.search(client, sort="CR")]
+        assert first == again
+
+    def numeric_cr(self, cr):
+        if "/" in cr:
+            top, bottom = cr.split("/")
+            return float(top) / float(bottom)
+        return float(cr) if cr != "-" else 1000.0
+
+    def test_sorting_picks_from_the_whole_match_not_the_first_page(self, client):
+        """The capped list has to be the lowest-CR three hundred, not the
+        alphabetical three hundred put into CR order. "a" matches far more
+        creatures than the cap, so the two orderings see different rows."""
+        lowest = [self.numeric_cr(c) for c in self.column(client, "CR", name="a", sort="CR")]
+        by_name = [self.numeric_cr(c) for c in self.column(client, "CR", name="a")]
+        assert max(lowest) < max(by_name)
+
+    @pytest.mark.parametrize("bad", [
+        "Nonsense", "", None, "Name; drop table creatures--", "CR) --", 7,
+    ])
+    def test_an_unusable_sort_falls_back_to_the_name(self, client, bad):
+        """A sort key cannot be a bound parameter, so it is checked against our
+        own list the way the spell columns are."""
+        names = self.column(client, "Name", sort=bad)
+        assert names == sorted(names, key=str.lower)
+
+    def test_the_creatures_table_survives_a_hostile_sort(self, client):
+        self.search(client, sort="Name; drop table creatures--")
+        assert self.search(client, name="Dire Ape")
+
+    def test_every_column_the_picker_shows_can_be_sorted_on(self, client):
+        """The headings are built from the same list, so a column with no sort
+        would be a heading that does nothing when clicked."""
+        listed = {"Name", "CR", "TypeNorm", "Size", "HP", "Source"}
+        assert listed <= set(mudfinder.CREATURE_SORTS)

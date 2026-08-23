@@ -62,6 +62,43 @@ CREATURE_LIST_COLUMNS = "rowid as id, Name, CR, Type, TypeNorm, Size, HP, Init, 
 # search says when it has cut a list short rather than quietly truncating.
 MAX_CREATURE_RESULTS = 300
 
+# What each of the picker's column headings sorts by. A whitelist, because a
+# sort key cannot be a bound parameter -- the same reason SPELL_CLASS_COLUMNS
+# exists -- so what goes into the query is always one of our own literals.
+#
+# Three of these cannot sort as the text they are stored as. CR runs
+# '1/8' to '39', so alphabetically 10 comes before 2 and the fractions land
+# among the twenties. Size is a scale, not a word list: sorted as text it
+# starts at Colossal and ends at Tiny. HP is text with two rows of prose in it.
+CREATURE_SORTS = {
+    "Name": "Name collate nocase",
+    "CR": ("case CR when '1/8' then 0.125 when '1/6' then 0.167"
+           " when '1/4' then 0.25 when '1/3' then 0.333 when '1/2' then 0.5"
+           # A creature with no CR sorts to the end rather than ahead of CR 1/8.
+           " when '-' then 1000 else cast(CR as real) end"),
+    "TypeNorm": "TypeNorm collate nocase",
+    "Size": ("case Size when 'Fine' then 1 when 'Diminutive' then 2 when 'Tiny' then 3"
+             " when 'Small' then 4 when 'Medium' then 5 when 'Large' then 6"
+             " when 'Huge' then 7 when 'Gargantuan' then 8 when 'Colossal' then 9"
+             " else 0 end"),
+    "HP": "cast(HP as real)",
+    "Source": "Source collate nocase",
+}
+DEFAULT_CREATURE_SORT = "Name"
+
+
+def creature_order_by(sort, descending):
+    """The ORDER BY for a picker column heading.
+
+    Ties break on the name, so that sorting by CR or by size gives a stable
+    order a GM can read down rather than one that reshuffles per query.
+    """
+    expression = CREATURE_SORTS.get(sort) or CREATURE_SORTS[DEFAULT_CREATURE_SORT]
+    direction = "desc" if descending else "asc"
+    if sort == "Name":
+        return "%s %s" % (expression, direction)
+    return "%s %s, %s asc" % (expression, direction, CREATURE_SORTS["Name"])
+
 # The Pathfinder creature types, as normalised into TypeNorm by
 # tools/import_creatures.py. Keep the two in step.
 CREATURE_TYPES = (
@@ -1907,10 +1944,14 @@ def database_creature_search(criteria):
     conn = creature_database()
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
+    # Sorted in the query rather than in the browser, because the result is
+    # capped: re-ordering the rows already sent would give the first 300 by
+    # name arranged by CR, which is not the 300 lowest-CR creatures.
+    order_by = creature_order_by(criteria.get("sort"), bool(criteria.get("descending")))
     # One more than the cap, so the client can be told the list was cut short
     # rather than being handed a truncated list that looks complete.
-    c.execute("select %s from creatures where %s order by Name limit ?"
-              % (CREATURE_LIST_COLUMNS, " and ".join(where)),
+    c.execute("select %s from creatures where %s order by %s limit ?"
+              % (CREATURE_LIST_COLUMNS, " and ".join(where), order_by),
               values + [MAX_CREATURE_RESULTS + 1])
     rows = [dict(row) for row in c.fetchall()]
     conn.close()
