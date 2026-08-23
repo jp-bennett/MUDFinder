@@ -310,6 +310,11 @@
     <textarea id="permanentAbilities"></textarea><br>
 
     <p>
+    Attacks:<br />
+    <!-- Filled by drawAttacks in shared.js, the same rows the player's own
+         Attack tab uses. Not sheetWeapon* classes: updatePlayer sweeps those
+         up by class name across the whole document. -->
+    <div id="unitAttacks" class="unitAttacks"></div>
     <button id="updateCharButton" onclick="updateChar()">Update</button>
     <button id="removeCharFromMapButton" onclick="removeCharFromMap()">Clear Location</button>
 

@@ -728,3 +728,161 @@ class TestStrippingTheStatblockMarkup:
             assert db.execute(
                 "select count(*) from creatures where Description like ?",
                 (pattern,)).fetchone()[0] == 0
+
+
+class TestParsingAttacks:
+    """Turning a bestiary Melee or Ranged column into attacks.
+
+    Every case here is a string that actually occurs in the shipped table. The
+    danger in this parser is not failing to read something -- it is reading it
+    confidently and wrongly, because a bad bonus changes the game quietly.
+    """
+
+    def names(self, text):
+        return [(a["name"], a["attack"], a["damage"]) for a in mudfinder.parse_attacks(text)]
+
+    def test_a_single_attack(self):
+        assert self.names("bite +6 (1d6+4)") == [("bite", "+6", "1d6+4")]
+
+    def test_several_attacks(self):
+        assert self.names("bite +6 (1d6+4), 2 claws +6 (1d4+4)") == [
+            ("bite", "+6", "1d6+4"), ("2 claws", "+6", "1d4+4")]
+
+    def test_a_count_is_kept_with_the_name(self):
+        """The seven-item weapon list has no room for it, and it reads the way
+        the statblock does."""
+        assert mudfinder.parse_attacks("2 claws +6 (1d4+4)")[0]["name"] == "2 claws"
+
+    def test_iteratives(self):
+        assert self.names("mwk longsword +4/-1 (1d8/19-20)") == [
+            ("mwk longsword", "+4/-1", "1d8/19-20")]
+
+    def test_the_crit_range_is_pulled_out(self):
+        assert mudfinder.parse_attacks("short sword +2 (1d4/19-20)")[0]["crit"] == "19-20"
+
+    def test_the_crit_multiplier_is_pulled_out(self):
+        assert mudfinder.parse_attacks("short bow +4 (1d4/x3)")[0]["crit"] == "x3"
+
+    def test_both_together(self):
+        assert mudfinder.parse_attacks("katana +11 (1d8+1/18-20/x4)")[0]["crit"] == "18-20/x4"
+
+    def test_the_older_melee_keyword_is_a_qualifier(self):
+        assert self.names("gore +4 melee (1d8+4)") == [("gore", "+4", "1d8+4")]
+
+    # The four rulings on the entries a first pass could not read.
+
+    def test_jandri_a_missing_bonus_means_zero(self):
+        """"club (1d6-1)" is a real attack whose bonus was never written down.
+        Dropping it would lose the attack; a +0 is what it means."""
+        assert self.names("club (1d6-1)") == [("club", "+0", "1d6-1")]
+
+    def test_bipedal_a_missing_bonus_with_a_count(self):
+        assert self.names("2 claws (1d4)") == [("2 claws", "+0", "1d4")]
+
+    def test_hungry_fog_touch_names_the_attack(self):
+        """In "+5 touch (6d6...)" the word touch says the attack resolves
+        against touch AC and is also the only name it has."""
+        assert self.names("+5 touch (6d6 negative energy)") == [
+            ("touch", "+5", "6d6 negative energy")]
+
+    def test_king_elmander_a_lone_leading_bonus_is_the_to_hit(self):
+        """The statblock is wrong -- the sword is unenchanted and +3 is what he
+        swings at. Reading it as an enhancement bonus gets him exactly
+        backwards."""
+        assert self.names("+3 mithral short sword (1d4+2/19-20)") == [
+            ("mithral short sword", "+3", "1d4+2/19-20")]
+
+    def test_a_leading_bonus_beside_a_to_hit_stays_in_the_name(self):
+        """The other half of the rule, and the reason it is a rule rather than
+        a fix for one creature."""
+        assert self.names("+2 naginata** +22/+17/+12 (2d6+15/x4)") == [
+            ("+2 naginata**", "+22/+17/+12", "2d6+15/x4")]
+
+    def test_poltergeist_is_listed_but_not_rollable(self):
+        attack = mudfinder.parse_attacks("telekinesis (see below)")[0]
+        assert attack["name"] == "telekinesis"
+        assert attack["rollable"] is False
+
+    def test_the_statue_of_wishes_is_listed_too(self):
+        assert mudfinder.parse_attacks("+0 (no physical attack)")[0]["rollable"] is False
+
+    def test_a_swarm_has_damage_and_no_attack_roll(self):
+        """Giving it the +0 that a missing bonus otherwise means would be
+        inventing a number the creature does not have."""
+        attack = mudfinder.parse_attacks("swarm (2d6 plus poison)")[0]
+        assert attack["rollable"] is True
+        assert attack["attacks"] is False
+
+    def test_a_troop_likewise(self):
+        assert mudfinder.parse_attacks("troop (3d6+5)")[0]["attacks"] is False
+
+    def test_an_aside_in_the_name_is_unwrapped(self):
+        """Read as damage, the brackets swallow the name and the attack ends up
+        called "1d4+7"."""
+        assert self.names("binding contract (whip) +20/+15/+10 (1d4+7 plus bleed)") == [
+            ("binding contract whip", "+20/+15/+10", "1d4+7 plus bleed")]
+
+    def test_an_aside_does_not_become_its_own_attack(self):
+        assert len(mudfinder.parse_attacks(
+            "Passion's Edge (+2 falchion) +14/+9 (2d4+8/18-20)")) == 1
+
+    def test_none_yields_nothing(self):
+        assert mudfinder.parse_attacks("none") == []
+
+    def test_nothing_yields_nothing(self):
+        assert mudfinder.parse_attacks("") == []
+        assert mudfinder.parse_attacks(None) == []
+
+
+class TestHowManySwings:
+    """One press of the button is a full attack, not a single die."""
+
+    @pytest.mark.parametrize("name,to_hit,expected", [
+        ("bite", "+6", 1),
+        ("2 claws", "+6", 2),
+        ("6 tentacles", "+20", 6),
+        ("longsword", "+18/+13/+8", 3),
+        ("2 claws", "+18/+13", 4),
+        ("bite", "", 1),
+    ])
+    def test_count_times_iteratives(self, name, to_hit, expected):
+        assert mudfinder.attack_swings(name, to_hit) == expected
+
+
+class TestCreatureWeapons:
+    """What a picked creature arrives carrying."""
+
+    def creature(self, name):
+        db = sqlite3.connect("mudfinder.sql")
+        db.row_factory = sqlite3.Row
+        row = db.execute(
+            "select * from creatures where Name = ? and coalesce(Melee,'') != '' limit 1",
+            (name,)).fetchone()
+        return dict(row)
+
+    def test_a_dire_ape_has_its_two_attacks(self):
+        weapons = mudfinder.creature_weapons(self.creature("Dire Ape"))
+        assert [w[0] for w in weapons] == ["bite", "2 claws"]
+
+    def test_the_entries_are_the_shape_unit_weapons_holds(self):
+        """Seven items, positional, the same list a player's longsword is in."""
+        assert all(len(w) == 7 for w in mudfinder.creature_weapons(self.creature("Dire Ape")))
+
+    def test_ranged_attacks_come_too(self):
+        weapons = mudfinder.creature_weapons(self.creature("Goblin"))
+        assert ("short bow", "ranged") in [(w[0], w[4]) for w in weapons]
+
+    def test_melee_is_marked_as_melee(self):
+        weapons = mudfinder.creature_weapons(self.creature("Goblin"))
+        assert ("short sword", "melee") in [(w[0], w[4]) for w in weapons]
+
+    def test_a_picked_creature_carries_them_onto_the_unit(self):
+        unit = mudfinder.creature_to_unit(self.creature("Dire Ape"))
+        assert [w[0] for w in unit["weapons"]] == ["bite", "2 claws"]
+
+    def test_they_survive_being_saved(self):
+        unit = mudfinder.creature_to_unit(self.creature("Dire Ape"))
+        assert Unit(unit).to_json()["weapons"] == unit["weapons"]
+
+    def test_a_creature_with_no_attacks_gets_an_empty_list(self):
+        assert mudfinder.creature_weapons({"Name": "x"}) == []

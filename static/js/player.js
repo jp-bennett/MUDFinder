@@ -1563,6 +1563,9 @@ function showBottomAttackDiv() {
     removeContents(document.getElementById("bottomAttackDiv"));
     document.getElementById("bottomAttackDiv").style.display = "block";
     var data = playerData.playerList[charName];
+    // The same rows, and the same roll button, the GM gets for a monster.
+    drawAttacks(document.getElementById("bottomAttackDiv"), data.weapons, charName);
+    return;
     for (var i = 0; i < data.weapons.length; i++) {
         box = document.getElementById("bottomAttackDiv");
         newDiv = document.createElement("div");

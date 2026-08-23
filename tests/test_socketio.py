@@ -1897,3 +1897,207 @@ class TestAlignmentStamping:
         restored = Session("other-room", "other-key", "restored")
         restored.from_json(session.gen_save())
         assert self.seq(restored) == self.seq(session)
+
+
+class TestRollingAnAttack:
+    """One press of the button is a full attack.
+
+    The GM was typing /roll 1d20+6 and /roll 1d6+4 by hand, fourteen times a
+    round for seven apes.
+    """
+
+    def roll(self, gm_client, room, key, **attack):
+        payload = {"room": room, "gmKey": key, "charName": "Dire Ape",
+                   "name": "bite", "attack": "+6", "damage": "1d6+4", "crit": ""}
+        payload.update(attack)
+        gm_client.emit("roll_attack", payload)
+        return gm_client.get_received()
+
+    def chat(self, received):
+        return [p["args"][0]["chat"] for p in received if p["name"] == "chat"]
+
+    def test_a_roll_is_reported(self, gm):
+        gm_client, room, key = gm
+        assert "Dire Ape" in self.chat(self.roll(gm_client, room, key))[0]
+
+    def test_it_shows_the_die_the_bonus_and_the_total(self, gm):
+        gm_client, room, key = gm
+        line = self.chat(self.roll(gm_client, room, key))[0]
+        assert re.search(r"d20\((\d+)\)\+6 = (\d+)", line)
+
+    def test_the_total_is_the_die_plus_the_bonus(self, gm):
+        gm_client, room, key = gm
+        for _ in range(20):
+            line = self.chat(self.roll(gm_client, room, key))[0]
+            die, total = re.search(r"d20\((\d+)\)\+6 = (\d+)", line).groups()
+            assert int(total) == int(die) + 6
+
+    def test_the_damage_is_rolled_too(self, gm):
+        gm_client, room, key = gm
+        assert "damage" in self.chat(self.roll(gm_client, room, key))[0]
+
+    def test_the_damage_is_within_range(self, gm):
+        """1d6+4 is five to ten, and nothing else."""
+        gm_client, room, key = gm
+        for _ in range(20):
+            damage = int(re.search(r"damage (\d+)",
+                                   self.chat(self.roll(gm_client, room, key))[0]).group(1))
+            assert 5 <= damage <= 10
+
+    def test_only_the_leading_dice_are_rolled(self, gm):
+        """The rest of the field is the crit and the riders. Handed the whole
+        string, the dice roller reads "1d4/19-20" as a division and a short
+        sword deals -19.9 damage."""
+        gm_client, room, key = gm
+        for _ in range(20):
+            line = self.chat(self.roll(gm_client, room, key,
+                                       name="short sword", attack="+2", damage="1d4/19-20"))[0]
+            assert 1 <= int(re.search(r"damage (\d+)", line).group(1)) <= 4
+
+    def test_a_rider_is_not_rolled_as_extra_dice(self, gm):
+        """"1d6+4 plus 1d6 fire" is five to ten, not a hundred and thirty."""
+        gm_client, room, key = gm
+        for _ in range(20):
+            line = self.chat(self.roll(gm_client, room, key, damage="1d6+4 plus 1d6 fire"))[0]
+            assert 5 <= int(re.search(r"damage (\d+)", line).group(1)) <= 10
+
+    def test_a_count_rolls_that_many_times(self, gm):
+        gm_client, room, key = gm
+        line = self.chat(self.roll(gm_client, room, key, name="2 claws"))[0]
+        assert line.count("d20(") == 2
+
+    def test_iteratives_roll_that_many_times(self, gm):
+        gm_client, room, key = gm
+        line = self.chat(self.roll(gm_client, room, key, attack="+18/+13/+8"))[0]
+        assert line.count("d20(") == 3
+
+    def test_a_count_and_iteratives_multiply(self, gm):
+        gm_client, room, key = gm
+        line = self.chat(self.roll(gm_client, room, key, name="2 claws", attack="+18/+13"))[0]
+        assert line.count("d20(") == 4
+
+    def test_a_threat_is_flagged(self, gm):
+        """A nineteen on a 19-20 weapon is a threat; the same nineteen on a
+        plain one is not."""
+        gm_client, room, key = gm
+        threats = plain = 0
+        for _ in range(120):
+            if "threat" in self.chat(self.roll(gm_client, room, key, crit="19-20"))[0]:
+                threats += 1
+            if "threat" in self.chat(self.roll(gm_client, room, key, crit=""))[0]:
+                plain += 1
+        assert threats > plain
+
+    def test_a_weapon_with_no_crit_range_threatens_only_on_twenty(self, gm):
+        gm_client, room, key = gm
+        for _ in range(60):
+            line = self.chat(self.roll(gm_client, room, key))[0]
+            die = int(re.search(r"d20\((\d+)\)", line).group(1))
+            assert ("threat" in line) == (die == 20)
+
+    def test_an_attack_with_nothing_to_roll_says_only_the_attack(self, gm):
+        gm_client, room, key = gm
+        line = self.chat(self.roll(gm_client, room, key,
+                                   name="telekinesis", damage="see below"))[0]
+        assert "damage" not in line
+
+    @pytest.mark.parametrize("bad", ["", None, "abc", "see below", "no physical attack"])
+    def test_a_damage_field_that_is_not_dice_does_not_raise(self, gm, bad):
+        gm_client, room, key = gm
+        assert self.chat(self.roll(gm_client, room, key, damage=bad))
+
+    @pytest.mark.parametrize("bad", ["", None, "abc"])
+    def test_a_bonus_that_is_not_a_number_counts_as_zero(self, gm, bad):
+        gm_client, room, key = gm
+        line = self.chat(self.roll(gm_client, room, key, attack=bad))[0]
+        die, bonus, total = re.search(r"d20\((\d+)\)([+-]\d+) = (\d+)", line).groups()
+        assert int(bonus) == 0
+        assert int(total) == int(die)
+
+    def test_wrong_key_rolls_nothing_for_a_monster(self, gm):
+        gm_client, room, _ = gm
+        assert self.chat(self.roll(gm_client, room, "wrong")) == []
+
+    def test_unknown_room_is_ignored(self, client):
+        client.emit("roll_attack", {"room": "no-such-room", "gmKey": GM_KEY,
+                                    "name": "bite", "attack": "+6", "damage": "1d6+4"})
+        assert client.get_received() == []
+
+
+class TestWhoSeesAnAttackRoll:
+    """A monster's attack is the GM's business; a player's own weapon is not.
+
+    Which follows the convention already in place rather than inventing one:
+    the initiative rolls for a group of monsters already go to the GM alone,
+    and /roll has always gone to everybody.
+    """
+
+    def test_a_monsters_roll_reaches_the_gm(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        gm_client.emit("roll_attack", {"room": room, "gmKey": key, "charName": "Dire Ape",
+                                       "name": "bite", "attack": "+6", "damage": "1d6+4"})
+        assert "chat" in event_names(gm_client.get_received())
+
+    def test_a_monsters_roll_does_not_reach_the_players(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        gm_client.emit("roll_attack", {"room": room, "gmKey": key, "charName": "Dire Ape",
+                                       "name": "bite", "attack": "+6", "damage": "1d6+4"})
+        assert "chat" not in event_names(player.get_received())
+
+    def test_a_second_gm_view_sees_it(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        second = join_gm_socket(room, key)
+        second.emit("roll_attack", {"room": room, "gmKey": key, "charName": "Dire Ape",
+                                    "name": "bite", "attack": "+6", "damage": "1d6+4"})
+        assert "chat" in event_names(gm_client.get_received())
+
+    def test_a_player_rolling_their_own_weapon_is_public(self, browser_style_game):
+        gm_client, room, _ = browser_style_game
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        player.emit("roll_attack", {"room": room, "charName": "Aria",
+                                    "name": "longsword", "attack": "+7", "damage": "1d8+3"})
+        assert "chat" in event_names(player.get_received())
+
+    def test_a_player_cannot_roll_for_something_they_do_not_control(self, browser_style_game):
+        """Otherwise a player could roll the monsters' attacks."""
+        gm_client, room, key = browser_style_game
+        gm_client.emit("add_units", {
+            "room": room, "gmKey": key, "count": 1, "addToInitiative": False,
+            "initiativeBonus": 0, "unit": {"charName": "Dire Ape", "controlledBy": "gm"}})
+        gm_client.get_received()
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        player.emit("roll_attack", {"room": room, "charName": "Dire Ape",
+                                    "name": "bite", "attack": "+6", "damage": "1d6+4"})
+        assert "chat" not in event_names(player.get_received())
+
+
+class TestSavingEditedAttacks:
+    def test_the_gm_can_correct_a_bonus(self, gm):
+        """The panel's boxes are editable, and a statblock is sometimes wrong."""
+        gm_client, room, key = gm
+        gm_client.emit("add_units", {
+            "room": room, "gmKey": key, "count": 1, "addToInitiative": False,
+            "initiativeBonus": 0,
+            "unit": {"charName": "Dire Ape", "weapons": [["bite", "+6", "1d6+4", "", "", "", ""]]}})
+        gm_client.get_received()
+        gm_client.emit("update_unit", {
+            "room": room, "gmKey": key, "unitNum": 0,
+            "weapons": [["bite", "+9", "1d6+4", "", "", "", ""]]})
+        assert mudfinder.ROOMS[room].unitList[0].weapons[0][1] == "+9"
+
+    def test_an_update_that_omits_them_leaves_them_alone(self, gm):
+        gm_client, room, key = gm
+        gm_client.emit("add_units", {
+            "room": room, "gmKey": key, "count": 1, "addToInitiative": False,
+            "initiativeBonus": 0,
+            "unit": {"charName": "Dire Ape", "weapons": [["bite", "+6", "1d6+4", "", "", "", ""]]}})
+        gm_client.get_received()
+        gm_client.emit("update_unit", {"room": room, "gmKey": key, "unitNum": 0, "color": "red"})
+        assert mudfinder.ROOMS[room].unitList[0].weapons[0][1] == "+6"

@@ -641,6 +641,9 @@ function populateEditChar (Data, unitNum) {
         if (isGM) {
             document.getElementById("init").value = Data.unitList[playerUnitNum].initiative;
             document.getElementById("revealsMap").checked = Data.unitList[playerUnitNum].revealsMap;
+            drawAttacks(document.getElementById("unitAttacks"),
+                        Data.unitList[playerUnitNum].weapons,
+                        Data.unitList[playerUnitNum].charName);
         } else {
         document.getElementById("sheetCharName").value = Data.unitList[playerUnitNum].charName;
         }
@@ -648,6 +651,97 @@ function populateEditChar (Data, unitNum) {
         socket.emit("error_handle", room, e);
     }
 }
+// The attack rows, and the button that rolls one. Built here rather than in
+// either view because a monster's bite and a player's longsword are the same
+// seven-item entry in Unit.weapons, and should behave the same.
+//
+// The class names are deliberately not the sheetWeapon* ones: updatePlayer
+// gathers those by class across the whole document, so a row using them
+// anywhere on the page is swept into the player's own weapon list.
+function attackRow(weapon, owner) {
+    var row = document.createElement("div");
+    row.className = "attackRow";
+
+    var fields = [
+        {value: weapon[0], className: "attackName", title: "Attack"},
+        {value: weapon[1], className: "attackBonus", title: "To hit"},
+        {value: weapon[2], className: "attackDamage", title: "Damage"},
+        {value: weapon[3], className: "attackCrit", title: "Critical"},
+    ];
+    var inputs = {};
+    for (var f = 0; f < fields.length; f++) {
+        var input = document.createElement("input");
+        input.type = "text";
+        input.className = fields[f].className;
+        input.title = fields[f].title;
+        input.value = fields[f].value === undefined || fields[f].value === null
+            ? "" : fields[f].value;
+        row.appendChild(input);
+        inputs[fields[f].className] = input;
+    }
+
+    var button = document.createElement("button");
+    button.className = "attackRollButton";
+    button.innerText = "roll";
+    // Rolled from the boxes rather than from the stored weapon, so a GM who
+    // corrects a bonus by hand and presses roll gets the number they just
+    // typed.
+    button.onclick = function () {
+        socket.emit("roll_attack", {
+            room: room,
+            gmKey: typeof gmKey === "undefined" ? "" : gmKey,
+            charName: owner,
+            name: inputs.attackName.value,
+            attack: inputs.attackBonus.value,
+            damage: inputs.attackDamage.value,
+            crit: inputs.attackCrit.value,
+        });
+    };
+    // Nothing to roll: "telekinesis (see below)" and "no physical attack" are
+    // listed so the GM can see the creature has them, with the button dead
+    // rather than absent, which would read as something failing to load.
+    if (!/^\s*(?:\d+d\d+|\d+)/.test(String(weapon[2] || ""))) {
+        button.disabled = true;
+        button.title = "nothing here to roll";
+        row.classList.add("attackRowUnrollable");
+    }
+    row.appendChild(button);
+    return row;
+}
+
+function readAttacks(container) {
+    // Back out of the rows drawAttacks laid down, in the same seven-item shape
+    // they came from. The trailing three are untouched by this panel.
+    var weapons = [];
+    var rows = container ? container.getElementsByClassName("attackRow") : [];
+    for (var r = 0; r < rows.length; r++) {
+        var value = function (className) {
+            var input = rows[r].getElementsByClassName(className)[0];
+            return input ? input.value : "";
+        };
+        if (!value("attackName")) {
+            continue;
+        }
+        weapons.push([value("attackName"), value("attackBonus"), value("attackDamage"),
+                      value("attackCrit"), "", "", ""]);
+    }
+    return weapons;
+}
+
+function drawAttacks(container, weapons, owner) {
+    removeContents(container);
+    if (!weapons || weapons.length === 0) {
+        var empty = document.createElement("div");
+        empty.className = "attackRowEmpty";
+        empty.innerText = "No attacks recorded.";
+        container.appendChild(empty);
+        return;
+    }
+    for (var w = 0; w < weapons.length; w++) {
+        container.appendChild(attackRow(weapons[w], owner));
+    }
+}
+
 function updateImages (unitInfo) {
     try {
         if (unitInfo.token != "" && document.getElementById("charTokenView") != null) {

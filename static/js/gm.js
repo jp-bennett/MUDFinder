@@ -1156,6 +1156,10 @@ function updateChar () {
         player.hasted = document.getElementById("hasted").checked;
         player.permanentAbilities = document.getElementById("permanentAbilities").value;
         player.initiative = document.getElementById("init").value
+        // The attack rows are editable, so what they hold now is what the unit
+        // should keep. Read from the panel rather than from gmData, or a
+        // corrected bonus is lost the moment anything else updates.
+        player.weapons = readAttacks(document.getElementById("unitAttacks"));
         socket.emit('update_unit', player);
     } catch (e) {
         socket.emit("error_handle", room, e);

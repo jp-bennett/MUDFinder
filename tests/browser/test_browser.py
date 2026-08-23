@@ -2428,3 +2428,180 @@ class TestProseWhereThereIsAny:
 
     def test_nothing_raised(self, statblock):
         assert statblock["errors"] == []
+
+
+ATTACK_REPORT_JS = """
+() => ({
+  names: Array.from(document.querySelectorAll("#unitAttacks .attackRow input.attackName"))
+    .map(input => input.value),
+  bonuses: Array.from(document.querySelectorAll("#unitAttacks .attackRow input.attackBonus"))
+    .map(input => input.value),
+  damages: Array.from(document.querySelectorAll("#unitAttacks .attackRow input.attackDamage"))
+    .map(input => input.value),
+  disabled: Array.from(document.querySelectorAll("#unitAttacks .attackRollButton"))
+    .map(button => button.disabled),
+  chat: document.getElementById("chatText").innerText,
+})
+"""
+
+
+@pytest.fixture(scope="module")
+def attacks(browser, live_server):
+    """Roll a monster's attacks from the GM's unit sheet.
+
+    Seven apes was fourteen hand-typed /roll lines a round, after reading the
+    bonuses off the statblock.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 950})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "attacks")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1) for pair in page.url.split("?", 1)[1].split("&"))["room"]
+
+        player = context.new_page()
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        page.click("div.tab:text-is('Encounter')")
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+        page.fill("#creatureSearchName", "dire ape")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#creatureRows tr').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.click("#creatureRows tr:first-child button")
+        page.wait_for_function(
+            "() => !document.getElementById('modalBackground')", timeout=HANDSHAKE_TIMEOUT)
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Dire Ape")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(500)
+
+        # Aria joined first, so the ape is not unit zero.
+        page.click("div.tab:text-is('Units')")
+        page.wait_for_selector("#unitAttacks", state="visible")
+        page.evaluate("""() => populateEditChar(gmData,
+            gmData.unitList.find(u => u.charName === "Dire Ape").unitNum)""")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#unitAttacks .attackRow').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages = {"listed": page.evaluate(ATTACK_REPORT_JS)}
+
+        # The second row is "2 claws", which is two swings from one press.
+        page.click("#unitAttacks .attackRow:nth-child(2) .attackRollButton")
+        page.wait_for_function(
+            """() => document.getElementById("chatText").innerText.indexOf("2 claws") !== -1""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["rolled"] = page.evaluate(ATTACK_REPORT_JS)
+
+        # A bonus corrected by hand is the one that gets rolled.
+        page.fill("#unitAttacks .attackRow:first-child input.attackBonus", "+99")
+        page.click("#unitAttacks .attackRow:first-child .attackRollButton")
+        page.wait_for_function(
+            """() => document.getElementById("chatText").innerText.indexOf("+99") !== -1""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["edited"] = page.evaluate(ATTACK_REPORT_JS)
+
+        player.wait_for_timeout(500)
+        stages["playerChat"] = player.inner_text("#chatText")
+
+        # And the same rows on the player's own Attack tab.
+        player.evaluate("""() => {
+            const me = playerData.playerList[charName];
+            me.weapons = [["longsword", "+7", "1d8+3", "19-20", "", "", ""]];
+            socket.emit("update_player", me);
+        }""")
+        player.wait_for_timeout(700)
+        # showBottomDiv opens the panel its parent lives in, then fills the
+        # Attack tab; the rows are unclickable without it.
+        player.evaluate("() => showBottomDiv()")
+        player.wait_for_function(
+            "() => document.querySelectorAll('#bottomAttackDiv .attackRow').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["playerRows"] = player.eval_on_selector_all(
+            "#bottomAttackDiv .attackRow input.attackName", "e => e.map(x => x.value)")
+        player.click("#bottomAttackDiv .attackRow:first-child .attackRollButton")
+        player.wait_for_function(
+            """() => document.getElementById("chatText").innerText.indexOf("longsword") !== -1""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(500)
+        stages["playerRolled"] = player.inner_text("#chatText")
+        stages["gmSawPlayerRoll"] = page.inner_text("#chatText")
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestTheAttackPanel:
+    def test_the_monsters_attacks_are_listed(self, attacks):
+        assert attacks["listed"]["names"] == ["bite", "2 claws"]
+
+    def test_they_carry_their_bonuses(self, attacks):
+        assert attacks["listed"]["bonuses"] == ["+6", "+6"]
+
+    def test_they_carry_their_damage(self, attacks):
+        assert attacks["listed"]["damages"] == ["1d6+4", "1d4+4"]
+
+    def test_every_row_can_be_rolled(self, attacks):
+        assert attacks["listed"]["disabled"] == [False, False]
+
+    def test_the_player_gets_the_same_rows(self, attacks):
+        """Built once, in shared.js, from the same Unit.weapons list."""
+        assert attacks["playerRows"] == ["longsword"]
+
+
+class TestRollingFromThePanel:
+    def test_a_press_rolls_the_attack(self, attacks):
+        assert "Dire Ape" in attacks["rolled"]["chat"]
+        assert "d20(" in attacks["rolled"]["chat"]
+
+    def test_it_rolls_damage_too(self, attacks):
+        assert "damage" in attacks["rolled"]["chat"]
+
+    def test_two_claws_is_two_swings(self, attacks):
+        """One press is a full attack, not a single die."""
+        line = [l for l in attacks["rolled"]["chat"].split("\n") if "2 claws" in l][0]
+        assert line.count("d20(") == 2
+
+    def test_a_bonus_corrected_by_hand_is_the_one_rolled(self, attacks):
+        """Rolling reads the boxes, not the stored weapon, because a statblock
+        is sometimes wrong."""
+        assert "+99" in attacks["edited"]["chat"]
+
+    def test_a_player_can_roll_their_own_weapon(self, attacks):
+        assert "longsword" in attacks["playerRolled"]
+
+
+class TestWhoSeesTheAttackRolls:
+    def test_the_monsters_rolls_stay_with_the_gm(self, attacks):
+        """The party finds out whether it hit, not what it needed."""
+        assert "Dire Ape" not in attacks["playerChat"]
+
+    def test_a_players_own_roll_is_public(self, attacks):
+        assert "longsword" in attacks["gmSawPlayerRoll"]
+
+    def test_nothing_raised(self, attacks):
+        assert attacks["errors"] == []
