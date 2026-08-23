@@ -27,6 +27,13 @@ class Unit(object):
         self.initiative = default(unitdict, "initiative", 0)
         self.revealsMap = default(unitdict, "revealsMap", False)
         self.perception = default(unitdict, "perception", 0)
+        # How this creature copes with the light levels painted on the map.
+        # Pathfinder keeps these apart: low-light vision sees twice as far as a
+        # human in dim light, darkvision sees in complete darkness.
+        self.darkvision = default(unitdict, "darkvision", False)
+        self.lowLight = default(unitdict, "lowLight", False)
+        self.trapfinding = default(unitdict, "trapfinding", False)
+        self.permanentAbilities = default(unitdict, "permanentAbilities", "")
         self.movementSpeed = default(unitdict, "movementSpeed", 30)
         self.flySpeed = default(unitdict, "flySpeed", "")
         self.flyManeuverability = default(unitdict, "flyManeuverability", "")
@@ -96,6 +103,10 @@ class Unit(object):
             "initiative": self.initiative,
             "revealsMap": self.revealsMap,
             "perception": self.perception,
+            "darkvision": self.darkvision,
+            "lowLight": self.lowLight,
+            "trapfinding": self.trapfinding,
+            "permanentAbilities": self.permanentAbilities,
             "movementSpeed": self.movementSpeed,
             "flySpeed": self.flySpeed,
             "flyManeuverability": self.flyManeuverability,

@@ -800,21 +800,24 @@ def on_update_unit(data):
     room = data['room']
     if check_room(room):
         tmp_unit = ROOMS[room].unitList[int(data["unitNum"])]
-        tmp_unit.charShortName = data["charShortName"]
+        # Read with .get, because a field can be added to the sheet before every
+        # open tab has reloaded, and a missing one should leave the value alone
+        # rather than take the handler down.
+        tmp_unit.charShortName = data.get("charShortName", tmp_unit.charShortName)
         # tmp_unit.token = data["token"]
-        tmp_unit.color = data["color"]
-        tmp_unit.perception = data["perception"]
-        tmp_unit.movementSpeed = data["movementSpeed"]
-        tmp_unit.DEX = data["DEX"]
-        tmp_unit.size = data["size"]
-        tmp_unit.darkvision = data["darkvision"]
-        tmp_unit.lowLight = data["lowLight"]
-        tmp_unit.trapfinding = data["trapfinding"]
+        tmp_unit.color = data.get("color", tmp_unit.color)
+        tmp_unit.perception = data.get("perception", tmp_unit.perception)
+        tmp_unit.movementSpeed = data.get("movementSpeed", tmp_unit.movementSpeed)
+        tmp_unit.DEX = data.get("DEX", tmp_unit.DEX)
+        tmp_unit.size = data.get("size", tmp_unit.size)
+        tmp_unit.darkvision = data.get("darkvision", tmp_unit.darkvision)
+        tmp_unit.lowLight = data.get("lowLight", tmp_unit.lowLight)
+        tmp_unit.trapfinding = data.get("trapfinding", tmp_unit.trapfinding)
         # tmp_unit.hasted = data["hasted"]
-        tmp_unit.permanentAbilities = data["permanentAbilities"]
+        tmp_unit.permanentAbilities = data.get("permanentAbilities", tmp_unit.permanentAbilities)
         if "gmKey" in data.keys() and ROOMS[room].gmKey == data['gmKey']:
-            tmp_unit.revealsMap = data["revealsMap"]
-            tmp_unit.initiative = data["initiative"]
+            tmp_unit.revealsMap = data.get("revealsMap", tmp_unit.revealsMap)
+            tmp_unit.initiative = data.get("initiative", tmp_unit.initiative)
         ROOMS[room].send_updates()
 
 
@@ -1146,6 +1149,24 @@ def on_del_init(data):
         ROOMS[room].send_updates()
 
 
+# The four light levels of Pathfinder 1e, keyed by the id of the palette swatch
+# that paints them -- mapClick sends the element's id as newTile.
+#
+# Pathfinder keeps bright and normal apart where 5e folds them together, because
+# they drive different rules: dim light gives concealment, darkness blinds anyone
+# without darkvision, and bright light dazzles the light-sensitive.
+#
+# Normal maps to None rather than to a string. A square with no "light" key is a
+# normally lit square, which makes every map that existed before this feature a
+# fully lit one with no migration, and keeps the key off the wire for the squares
+# that are the overwhelming majority of any map.
+LIGHT_TOOLS = {
+    "lightBright": "bright",
+    "lightNormal": None,
+    "lightDim": "dim",
+    "lightDarkness": "darkness",
+}
+
 MAX_MAP_DIMENSION = 300
 
 
@@ -1320,7 +1341,21 @@ def on_map_edit(data_pack):
         updatedTiles = []
         # print(data_pack)
         for data in data_pack["tiles"]:
-            if "thinWallTile" in data["newTile"]:
+            if data["newTile"] in LIGHT_TOOLS:
+                # Before the tile-type branches, not after. Those dispatch on
+                # substrings -- `"Tile" in newTile` -- so a light tool whose id
+                # contained "Tile" would be written into the tile type instead.
+                # The ids avoid that substring as well; this ordering is the
+                # belt to their braces.
+                tile = ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]
+                level = LIGHT_TOOLS[data["newTile"]]
+                if level is None:
+                    # Normal is the absence of the key, so that there is exactly
+                    # one way to spell an unlit square.
+                    tile.pop("light", None)
+                else:
+                    tile["light"] = level
+            elif "thinWallTile" in data["newTile"]:
                 print(data_pack)
                 #find which wall is closest
                 wall_side = "left"
@@ -1385,6 +1420,12 @@ def on_map_edit(data_pack):
             if not y["seen"]:
                 tmpUpdatedTiles[index]["tile"] = "unseenTile"
                 tmpUpdatedTiles[index]["walkable"] = False
+                # This mask edits the tile in place rather than rebuilding it
+                # the way player_map does, so anything not named here reaches
+                # the players untouched. A light level on an undiscovered
+                # square would draw the shape of an unexplored room through
+                # the fog.
+                tmpUpdatedTiles[index].pop("light", None)
             elif y["secret"]:
                 tmpUpdatedTiles[index]["tile"] = "wallTile"
                 tmpUpdatedTiles[index]["walkable"] = False
