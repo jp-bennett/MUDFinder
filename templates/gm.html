@@ -12,97 +12,117 @@
   <div id="screenDiv" class="screenDiv">
     <div id="tabsDiv" class="tabsDiv">
       <div id="linkDiv" style="float:right;"></div>
-      <div class="tab" onClick="enableTab('mapWrapper')">Map</div>
-      <div class="tab" onClick="enableTab('encounterContainer')">Encounter</div>
-      <div class="tab" onClick="enableTab('saveGame')">Save</div>
-      <div class="tab" onClick="enableTab('links')">Players</div>
-      <div class="tab" onClick="enableTab('units')">Units</div>
-      <div class="tab" onClick="enableTab('lore')">Lore</div>
-      <div class="tab" onClick="enableTab('rules')">Rules</div>
-      <div class="tab" onClick="enableTab('options')">Options</div>
+      <div class="tab tabActive" data-tab="mapWrapper" onClick="enableTab('mapWrapper')">Map</div>
+      <div class="tab" data-tab="encounterContainer" onClick="enableTab('encounterContainer')">Encounter</div>
+      <div class="tab" data-tab="saveGame" onClick="enableTab('saveGame')">Save</div>
+      <div class="tab" data-tab="links" onClick="enableTab('links')">Players</div>
+      <div class="tab" data-tab="units" onClick="enableTab('units')">Units</div>
+      <div class="tab" data-tab="lore" onClick="enableTab('lore')">Lore</div>
+      <div class="tab" data-tab="rules" onClick="enableTab('rules')">Rules</div>
+      <div class="tab" data-tab="options" onClick="enableTab('options')">Options</div>
     </div>
     <div id="centerDiv" class="centerDiv">
       <div class="leftDivContainer">
         <div id="initiativeDivContainer">
-          <div style="text-align:center;">Initiative<br></div>
-          <div id="initiativeDiv" class="leftDiv"></div>
+          <div class="panel">
+            <div class="panelHeading">Initiative</div>
+            <div id="initiativeDiv" class="leftDiv"></div>
+          </div>
           <button class="centeredButton" id="beginInit" onclick="beginInit()">Begin Inititiative</button>
           <button class="centeredButton" id="advanceInit" onclick="advanceInit()">Advance Inititiative</button>
           <button class="centeredButton" id="endInit" onclick="endInit()">End Inititiative</button>
         </div>
         <div id="creatureDivContainer"><br>
-          <div style="text-align:center;">All Creatures<br></div>
-          <div id="unitsDiv" class="leftDiv"></div>
+          <div class="panel">
+            <div class="panelHeading">All Creatures</div>
+            <div id="unitsDiv" class="leftDiv"></div>
+          </div>
           <button class="centeredButton" id="addInit" onclick="addInit()">Add to Inititiative</button>
         </div>
         <div class="chatContainerDiv">
-          <div id="chatText" class="chatText"></div>
+          <div class="panel">
+            <div class="panelHeading">Chat</div>
+            <div id="chatText" class="chatText"></div>
           <div id="chatInput" class="chatInput">
             <form action="javascript:sendChat()">
             <input id="newChat" style="width:100%;height:50%;">
             </form>
           </div>
+          </div>
         </div>
-        <div class="connectedPlayersContainer">Connected Players
-          <div id="connectedPlayers" class="connectedPlayers"><br></div>
+        <div class="connectedPlayersContainer">
+          <div class="panel">
+            <div class="panelHeading">Connected Players</div>
+            <div id="connectedPlayers" class="connectedPlayers"><br></div>
+          </div>
           <div>
             <button onclick="requestInit()">Request initiative</button>
           </div>
         </div>
       </div>
       <div id="activeTabDiv">
-        <div id="saveGame" style="display:none;">Savegame 
-          <form>
-            <textarea id="saveGameText" style="width:50%;height:50%;"></textarea>
-          </form>
-          <button onclick="saveGameInput()">Load Game</button><br>
-          <button onclick="downloadGame()">Download Game</button><br>
+        <div id="saveGame" style="display:none;">
+          <div class="formCard" style="width:60%;">
+            <div class="sectionHeading">Savegame</div>
+            <form>
+              <textarea id="saveGameText" style="width:100%;height:300px;"></textarea>
+            </form>
+            <button onclick="saveGameInput()">Load Game</button>
+            <button onclick="downloadGame()">Download Game</button>
+          </div>
         </div>
-        <div id="links" style="display:none;">Links<br></div>
+        <div id="links" style="display:none;">
+          <div class="formCard">
+            <div class="sectionHeading">Links</div>
+          </div>
+        </div>
         <div id="encounterContainer" style="display:none;" class="encounterContainer">
-          <div id="savedEncounters">
-            <form style="text-align:center;" action="javascript:saveEncounter()"> Encounter title:<br />
+          <div id="savedEncounters" class="formCard">
+            <div class="sectionHeading">Encounters</div>
+            <form style="text-align:center;" action="javascript:saveEncounter()">
+              <label class="fieldLabel" for="encounterName">Encounter title</label>
               <input type="text" id="encounterName"><br>
             </form>
             <button class="centeredButton" id="saveEncounter" onclick="saveEncounter()"> Save Encounter </button>
-            <div style="text-align:center;">Saved Encounters<br></div>
+            <div class="sectionHeading">Saved Encounters</div>
             <div id="encountersDiv" class="encountersDiv"> </div>
             <button class="centeredButton" id="loadEncounter" onclick="loadEncounter()"> Load Encounter </button>
             <button class="centeredButton" id="clearMap" onclick="clearMap()"> Clear Map </button>
-            Clear locations:<input type="checkbox" id="clearLocations">
+            <label class="fieldLabelInline" for="clearLocations">Clear locations</label><input type="checkbox" id="clearLocations">
           </div>
-          <div id="addDiv">
+          <div id="addDiv" class="formCard">
+            <div class="sectionHeading">Add a Creature</div>
             <!-- Picking a monster fills the boxes below and carries the rest of
                  its statblock -- senses, ability scores, DR -- through to the
                  unit. Everything shown stays editable. -->
             <button type="button" id="chooseMonsterButton" onclick="chooseMonster()">Choose Monster</button>
             <span id="chosenCreature" class="chosenCreature"></span>
             <button type="button" id="clearCreatureButton" onclick="clearChosenCreature()" style="display:none;">✕</button><br>
-            Creature Name:<br />
+            <label class="fieldLabel" for="unitName">Creature Name</label>
             <input type="text" id="unitName"><br>
-            Token:<br />
+            <label class="fieldLabel" for="unitToken">Token</label>
             <input type="text" id="unitToken" placeholder="image link" onchange="previewUnitToken()">
             <button type="button" onclick="chooseUnitToken()">Choose Token</button><br>
             <img id="unitTokenPreview" class="unitTokenPreview" alt="" style="display:none;"><br>
-            How many:<br />
+            <label class="fieldLabel" for="unitCount">How many</label>
             <input type="text" id="unitCount" value="1" onchange="refreshInitiativeLabel()" oninput="refreshInitiativeLabel()"><br>
-            <span id="unitInitLabel">Initiative Count:</span><br />
+            <label class="fieldLabel" for="unitInit"><span id="unitInitLabel">Initiative Count</span></label>
             <input type="text" id="unitInit"><br>
-            Short Name:<br />
+            <label class="fieldLabel" for="unitShortName">Short Name</label>
             <input type="text" id="unitShortName"><br>
-            HP:<br />
+            <label class="fieldLabel" for="unitHP">HP</label>
             <input type="text" id="unitHP"><br>
-            Controlled By: 
+            <label class="fieldLabelInline" for="unitControlledBy">Controlled By</label>
             <select id="unitControlledBy">
               <option value="gm" selected="selected">gm</option>
             </select> <br />
-            Type: 
+            <label class="fieldLabelInline" for="unitType">Type</label>
             <select id="unitType">
               <option value="Mob" selected="selected">Mob</option>
               <option value="Summon">Summon</option>
               <option value="Pet">Pet</option>
             </select> <br />
-            Color: 
+            <label class="fieldLabelInline" for="unitColor">Color</label>
             <select id="unitColor">
               <option value="black" selected="selected">black</option>
               <option value="red">red</option>
@@ -110,7 +130,7 @@
               <option value="green">green</option>
               <option value="brown">brown</option>
             </select> <br />
-            Add to Initiative:
+            <label class="fieldLabelInline" for="addToInit">Add to Initiative</label>
             <input type="checkbox" id="addToInit"><br>
             <button onclick="addUnit()">Add Unit</button>
           </div>
@@ -219,8 +239,13 @@
             <div style="float:right;padding-right:100px;padding-top:10px;">Show light: <input type="checkbox" id="showLight" value="showLight" onchange="lightToggle(this)" checked></div>
             <div style="float:right;padding-right:100px;padding-top:10px;">MultiSelect: <input type="checkbox" id="multiSelect" value="multiSelect" onchange="multiSelectToggle(this)"></div>
           <div style="float:right;padding-right:100px;padding-top:10px;">Align background: <input type="checkbox" id="alignBackground" value="alignBackground" onchange="alignmentToggle(this)"></div>
-          <button id="showEffectDivButton" onclick="showEffectControls()">Effect</button>
-          <button id="SelectMapBackgroundButton" onclick="imageUpload(this, 'mapBackground', '')">Background</button>
+          <!-- Their own row under the swatches. Left to flow, a narrow enough
+               button tucks itself onto the end of the swatch line and the two
+               of them end up on different rows. -->
+          <div class="mapToolButtons">
+            <button id="showEffectDivButton" onclick="showEffectControls()">Effect</button>
+            <button id="SelectMapBackgroundButton" onclick="imageUpload(this, 'mapBackground', '')">Background</button>
+          </div>
           </div>
           <div id="alignmentControls" style="display:none;">
             <b>Battlemap setup.</b> Drag the map to move the image, and match its printed squares to the grid.
@@ -252,21 +277,21 @@
           </div>
         </div>
         <div id="units" style="display:none;">
+    <div class="formCard">
     <!-- The bestiary entry the unit was added from, fetched by drawStatblock in
          shared.js and rendered with the same statblockElement the monster
          picker uses. Floated beside the fields rather than under them: it is
          taller than the whole form, and at the bottom the GM had to scroll
          past every input to reach the thing they clicked for. -->
     <div id="unitStatblock" class="unitStatblock"></div>
-
-    Need to make changes to <span id="charactername"></span>?<br>
+    <div class="sectionHeading"><span id="charactername"></span></div>
     <span style="display:none;" id="editCharNum"></span>
-    Token: <br>
+    <label class="fieldLabel">Token</label>
     <img style="max-width:200px;max-height:200px;" id="unitTokenView" src="static/images/profile.svg" onclick="imageUpload(this, 'unitToken', selectedUnits[0])">
     <br>
-    Map Icon (1-3 character abbreviation used when map is zoomed out):<br>
+    <label class="fieldLabel" for="charShortName">Map Icon <span class="fieldHint">(1-3 characters, shown when the map is zoomed out)</span></label>
     <input type="text" id="charShortName"><br>
-    DisplayColor:<br>
+    <label class="fieldLabel" for="playerColor">Display Colour</label>
     <select id="playerColor">
       <option value="blueviolet" style="color:blueviolet;">blueviolet</option>
       <option value="darkorange" style="color:darkorange;">darkorange</option>
@@ -284,39 +309,39 @@
       <option value="custom" style="color:black;">custom</option>
     </select><br>
     <div style="display:none;" id="customColorDiv">
-      Custom Css color:<br>
+      <label class="fieldLabel" for="customColor">Custom CSS Colour</label>
     <input type="text" id="customColor"><br>
     </div>
-    Passive Perception: <br>
+    <label class="fieldLabel" for="passivePerception">Passive Perception</label>
     <input type="text" id="passivePerception"><br>
-    Movement Speed <br>
+    <label class="fieldLabel" for="movementSpeed">Movement Speed</label>
     <input type="text" id="movementSpeed"><br>
-    Initiative: <br>
+    <label class="fieldLabel" for="init">Initiative</label>
     <input type="text" id="init"><br>
-    Dex Score: <br>
+    <label class="fieldLabel" for="dex">Dex Score</label>
     <input type="text" id="dex"><br>
-    Character Size: <br>
+    <label class="fieldLabel" for="size">Character Size</label>
     <select id="size">
     <option value="large">large</option>
     <option value="medium" selected="selected">medium</option>
     <option value="small">small</option>
     </select>
     <br>
-    Has Darkvision: 
+    <label class="fieldLabelInline" for="darkvision">Has Darkvision</label>
     <input type="checkbox" id="darkvision"><br>
-    Has Low-Light Vision: 
+    <label class="fieldLabelInline" for="lowLight">Has Low-Light Vision</label>
     <input type="checkbox" id="lowLight"><br>
-    Has Trapfinding: 
+    <label class="fieldLabelInline" for="trapfinding">Has Trapfinding</label>
     <input type="checkbox" id="trapfinding"><br>
-    Reveals the Map: 
+    <label class="fieldLabelInline" for="revealsMap">Reveals the Map</label>
     <input type="checkbox" id="revealsMap"><br>
-    Hasted: 
+    <label class="fieldLabelInline" for="hasted">Hasted</label>
     <input type="checkbox" id="hasted"><br>
-    Permanent abilities: <br>
+    <label class="fieldLabel" for="permanentAbilities">Permanent Abilities</label>
     <textarea id="permanentAbilities"></textarea><br>
 
     <p>
-    Attacks:<br />
+    <div class="sectionHeading">Attacks</div>
     <!-- Filled by drawAttacks in shared.js, the same rows the player's own
          Attack tab uses. Not sheetWeapon* classes: updatePlayer sweeps those
          up by class name across the whole document. -->
@@ -327,18 +352,25 @@
     <div id="unitCastings" class="unitCastings"></div>
     <button id="updateCharButton" onclick="updateChar()">Update</button>
     <button id="removeCharFromMapButton" onclick="removeCharFromMap()">Clear Location</button>
+    </div>
 
 
         </div>
         <div id="lore" style="display:none;">
           <div class="lorePage" id="lorePage">
 
-            <div id="loreTab0" style="display:none;"><img id="loreFilePreview" src=""><br>
-            Image Link:<input type="text" id="loreURL" onchange="previewLoreURL(this.value)"><br>
-            Or upload a file: <input type="file" id="loreFileUpload" onchange="previewLoreFile()"><br>
-            <div style="background:blue; height: 40px; width:0px;" id="uploadProgress"></div>
-            Name: <input type="text" id="loreName"><br>
-            Text: <textarea id="loreText"></textarea><br>
+            <div id="loreTab0" style="display:none;" class="formCard">
+            <div class="sectionHeading">Add Lore</div>
+            <img id="loreFilePreview" src=""><br>
+            <label class="fieldLabelInline" for="loreURL">Image Link</label>
+            <input type="text" id="loreURL" onchange="previewLoreURL(this.value)"><br>
+            <label class="fieldLabelInline" for="loreFileUpload">Or upload a file</label>
+            <input type="file" id="loreFileUpload" onchange="previewLoreFile()"><br>
+            <div class="uploadProgress" id="uploadProgress"></div>
+            <label class="fieldLabelInline" for="loreName">Name</label>
+            <input type="text" id="loreName"><br>
+            <label class="fieldLabel" for="loreText">Text</label>
+            <textarea id="loreText"></textarea><br>
             <button onclick="sendLoreURL()">Send</button></div>
           </div>
           <div id="loreTabs">
@@ -346,14 +378,15 @@
           </div>
         </div>
         <div id="rules" style="display:none;">
-          Choose common rules <br>
-          HP recovery on rest:<br>
+          <div class="formCard">
+          <div class="sectionHeading">House Rules</div>
+          <label class="fieldLabel" for="rule-hp-recovery">HP recovery on rest</label>
           <select id="rule-hp-recovery">
             <option value="level">Recover 1 HP per level</option>
             <option value="level-con" selected="selected">Recover 1 HP per level + Con</option>
             <option value="full">Recover All HP</option>
           </select><p>
-          Ability Score Generation:<br>
+          <label class="fieldLabel" for="rule-ability-method">Ability Score Generation</label>
           <select id="rule-ability-method">
             <option value="roll" selected="selected">Player rolls scores</option>
             <option value="10">10 point buy</option>
@@ -362,12 +395,15 @@
             <option value="25">25 point buy</option>
 
           </select><p>
-          Allow units to share spaces:
+          <label class="fieldLabelInline" for="rule-allow-sharespace">Allow units to share spaces</label>
           <input type="checkbox" id="rule-allow-sharespace">
-
+          </div>
         </div>
         <div id="options" style="display:none;">
-          Select options
+          <div class="formCard">
+            <div class="sectionHeading">Options</div>
+            Nothing to set yet.
+          </div>
         </div>
       </div>
 

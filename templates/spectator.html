@@ -11,13 +11,15 @@
 
   <div id="screenDiv" class="screenDiv">
     <div id="tabsDiv" class="tabsDiv">
-      <div class="tab" onClick="enableTab('mapWrapper')">Map</div>
-      <div class="tab" onClick="enableTab('lore')">Lore</div>
+      <div class="tab tabActive" data-tab="mapWrapper" onClick="enableTab('mapWrapper')">Map</div>
+      <div class="tab" data-tab="lore" onClick="enableTab('lore')">Lore</div>
     </div>
     <div id="centerDiv" class="centerDiv">
       <div class="leftDivContainer" id="initiativeDivContainer">
-        <div style="text-align:center;">Initiative</br></div>
-        <div class="leftDiv" id="initiativeDiv"></div>
+        <div class="panel">
+          <div class="panelHeading">Initiative</div>
+          <div class="leftDiv" id="initiativeDiv"></div>
+        </div>
       </div>
       <div id="activeTabDiv">
         <div id="mapWrapper">

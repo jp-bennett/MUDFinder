@@ -4,7 +4,10 @@ These cover the save-file round trip, which is what protects existing games
 from a bad refactor, plus the initiative ordering rules.
 """
 
+import os
+import re
 import sqlite3
+import urllib.parse
 
 import pytest
 
@@ -1029,3 +1032,143 @@ class TestRememberingTheCreature:
 
     def test_it_survives_being_saved(self):
         assert Unit({"charName": "x", "creatureId": 412}).to_json()["creatureId"] == 412
+
+# The design language lives in docs/design.md. Its central claim is that every
+# colour in the app's chrome comes from the token block at the top of the
+# stylesheet, so these read the stylesheet rather than the browser.
+STYLESHEET = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "static", "css", "mudfinder.css")
+
+COLOUR_LITERAL = re.compile(
+    r"#[0-9a-fA-F]{3,8}\b"
+    r"|\brgba?\([^)]*\)"
+    r"|\b(?:white|black|lightgrey|lightgray|grey|gray|cornflowerblue|firebrick"
+    r"|red|blue|green|silver|gold|tan|beige|ivory|wheat)\b")
+
+# Chrome, as opposed to map artwork. A wall is drawn in ink the way the ink on a
+# printed map is: it is the subject, not the frame around it, and design.md says
+# so explicitly.
+CHROME_RULES = ["button", "input", ".panel", ".panelHeading", ".formCard",
+                ".tab", ".tabsDiv", ".chatText", ".fieldLabel", ".sectionHeading",
+                "#linkDiv", "#mapTools", "#creaturePicker"]
+
+
+def stylesheet():
+    """The stylesheet with its comments taken out.
+
+    Comments carry both braces and colour names -- the token block's own
+    commentary explains what black hairlines used to look like -- so leaving
+    them in makes every check below read the prose instead of the rules.
+    """
+    with open(STYLESHEET) as handle:
+        return re.sub(r"/\*.*?\*/", "", handle.read(), flags=re.S)
+
+
+def rule_body(css, selector):
+    """The declarations of the first rule whose selector list starts with this."""
+    for match in re.finditer(r"(^|\})\s*([^{}]+)\{([^{}]*)\}", css, re.M):
+        selectors = [s.strip() for s in match.group(2).split(",")]
+        if any(s == selector or s.startswith(selector + ":") for s in selectors):
+            return match.group(3)
+    raise AssertionError("no rule for %s" % selector)
+
+
+class TestTheDesignTokens:
+    def test_the_token_block_is_at_the_top(self):
+        css = stylesheet()
+        assert css.index(":root {") < css.index("html, body {")
+
+    def test_every_token_the_spec_names_exists(self):
+        css = stylesheet()
+        root = rule_body(css, ":root")
+        for token in ["--ink", "--ink-soft", "--ink-faint", "--paper",
+                      "--paper-warm", "--desk", "--rule", "--rule-faint",
+                      "--accent", "--accent-soft", "--danger", "--radius",
+                      "--radius-panel", "--heading-tracking", "--desk-grain",
+                      "--tab-wash", "--tab-wash-hover", "--shadow-lifted",
+                      "--shadow-resting", "--gilt", "--desk-light",
+                      "--cloth", "--cloth-weave"]:
+            assert token + ":" in root, token
+
+    def test_the_chrome_names_no_colour_of_its_own(self):
+        """The one rule the spec actually enforces: a component that wants a
+        shade adds a token rather than a hex code."""
+        css = stylesheet()
+        offenders = {}
+        for selector in CHROME_RULES:
+            found = COLOUR_LITERAL.findall(rule_body(css, selector))
+            if found:
+                offenders[selector] = found
+        assert offenders == {}
+
+    def test_the_statblock_draws_on_the_shared_tokens(self):
+        """It is where the palette came from, so it must not keep a private
+        copy that can drift from it."""
+        block = rule_body(stylesheet(), ".statblock")
+        assert "--sbInk: var(--ink)" in block
+        assert "--sbRule: var(--rule)" in block
+
+    def test_the_tab_bar_cannot_grow_past_forty_pixels(self):
+        """Everything below it is laid out against calc(100% - 40px). A 41px bar
+        pushed the map a pixel out of the window, which was enough to break the
+        battlemap alignment drag."""
+        bar = rule_body(stylesheet(), ".tabsDiv")
+        assert "height:40px" in bar.replace(" ", "")
+        assert "box-sizing: border-box" in bar
+
+    def test_the_grain_wanders_slowly(self):
+        """baseFrequency is the whole trick, and it took three tries to find.
+
+        The wander has to play out over hundreds of pixels. In the tens it
+        reads as fur rather than wood, and the first two attempts both landed
+        there.
+        """
+        grain = urllib.parse.unquote(desk_grain())
+        displacement = re.search(r"baseFrequency='([0-9.]+)\s+([0-9.]+)'", grain)
+        assert displacement, "no turbulence in the grain"
+        for axis in displacement.groups():
+            assert float(axis) < 0.01, axis
+
+    def test_the_desk_fetches_nothing(self):
+        """It is drawn, not downloaded."""
+        grain = urllib.parse.unquote(desk_grain())
+        assert "data:image/svg+xml" in grain
+        # The SVG namespace is a name, not somewhere the browser goes.
+        assert re.sub(r"http://www\.w3\.org\S*", "", grain).count("http") == 0
+
+
+def desk_grain():
+    root = rule_body(stylesheet(), ":root")
+    start = root.index("--desk-grain")
+    return root[start:root.index(";", start)]
+
+
+class TestNothingIsFetchedFromAnywhere:
+    """The player page used to pull a font from fontlibrary.org on every load,
+    which made the page depend on a third party and fail when offline. Nothing
+    the browser loads may name an external host."""
+
+    def files(self):
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        found = []
+        for folder in [os.path.join(here, "templates"),
+                       os.path.join(here, "static", "css"),
+                       os.path.join(here, "static", "js")]:
+            for name in sorted(os.listdir(folder)):
+                if name.endswith((".html", ".css", ".js")):
+                    found.append(os.path.join(folder, name))
+        return found
+
+    def test_no_stylesheet_or_page_names_an_external_host(self):
+        offenders = {}
+        for path in self.files():
+            with open(path, encoding="utf-8", errors="replace") as handle:
+                body = handle.read()
+            # Bare "http" inside a comment or an XML namespace is not a fetch;
+            # a URL the browser would go and get is.
+            hits = re.findall(r"""(?:src|href|url)\s*[=(]\s*["']?(https?://[^"')\s]+)""",
+                              body, re.I)
+            hits = [h for h in hits if "www.w3.org" not in h]
+            if hits:
+                offenders[os.path.basename(path)] = hits
+        assert offenders == {}

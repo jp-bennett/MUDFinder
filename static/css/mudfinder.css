@@ -1,3 +1,95 @@
+/* ---------------------------------------------------------------------------
+   Design tokens.
+
+   The monster statblock worked out a palette for itself -- ink on the same
+   parchment the maps are drawn on, ruled in a dry tan -- and everything else
+   in the app was still browser default: black hairlines on lightgray. These
+   are that palette, named, so the rest of the app can be built from it. Nothing
+   below this block should name a colour of its own.
+
+   See docs/design.md for what each one is for and how the components use them.
+   --------------------------------------------------------------------------- */
+:root {
+    /* Ink. Three weights: the text itself, something said quietly beside it,
+       and a label that is only there to name the thing under it. */
+    --ink: #211711;
+    --ink-soft: #4d3f2f;
+    --ink-faint: #857a66;
+
+    /* Paper. The surface panels are cut from, a shade for alternating rows and
+       pressed controls, and the desk the whole lot sits on. */
+    --paper: #f5efdf;
+    --paper-warm: #e7dbc2;
+    --desk: #6b4529;
+
+    /* Rules. Borders are ruled lines rather than hairlines -- the tan reads as
+       part of the paper, where black reads as a box drawn on top of it. */
+    --rule: #b09763;
+    --rule-faint: rgba(201, 162, 89, 0.45);
+
+    /* The one colour that is not ink or paper: what is chosen, and the tint of
+       what the pointer is over. */
+    --accent: #3f6f57;
+    --accent-soft: #dde8df;
+
+    --gilt: #c9a227;
+
+    /* Cloth. The other material in the room: a dark woven navy against the
+       warm timber, which is the pairing every piece of real furniture like
+       this uses. It backs the tab bar and the statblock name plates -- the two
+       places the app puts light lettering on a dark ground. */
+    --cloth: #171c22;
+    --cloth-weave: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27120%27%20height%3D%27120%27%20viewBox%3D%270%200%20120%20120%27%3E%3Cdefs%3E%3Cfilter%20id%3D%27d%27%20x%3D%27-20%25%27%20y%3D%27-20%25%27%20width%3D%27140%25%27%20height%3D%27140%25%27%3E%3CfeTurbulence%20type%3D%27fractalNoise%27%20baseFrequency%3D%270.28%27%20numOctaves%3D%272%27%20seed%3D%274%27%20result%3D%27n%27%2F%3E%3CfeDisplacementMap%20in%3D%27SourceGraphic%27%20in2%3D%27n%27%20scale%3D%271.6%27%20xChannelSelector%3D%27R%27%20yChannelSelector%3D%27G%27%2F%3E%3C%2Ffilter%3E%3Cpattern%20id%3D%27l%27%20width%3D%276%27%20height%3D%276%27%20patternUnits%3D%27userSpaceOnUse%27%3E%3Crect%20width%3D%276%27%20height%3D%276%27%20fill%3D%27%23171c22%27%2F%3E%3Crect%20width%3D%276%27%20height%3D%273%27%20fill%3D%27%23242c35%27%20opacity%3D%270.55%27%2F%3E%3Crect%20width%3D%273%27%20height%3D%276%27%20fill%3D%27%230d1116%27%20opacity%3D%270.45%27%2F%3E%3C%2Fpattern%3E%3Cfilter%20id%3D%27g%27%3E%3CfeTurbulence%20type%3D%27fractalNoise%27%20baseFrequency%3D%270.9%27%20numOctaves%3D%272%27%20seed%3D%278%27%2F%3E%3CfeColorMatrix%20type%3D%27saturate%27%20values%3D%270%27%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Crect%20x%3D%27-20%27%20y%3D%27-20%27%20width%3D%27160%27%20height%3D%27160%27%20fill%3D%27url%28%23l%29%27%20filter%3D%27url%28%23d%29%27%2F%3E%3Crect%20width%3D%27120%27%20height%3D%27120%27%20filter%3D%27url%28%23g%29%27%20opacity%3D%270.10%27%20style%3D%27mix-blend-mode%3Aoverlay%27%2F%3E%3C%2Fsvg%3E");
+
+    /* The hall is lit from the middle and falls away at the edges. Laid over
+       the timber, this is what stops a dark desk reading as a flat brown
+       rectangle. */
+    --desk-light:
+        radial-gradient(ellipse 75% 60% at 50% 34%,
+            rgba(255, 208, 138, 0.30) 0%, rgba(255, 188, 108, 0.11) 48%,
+            rgba(0, 0, 0, 0) 74%),
+        radial-gradient(ellipse 105% 92% at 50% 46%,
+            rgba(0, 0, 0, 0) 38%, rgba(16, 8, 3, 0.30) 78%,
+            rgba(10, 5, 2, 0.62) 100%);
+
+    /* Paper laid thinly over the ink bar: the tabs that are not open, and the
+       one the pointer is over. */
+    --tab-wash: rgba(201, 162, 89, 0.12);
+    --tab-wash-hover: rgba(201, 162, 89, 0.26);
+
+    /* What lifts off the desk. Only the monster picker does. */
+    --shadow-resting: 0 2px 10px rgba(12, 7, 3, 0.45);
+    --shadow-lifted: 0 10px 40px rgba(12, 7, 3, 0.55);
+
+    /* Reserved for the destructive and the urgent -- a removal, a unit whose
+       turn it is. Used sparingly enough to keep its meaning. */
+    --danger: #8f2f22;
+
+    /* Two radii: one for controls, a slightly larger one for the sheets they
+       sit on. */
+    --radius: 3px;
+    --radius-panel: 6px;
+
+    /* Section headings are small caps under a double rule, which is what makes
+       a statblock read as one. */
+    --heading-tracking: 0.09em;
+
+    /* The grain of the desk.
+
+       Straight gradient bands read as a stripe, and bowing them with radial
+       gradients reads as rings. Wood needs actual noise, so this is an inline
+       SVG: a striped pattern pushed about by an feTurbulence displacement map,
+       with a second turbulence multiplied over the top as fine tooth.
+
+       baseFrequency is the whole trick. The wander has to play out over
+       hundreds of pixels -- at the tens it reads as fur -- so both axes are in
+       the thousandths, with a displacement scale large enough (90) for the
+       lines to part and crowd the way grain does.
+
+       It is a data: URI, not a file, for the same reason everything else here
+       is self-contained: the app fetches nothing from anywhere. */
+    --desk-grain: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%271200%27%20height%3D%27900%27%20viewBox%3D%270%200%201200%20900%27%20preserveAspectRatio%3D%27none%27%3E%3Cdefs%3E%3Cfilter%20id%3D%27w%27%20x%3D%27-25%25%27%20y%3D%27-25%25%27%20width%3D%27150%25%27%20height%3D%27150%25%27%3E%3CfeTurbulence%20type%3D%27fractalNoise%27%20baseFrequency%3D%270.0026%200.0015%27%20numOctaves%3D%274%27%20seed%3D%275%27%20result%3D%27n%27%2F%3E%3CfeDisplacementMap%20in%3D%27SourceGraphic%27%20in2%3D%27n%27%20scale%3D%2766%27%20xChannelSelector%3D%27R%27%20yChannelSelector%3D%27G%27%2F%3E%3C%2Ffilter%3E%3Cpattern%20id%3D%27f%27%20width%3D%276%27%20height%3D%27900%27%20patternUnits%3D%27userSpaceOnUse%27%3E%3Crect%20width%3D%276%27%20height%3D%27900%27%20fill%3D%27%236b4529%27%2F%3E%3Crect%20width%3D%271%27%20height%3D%27900%27%20fill%3D%27%23301a0d%27%20opacity%3D%270.45%27%2F%3E%3Crect%20x%3D%273.3%27%20width%3D%270.6%27%20height%3D%27900%27%20fill%3D%27%23b98650%27%20opacity%3D%270.30%27%2F%3E%3C%2Fpattern%3E%3Cpattern%20id%3D%27q%27%20width%3D%2747%27%20height%3D%27900%27%20patternUnits%3D%27userSpaceOnUse%27%3E%3Crect%20width%3D%2747%27%20height%3D%27900%27%20fill%3D%27none%27%2F%3E%3Crect%20width%3D%272.5%27%20height%3D%27900%27%20fill%3D%27%2322120a%27%20opacity%3D%270.42%27%2F%3E%3Crect%20x%3D%2728.2%27%20width%3D%271.2%27%20height%3D%27900%27%20fill%3D%27%23b98650%27%20opacity%3D%270.22%27%2F%3E%3C%2Fpattern%3E%3Cfilter%20id%3D%27g%27%3E%3CfeTurbulence%20type%3D%27fractalNoise%27%20baseFrequency%3D%270.8%27%20numOctaves%3D%273%27%20seed%3D%276%27%2F%3E%3CfeColorMatrix%20type%3D%27saturate%27%20values%3D%270%27%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Cg%20filter%3D%27url%28%23w%29%27%3E%3Crect%20x%3D%27-300%27%20y%3D%27-300%27%20width%3D%271800%27%20height%3D%271500%27%20fill%3D%27url%28%23f%29%27%2F%3E%3Crect%20x%3D%27-300%27%20y%3D%27-300%27%20width%3D%271800%27%20height%3D%271500%27%20fill%3D%27url%28%23q%29%27%2F%3E%3C%2Fg%3E%3Crect%20width%3D%271200%27%20height%3D%27900%27%20filter%3D%27url%28%23g%29%27%20opacity%3D%270.06%27%20style%3D%27mix-blend-mode%3Amultiply%27%2F%3E%3C%2Fsvg%3E");
+}
 html, body {
     height: 100%;
     margin: 0;
@@ -9,26 +101,80 @@ html, body {
        GM and spectator pages never loaded it, so they already rendered with
        the fallback. */
     font-family: 'LiberationSerifRegular', 'Liberation Serif', 'Times New Roman', serif;
+    color: var(--ink);
+    background-color: var(--desk);
+    /* Light first, so it falls on the timber rather than under it. */
+    background-image: var(--desk-light), var(--desk-grain);
+    /* One piece of wood across the window rather than a tile with seams, and
+       anchored to the viewport so it does not slide when anything scrolls. */
+    background-size: cover, cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
 }
 button {
-    margin: 3px;
+    margin: 3px 3px 5px;
     margin-top: 5px;
-    margin-bottom: 5px;
-    border-width: 2px;
-    border-radius: 0px;
-
-
-
+    font: inherit;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 2px 9px;
+    cursor: pointer;
+}
+button:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+}
+button:active {
+    background: var(--paper-warm);
+}
+button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+/* Buttons packed into a strip: a list row, or the toolbar under the map. The
+   left column is a fifth of the window and an initiative entry carries several
+   of them; the toolbar is a fixed tenth of the height and the roomier padding
+   pushed its second row out of the window. Both keep the tight metrics. */
+.InitEntry button,
+.unitListEntry button,
+.encountersDiv button,
+#mapTools button,
+#alignmentControls button {
+    padding: 1px 4px;
+    margin: 1px;
+    font-size: 92%;
+}
+button:disabled {
+    color: var(--ink-faint);
+    background: var(--paper-warm);
+    border-color: var(--rule-faint);
+    cursor: default;
 }
 img {
     /*max-width:100%;*/
 }
 input {
     text-align: CENTER;
-    border-radius:0px;
-    border-width:2px;
-    padding-left:0px;
-    padding-right:0px;
+    border-radius: var(--radius);
+    border: 1px solid var(--rule);
+    padding-left: 0px;
+    padding-right: 0px;
+}
+input, select, textarea {
+    font: inherit;
+    color: var(--ink);
+    background: var(--paper);
+}
+select, textarea {
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+}
+input:focus, select:focus, textarea:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
 }
 #register {
     height:calc(50% - 40px);
@@ -69,14 +215,13 @@ input {
 .leftDiv {
     min-height:10px;
     padding:5px;
-    border-style:solid;
-    border-width:thin;
 }
 #encountersDiv {
     min-height:10px;
     padding:5px;
-    border-style:solid;
-    border-width:thin;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-panel);
+    background: var(--paper);
 }
 #charWrapper {
     margin-left:40px;
@@ -126,17 +271,18 @@ input {
     max-width: 70px;
     max-height: 70px;
     margin-top: 5px;
-    border: 1px solid black;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
 }
 
 .selectedEncounter {
-    background: cornflowerblue;
+    background: var(--accent);
     border-radius: 5px;
     padding: 3px;
     overflow: auto;
 }
 .selectedInit {
-    background: cornflowerblue;
+    background: var(--accent);
     border-radius: 5px;
     padding: 3px;
     overflow: auto;
@@ -157,7 +303,7 @@ input {
 }
 
 div.activeUnit {
-    background: firebrick;
+    background: var(--danger);
 }
 
 .nonSelected {
@@ -171,7 +317,7 @@ div.activeUnit {
     overflow: auto;
 }
 div.selected {
-    background: cornflowerblue !important;
+    background: var(--accent) !important;
 }
 
 #activeInit {
@@ -188,8 +334,14 @@ div.selected {
 .tabsDiv {
     width:100%;
     height:40px;
+    /* The rule has to come out of the 40px, not add to it. Everything below is
+       laid out against calc(100% - 40px), so a 41px bar pushes the map a pixel
+       down and out of the window. */
+    box-sizing: border-box;
     display:block;
-    background:lightgrey;
+    background-color: var(--cloth);
+    background-image: var(--cloth-weave);
+    border-bottom: 1px solid var(--rule);
 }
 .centerDiv {
     width:100%;
@@ -211,7 +363,11 @@ div.selected {
     overflow:auto;
     height:50%;
 }
+/* The player's action bar. Paper with a ruled top edge, like the GM's
+   toolbar in the same place. */
 .bottomDiv {
+    background: var(--paper);
+    border-top: 1px solid var(--rule);
     height:20%;
     top:80%;
     position:absolute;
@@ -220,7 +376,7 @@ div.selected {
     overflow:auto;
     display:none;
 }
-tr:nth-child(even) {background-color: #f2f2f2;}
+tr:nth-child(even) {background-color: var(--paper-warm);}
 
 .inventoryTable{
     margin:auto;
@@ -254,8 +410,6 @@ tr:nth-child(even) {background-color: #f2f2f2;}
     min-height:10px;
     margin: auto;
     padding:10px;
-    border-style:solid;
-    border-width:thin;
     text-align:center;
 }
 
@@ -282,21 +436,184 @@ tr:nth-child(even) {background-color: #f2f2f2;}
     height:300px;
     overflow:auto;
     overflow-wrap: break-word;
-    border-style:solid;
-    border-width:thin;
+    padding: 4px 6px;
 }
+/* Inside the chat panel, under the transcript, with a rule between the two. */
 .chatInput {
-width:100%;
+    width: 100%;
+    border-top: 1px solid var(--rule);
+}
+.chatInput input {
+    border: none;
+    border-radius: 0;
+    background: var(--paper-warm);
+    padding: 3px 6px;
+}
+/* A panel: a sheet of paper on the desk with its name ruled across the top.
+   Every named region is one of these, so the initiative order, the creature
+   list and the connected players read as the same kind of thing instead of
+   three differently-bordered boxes with a floating caption above each. */
+.panel {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-panel);
+    margin-bottom: 8px;
+    overflow: hidden;
+    /* On the desk rather than printed onto it. The hall this is borrowed from
+       is all depth, and a sheet with no shadow reads as a painted rectangle. */
+    box-shadow: var(--shadow-resting);
+}
+/* Small caps under a rule -- the treatment the statblock uses for Defence and
+   Offence, which is what makes a statblock read as one. */
+.panelHeading {
+    font-variant: small-caps;
+    font-weight: bold;
+    letter-spacing: var(--heading-tracking);
+    color: var(--ink-soft);
+    background: var(--paper-warm);
+    border-bottom: 1px solid var(--rule);
+    padding: 3px 8px;
+    text-align: center;
+}
+/* A form standing on the desk -- the encounter builder, the save box. The
+   same sheet a panel is cut from, sized to its contents rather than to a
+   column. Without this a form was a run of labels and inputs floating on the
+   desk with nothing holding them together. */
+.formCard {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-resting);
+    padding: 4px 16px 14px;
+    margin: 12px;
+    display: inline-block;
+    vertical-align: top;
+}
+/* The name of a field sitting on the same line as its control. */
+.fieldLabelInline {
+    font-variant: small-caps;
+    letter-spacing: 0.05em;
+    color: var(--ink-faint);
+}
+/* The readout down the right of the action bar: HP, AC, saves. Values the
+   player checks rather than sets, so they are set as a list of labelled
+   numbers instead of a run of prose. */
+#bottomInfoDiv {
+    padding: 4px 10px;
+    text-align: right;
+    line-height: 1.5;
+}
+
+/* The unit's token on its sheet. Most tokens are drawn on white, so without a
+   ruled edge the picture bleeds into the paper it is sitting on. */
+#unitTokenView, #charTokenView {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+}
+
+/* The landing page: one card in the middle of the desk. Nothing else is on it,
+   so it does not need the panel-and-column scaffolding the game pages do. */
+.landing {
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.landingCard {
+    min-width: 320px;
+    text-align: center;
+}
+.landingCard input[type=text] {
+    width: 100%;
+}
+.landingCard .sectionHeading {
+    text-align: left;
+}
+/* The file picker is as wide as the browser decides, which is wider than the
+   card; on its own line it fits whatever that turns out to be. */
+.landingCard input[type=file] {
+    display: block;
+    margin: 6px auto;
+    max-width: 100%;
+}
+
+/* An aside inside a field name -- what the field wants, rather than what it is
+   called. */
+.fieldHint {
+    font-variant: normal;
+    font-style: italic;
+    letter-spacing: 0;
+    opacity: 0.8;
+}
+/* The bar that fills as a lore image uploads. */
+.uploadProgress {
+    height: 6px;
+    width: 0px;
+    background: var(--accent);
+    border-radius: var(--radius);
+    margin: 4px 0;
+}
+/* The name of a field, told apart from the value under it. */
+.fieldLabel {
+    display: block;
+    margin-top: 7px;
+    font-variant: small-caps;
+    letter-spacing: 0.05em;
+    color: var(--ink-faint);
+}
+
+/* A heading for something that is not in a panel of its own -- a column of
+   controls, a form. Ruled rather than barred, since there is no card edge for
+   the bar to sit against. */
+.sectionHeading {
+    font-variant: small-caps;
+    font-weight: bold;
+    letter-spacing: var(--heading-tracking);
+    color: var(--ink-soft);
+    border-bottom: 3px double var(--ink-faint);
+    margin: 10px 0 5px;
+    padding-bottom: 1px;
+}
+
+/* The links out to the player and spectator views. They sit in the tab bar,
+   so they are set for a dark ground -- as default blue on near-black they were
+   there but unreadable. */
+#linkDiv {
+    color: var(--gilt);
+    font-size: 88%;
+    line-height: 1.3;
+    padding: 4px 10px 0 0;
+    text-align: right;
+}
+#linkDiv a {
+    color: var(--accent-soft);
+}
+#linkDiv a:visited {
+    color: var(--accent-soft);
 }
 .tab {
     float: left;
-    margin: 5px;
-    padding: 5px;
-    cursor: default;
-    /*width: 60px;*/
-    border: black;
-    border-width: thin;
-    border-style: solid;
+    margin: 7px 3px 0;
+    padding: 5px 11px;
+    cursor: pointer;
+    color: var(--gilt);
+    background: var(--tab-wash);
+    border: 1px solid var(--rule-faint);
+    border-bottom: none;
+    border-radius: var(--radius) var(--radius) 0 0;
+    user-select: none;
+}
+.tab:hover {
+    background: var(--tab-wash-hover);
+}
+/* The tab whose panel is open. Set by enableTab, because until now nothing on
+   screen said which one you were looking at. */
+.tab.tabActive {
+    color: var(--ink);
+    background: var(--paper);
+    border-color: var(--rule);
+    font-weight: bold;
 }
 
 #mapForm {
@@ -314,7 +631,10 @@ width:100%;
     /*text-align:center;*/
     position:absolute;
     overflow:auto;
-    background:lightgray;
+    /* Transparent, so the desk on the body shows through. Painting the grain
+       again here would put a second piece of wood over the first, out of
+       register with it and re-rendered on every pan. */
+    background: transparent;
 }
 .noScrollBar {
     scrollbar-width:none;
@@ -323,7 +643,9 @@ width:100%;
     display:none;
 }
 #bottomPopupButton {
-    background: white;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-bottom: none;
     position: absolute;
     width: 40px;
     height: 40px;
@@ -334,7 +656,9 @@ width:100%;
 }
 #leftPopButton {
     z-index:5;
-    background: white;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-left: none;
     position: absolute;
     width: 40px;
     height: 40px;
@@ -347,8 +671,13 @@ width:100%;
     font-family: FreeMono, monospace;
 }
 
+.mapToolButtons {
+    clear: left;
+    padding-left: 3px;
+}
 #mapTools {
-
+    background: var(--paper);
+    border-top: 1px solid var(--rule);
     height: 10%;
     width: 100%;
     bottom: 0px;
@@ -367,8 +696,8 @@ width:100%;
 .tooltip .tooltiptext {
   visibility: hidden;
   width: 120px;
-  background-color: black;
-  color: #fff;
+  background-color: var(--ink);
+  color: var(--paper);
   text-align: center;
   border-radius: 6px;
   padding: 5px 0;
@@ -456,7 +785,8 @@ width:100%;
    floats over the left edge. Top rather than bottom: the map area runs to the
    bottom of the window, and an element anchored there lands below the fold. */
 #playerMapTools {
-    background: white;
+    background: var(--paper);
+    border: 1px solid var(--rule);
     position: absolute;
     top: 10px;
     right: 10px;
@@ -502,8 +832,8 @@ width:100%;
     bottom: 10%;
     width: 100%;
     padding: 5px;
-    background: lightgray;
-    border-top: 1px solid black;
+    background: var(--paper);
+    border-top: 1px solid var(--rule);
     z-index: 5;
 }
 
@@ -635,10 +965,14 @@ width:100%;
     padding-left: 3px;
     height: 20px;
 }
+/* min-width matters on every one of these, not just the first. A flex item
+   defaults to min-width:auto, and for a text input that resolves to its
+   twenty-character preferred size -- about 205px -- so a basis of 70px was
+   ignored and the three number fields ran off the end of the row. */
 .attackName { flex: 1 1 130px; min-width: 90px; }
-.attackBonus { flex: 0 0 70px; }
-.attackDamage { flex: 0 0 96px; }
-.attackCrit { flex: 0 0 62px; }
+.attackBonus { flex: 0 0 70px; min-width: 0; }
+.attackDamage { flex: 0 0 96px; min-width: 0; }
+.attackCrit { flex: 0 0 62px; min-width: 0; }
 .attackRollButton {
     flex: 0 0 auto;
     margin: 0;
@@ -716,9 +1050,10 @@ width:100%;
     position: absolute;
     right: 10%;
     top: 5%;
-    background: white;
-    border: solid black;
-    border-radius: 25px;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-lifted);
     text-align: center;
     display: flex;
     flex-direction: column;
@@ -767,13 +1102,13 @@ width:100%;
     cursor: pointer;
     position: sticky;
     top: 0;
-    background: white;
-    border-bottom: 1px solid black;
+    background: var(--paper-warm);
+    border-bottom: 1px solid var(--rule);
     user-select: none;
     white-space: nowrap;
 }
 .creatureHeading:hover {
-    background: #e8eefc;
+    background: var(--accent-soft);
 }
 .creatureHeading.sortedBy {
     font-weight: bold;
@@ -786,22 +1121,22 @@ width:100%;
     cursor: pointer;
 }
 .creatureRow:hover {
-    background: #e8eefc;
+    background: var(--accent-soft);
 }
 /* The row whose statblock is being shown. Declared after the hover rule so it
    wins at equal specificity, and stronger than the hover tint so the two can
    be told apart when the mouse is over a different row. */
 .creatureRow.creatureRowChosen {
-    background: cornflowerblue;
+    background: var(--accent);
 }
 /* The statblock, laid out like a printed one: a name and its CR at the top,
    ruled section headings, and bold labels with their values running on from
    them. The palette is the app's own -- ink on the parchment the maps use,
    with the existing cornflower accent -- rather than the reference's. */
 .statblock {
-    --sbInk: #1d1b16;
-    --sbRule: #b9a887;
-    --sbAccent: cornflowerblue;
+    --sbInk: var(--ink);
+    --sbRule: var(--rule);
+    --sbAccent: var(--accent);
     color: var(--sbInk);
     line-height: 1.35;
 }
@@ -810,8 +1145,9 @@ width:100%;
     justify-content: space-between;
     align-items: baseline;
     gap: 12px;
-    background: var(--sbInk);
-    color: #f7f2e6;
+    background-color: var(--cloth);
+    background-image: var(--cloth-weave);
+    color: var(--paper);
     padding: 5px 10px;
     border-radius: 3px 3px 0 0;
 }
@@ -908,7 +1244,7 @@ width:100%;
     margin: auto;
     text-align: left;
     font-size: 90%;
-    border-top: 1px solid black;
+    border-top: 1px solid var(--rule);
     padding-top: 6px;
 }
 /* Which creature the encounter form is currently carrying, if any. */

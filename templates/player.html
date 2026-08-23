@@ -42,30 +42,36 @@
 
   <div id="screenDiv" class="screenDiv" style="display:none;">
     <div id="tabsDiv" class="tabsDiv">
-      <div class="tab" onClick="enableTab('mapWrapper')">Map</div>
-      <div class="tab" onClick="enableTab('charWrapper'); hackSizes();">Character</div>
+      <div class="tab tabActive" data-tab="mapWrapper" onClick="enableTab('mapWrapper')">Map</div>
+      <div class="tab" data-tab="charWrapper" onClick="enableTab('charWrapper'); hackSizes();">Character</div>
 
-      <div class="tab" onClick="enableTab('inventory')">Inventory</div>
-      <div class="tab" onClick="enableTab('lore')">Lore</div>
+      <div class="tab" data-tab="inventory" onClick="enableTab('inventory')">Inventory</div>
+      <div class="tab" data-tab="lore" onClick="enableTab('lore')">Lore</div>
     </div>
     <div id="centerDiv" class="centerDiv">
       <div class="leftDivContainer" id="leftDivContainer">
         <div id="initiativeDivContainer">
-          <div style="text-align:center;">Initiative<br></div>
-          <div class="leftDiv" id="initiativeDiv"></div>
+          <div class="panel">
+            <div class="panelHeading">Initiative</div>
+            <div class="leftDiv" id="initiativeDiv"></div>
+          </div>
           <button class="centeredButton" id="advanceInit" onclick="advanceInit()">Advance Inititiative</button>
         </div>
         <div id="unitDivContainer" style="display:none;">
-          <div style="text-align:center;">Units<br></div>
-          <div class="leftDiv" id="unitsDiv"></div>
+          <div class="panel">
+            <div class="panelHeading">Units</div>
+            <div class="leftDiv" id="unitsDiv"></div>
+          </div>
         </div>
           <div class="chatContainerDiv">
-            Chat:
-          <div id="chatText" class="chatText"></div>
+          <div class="panel">
+            <div class="panelHeading">Chat</div>
+            <div id="chatText" class="chatText"></div>
           <div id="chatInput" class="chatInput">
             <form action="javascript:sendChat()">
             <input id="newChat" style="width:100%;height:50%;text-align:left;">
             </form>
+          </div>
           </div>
         </div>
       </div>

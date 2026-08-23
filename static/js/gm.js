@@ -833,7 +833,7 @@ function refreshInitiativeLabel() {
     // because that is what its statblock gives.
     var rolled = unitCount() > 1 || Boolean(chosenCreature);
     document.getElementById("unitInitLabel").innerText =
-        rolled ? "Initiative Bonus (d20 rolled for each):" : "Initiative Count:";
+        rolled ? "Initiative Bonus (d20 rolled for each)" : "Initiative Count";
 }
 
 function previewUnitToken() {
@@ -1324,7 +1324,7 @@ function hideBottomDiv() {/*
     document.getElementById("mapContainer").style.height = "";
     document.getElementById("bottomPopupButton").style.top = "";
     document.getElementById("bottomPopupButton").onclick = function() {showBottomDiv();};
-    document.getElementById("bottomPopupButton").children[0].src = "http://jp-bennett.com:17634/static/images/up.svg";
+    document.getElementById("bottomPopupButton").children[0].src = "static/images/up.svg";
     document.getElementById("bottomDiv").style.display="none";*/
 }
 
@@ -1332,6 +1332,6 @@ function showBottomDiv() {
 /*    document.getElementById("mapContainer").style.height = "80%";
     document.getElementById("bottomPopupButton").style.top = "calc(80% - 40px)";
     document.getElementById("bottomPopupButton").onclick = function() {hideBottomDiv();};
-    document.getElementById("bottomPopupButton").children[0].src = "http://jp-bennett.com:17634/static/images/down.svg";
+    document.getElementById("bottomPopupButton").children[0].src = "static/images/down.svg";
     document.getElementById("bottomDiv").style.display="block";*/
 }

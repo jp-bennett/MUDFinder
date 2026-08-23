@@ -1428,7 +1428,7 @@ def encounter(browser, live_server, tmp_path_factory):
 
 class TestAddingAGroupOfCreatures:
     def test_the_field_asks_for_a_count_for_one_creature(self, encounter):
-        assert encounter["opened"]["initiativeLabel"] == "Initiative Count:"
+        assert encounter["opened"]["initiativeLabel"] == "Initiative Count"
 
     def test_the_field_asks_for_a_bonus_for_several(self, encounter):
         """Six creatures cannot share one initiative count, so above one copy
@@ -1462,7 +1462,7 @@ class TestAddingAGroupOfCreatures:
     def test_the_form_resets_to_one(self, encounter):
         """Otherwise the next creature quietly arrives six times."""
         assert encounter["added"]["countField"] == "1"
-        assert encounter["added"]["initiativeLabel"] == "Initiative Count:"
+        assert encounter["added"]["initiativeLabel"] == "Initiative Count"
 
 
 class TestUploadingATokenForTheGroup:
@@ -3047,3 +3047,134 @@ class TestTheStatblockIsNotRedrawn:
 
     def test_nothing_raised(self, unit_statblock):
         assert unit_statblock["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def chrome(browser, live_server):
+    """The app's own chrome: the tab bar, and things fitting inside things.
+
+    Both of the checks here are for defects that a green suite happily agreed
+    with. A one-pixel border on the tab bar pushed the map out of the window and
+    broke the battlemap drag; the attack row's number fields ignored their
+    flex-basis and ran off the end of the card they sit in.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "chrome")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+
+        stages = {}
+        measure = """() => {
+            const bar = document.querySelector(".tabsDiv").getBoundingClientRect();
+            const centre = document.querySelector(".centerDiv").getBoundingClientRect();
+            return {barHeight: Math.round(bar.height),
+                    centreBottom: Math.round(centre.bottom),
+                    viewport: window.innerHeight,
+                    sideways: document.documentElement.scrollWidth > window.innerWidth,
+                    overhang: document.documentElement.scrollHeight - window.innerHeight};
+        }"""
+        stages["layout"] = page.evaluate(measure)
+
+        active = """() => {
+            const on = Array.from(document.querySelectorAll(".tab.tabActive"));
+            return on.map(t => t.innerText.trim());
+        }"""
+        stages["openedOn"] = page.evaluate(active)
+        page.click("div.tab:text-is('Encounter')")
+        stages["afterClick"] = page.evaluate(active)
+        page.click("div.tab:text-is('Map')")
+        stages["backToMap"] = page.evaluate(active)
+
+        # A creature with four attacks, to measure the row against its card.
+        page.click("div.tab:text-is('Encounter')")
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+        page.fill("#creatureSearchName", "adult occult dragon")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#creatureRows tr').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.click("#creatureRows tr:first-child button")
+        page.wait_for_function(
+            "() => !document.getElementById('modalBackground')", timeout=HANDSHAKE_TIMEOUT)
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Adult Occult Dragon")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(400)
+        page.click("div.tab:text-is('Units')")
+        page.evaluate("""() => populateEditChar(gmData,
+            gmData.unitList.find(u => u.charName === "Adult Occult Dragon").unitNum)""")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#unitAttacks .attackRow').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["attacks"] = page.evaluate("""() => {
+            const card = document.querySelector("#units .formCard").getBoundingClientRect();
+            const rows = Array.from(document.querySelectorAll("#unitAttacks .attackRow"));
+            const widest = Math.max(...rows.map(r => {
+                const kids = Array.from(r.children);
+                return Math.max(...kids.map(k => k.getBoundingClientRect().right));
+            }));
+            return {cardRight: Math.round(card.right), widestChildRight: Math.round(widest),
+                    fieldWidths: Array.from(rows[0].children).map(
+                        k => Math.round(k.getBoundingClientRect().width))};
+        }""")
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestTheTabBar:
+    def test_it_keeps_to_forty_pixels(self, chrome):
+        """Everything below is laid out against calc(100% - 40px), so a taller
+        bar pushes the map a pixel out of the window."""
+        assert chrome["layout"]["barHeight"] == 40
+
+    def test_the_page_does_not_scroll(self, chrome):
+        """Sideways never; downwards only by the fraction of a pixel the
+        whitespace line box above has always cost."""
+        assert chrome["layout"]["sideways"] is False
+        assert chrome["layout"]["overhang"] <= 1
+
+    def test_the_page_reaches_the_bottom_of_the_window(self, chrome):
+        """Within a pixel: a whitespace text node between the bar and the page
+        forms an anonymous line box, which has always cost a fraction of one."""
+        assert abs(chrome["layout"]["centreBottom"] - chrome["layout"]["viewport"]) <= 1
+
+    def test_the_map_tab_starts_marked(self, chrome):
+        """Nothing on screen said which tab you were on."""
+        assert chrome["openedOn"] == ["Map"]
+
+    def test_the_mark_follows_the_click(self, chrome):
+        assert chrome["afterClick"] == ["Encounter"]
+        assert chrome["backToMap"] == ["Map"]
+
+
+class TestThingsFitInsideThings:
+    def test_the_attack_row_stays_inside_its_card(self, chrome):
+        assert chrome["attacks"]["widestChildRight"] <= chrome["attacks"]["cardRight"]
+
+    def test_the_number_fields_are_not_full_width(self, chrome):
+        """A flex item defaults to min-width:auto, which for a text input is its
+        twenty-character preferred size -- so flex-basis was being ignored and
+        every field came out the same 205px."""
+        name, bonus, damage, crit = chrome["attacks"]["fieldWidths"][:4]
+        assert bonus < 100 and damage < 120 and crit < 100
+        assert name > bonus
+
+    def test_nothing_raised(self, chrome):
+        assert chrome["errors"] == []

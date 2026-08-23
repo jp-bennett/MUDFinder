@@ -3,21 +3,24 @@
 <head>
   <link rel="shortcut icon" href="/static/images/favicon.ico">
   <meta charset="UTF-8">
-  
+  <!-- The landing page did not load the stylesheet at all, so the first thing
+       anyone saw of MUDFinder was unstyled browser default. -->
+  <link rel="stylesheet" href="static/css/mudfinder.css">
   <title>Create a new game</title>
 </head>
-<body>
-  <div id="topDiv">
-    <p>Create a new game!</p>
+<body class="landing">
+  <div id="topDiv" class="formCard landingCard">
+    <div class="sectionHeading">Create a New Game</div>
     <form action="javascript:createGame()">
-      <input type="text" id="gameName"><br>
+      <label class="fieldLabel" for="gameName">Name this game</label>
+      <input type="text" id="gameName">
     </form>
-    <button onclick="createGame()">Create Game</button><br><br>
-    <form action = "upload.html" method = "POST" 
-         enctype = "multipart/form-data">
-         <input type = "file" name = "file" />
-         <input type = "submit"/>
-      </form>
+    <button onclick="createGame()">Create Game</button>
+    <div class="sectionHeading">Or Load a Savegame</div>
+    <form action="upload.html" method="POST" enctype="multipart/form-data">
+      <input type="file" name="file">
+      <input type="submit" value="Load">
+    </form>
   </div>
   <script src="static/js/socket.io.js"></script>
   <script type="text/javascript" charset="utf-8">
