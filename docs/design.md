@@ -115,6 +115,19 @@ function turns the noise into hard on/off bands, and taking one narrow band in
 seven gives fine continuous rings that crowd together and open out the way real
 ones do.
 
+**The desk is planked.** Each board is cut from a different part of the tree and
+carries its own tone — that is the cue that actually reads, because a seam line
+on its own gets lost among the growth rings, which are dark vertical lines too.
+The seams are grooves rather than pen lines (shadow in the gap, the lit edge of
+the next board beside it) and they are spaced **irregularly**, since even
+spacing reads as tiling.
+
+**The boards have knots**: a dark core, the ring of harder wood around it, and
+two rings of grain crowding past. They sit inside boards rather than across a
+join, and they are **unevenly distributed** — some boards are clear, some are
+full of them. Three per board is a grid, which is what the first placement
+looked like. All six of those rules have tests.
+
 There is deliberately **no broad light-and-dark pass in the timber**. The desk
 gets that from `--desk-light`, and an earlier version that did it in both places
 flattened the colour instead of deepening it. There is a test that the grain

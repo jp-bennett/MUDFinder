@@ -1149,6 +1149,44 @@ class TestTheDesignTokens:
         rings = grain[grain.index("<filter id='r'"):]
         assert re.search(r"numOctaves='1'", rings), rings[:200]
 
+    def test_the_desk_is_planked(self):
+        """A desk is boards, not one sheet."""
+        assert len(seam_positions()) >= 5
+
+    def test_the_boards_are_not_evenly_spaced(self):
+        """Even spacing reads as tiling rather than as timber."""
+        edges = [0] + seam_positions()
+        widths = [b - a for a, b in zip(edges, edges[1:])]
+        assert len(set(widths)) == len(widths), widths
+
+    def test_each_board_carries_its_own_tone(self):
+        """The cue that actually reads. A seam line on its own is lost among
+        the growth rings, which are dark vertical lines too."""
+        grain = urllib.parse.unquote(desk_grain())
+        tinted = re.findall(r"<rect x='\d+' width='\d+' height='1000' "
+                            r"fill='(#[0-9a-f]{6})' opacity='([0-9.]+)'", grain)
+        assert len(tinted) == len(seam_positions()) + 1, tinted
+        assert len(set(tinted)) > 1, tinted
+
+    def test_the_desk_has_knots(self):
+        assert len(knot_positions()) >= 12
+
+    def test_no_knot_sits_across_a_seam(self):
+        """Knots are in boards, not in the join between two of them."""
+        seams = seam_positions()
+        for x, y in knot_positions():
+            assert all(abs(x - seam) > 30 for seam in seams), (x, y)
+
+    def test_the_knots_are_not_spread_evenly(self):
+        """Some boards are clear and some are full of them. Three per board is
+        a grid, which is what the first placement looked like."""
+        seams = seam_positions()
+        counts = []
+        edges = [0] + seams + [1400]
+        for a, b in zip(edges, edges[1:]):
+            counts.append(sum(1 for x, _ in knot_positions() if a <= x < b))
+        assert max(counts) - min(counts) >= 2, counts
+
     def test_the_rings_are_cut_rather_than_shaded(self):
         """discrete, not table. A linear table can only give a soft gradient;
         an incised line needs a hard edge."""
@@ -1175,6 +1213,20 @@ def grain_frequencies():
     found = re.findall(r"baseFrequency='([0-9.]+)\s+([0-9.]+)'", grain)
     assert len(found) == 3, found
     return [(float(a), float(b)) for a, b in found]
+
+
+def seam_positions():
+    """The dark centre of each board join."""
+    grain = urllib.parse.unquote(desk_grain())
+    found = re.findall(r"<rect x='([0-9.]+)' width='3.0' height='1000' "
+                       r"fill='#0d0602'", grain)
+    return [float(x) for x in found]
+
+
+def knot_positions():
+    grain = urllib.parse.unquote(desk_grain())
+    found = re.findall(r"<g transform='translate\((\d+),(\d+)\)", grain)
+    return [(int(x), int(y)) for x, y in found]
 
 
 def desk_grain():
