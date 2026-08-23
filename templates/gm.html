@@ -252,6 +252,12 @@
           </div>
         </div>
         <div id="units" style="display:none;">
+    <!-- The bestiary entry the unit was added from, fetched by drawStatblock in
+         shared.js and rendered with the same statblockElement the monster
+         picker uses. Floated beside the fields rather than under them: it is
+         taller than the whole form, and at the bottom the GM had to scroll
+         past every input to reach the thing they clicked for. -->
+    <div id="unitStatblock" class="unitStatblock"></div>
 
     Need to make changes to <span id="charactername"></span>?<br>
     <span style="display:none;" id="editCharNum"></span>

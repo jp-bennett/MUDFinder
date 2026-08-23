@@ -647,6 +647,8 @@ function populateEditChar (Data, unitNum) {
             drawCastings(document.getElementById("unitCastings"),
                          Data.unitList[playerUnitNum],
                          Data.unitList[playerUnitNum].unitNum);
+            drawStatblock(document.getElementById("unitStatblock"),
+                          Data.unitList[playerUnitNum]);
         } else {
         document.getElementById("sheetCharName").value = Data.unitList[playerUnitNum].charName;
         }
@@ -822,6 +824,66 @@ function castingRow(casting, index, unitNumber) {
     }
     row.appendChild(uses);
     return row;
+}
+
+// Bestiary rows already fetched, keyed by id. populateEditChar runs on every
+// update -- including while the Units tab is closed -- so without this the
+// sheet would ask the server for the same creature over and over.
+var creatureCache = {};
+
+function fetchCreatureCached(creatureId) {
+    if (creatureCache[creatureId]) {
+        return Promise.resolve(creatureCache[creatureId]);
+    }
+    return fetchCreature(creatureId).then(function (full) {
+        if (full) {
+            creatureCache[creatureId] = full;
+        }
+        return full;
+    });
+}
+
+// The creature a unit came from, in full, on its own sheet. A unit carries
+// only the fields the app reads, so everything else -- the ecology, the
+// special abilities, the prose -- has to be looked up by creatureId.
+function drawStatblock(container, unit) {
+    if (!container) {
+        // The player's sheet has no statblock panel.
+        return;
+    }
+    var wanted = (unit && unit.creatureId) ? String(unit.creatureId) : "";
+    // This is redrawn on every update from the server. Repainting a statblock
+    // that has not changed would flicker and throw away wherever the GM had
+    // scrolled to. An empty panel with the id already set is a fetch still in
+    // flight, which will fill it, so that is left alone too.
+    if (container.dataset.creatureId === wanted && container.firstChild) {
+        return;
+    }
+    container.dataset.creatureId = wanted;
+    removeContents(container);
+    if (!wanted) {
+        var none = document.createElement("div");
+        none.className = "statblockEmpty";
+        // Units made by hand, and the players' own characters.
+        none.innerText = "Not from the bestiary, so there is no statblock to show.";
+        container.appendChild(none);
+        return;
+    }
+    fetchCreatureCached(unit.creatureId).then(function (full) {
+        // A different unit may have been picked while this was in flight.
+        if (container.dataset.creatureId !== wanted) {
+            return;
+        }
+        removeContents(container);
+        if (full) {
+            container.appendChild(statblockElement(full.creature));
+        } else {
+            var gone = document.createElement("div");
+            gone.className = "statblockEmpty";
+            gone.innerText = "That bestiary entry could not be found.";
+            container.appendChild(gone);
+        }
+    });
 }
 
 function updateImages (unitInfo) {

@@ -1022,3 +1022,22 @@ input.hp {
     padding-top:5px;
     padding-bottom:5px;
 }
+/* The bestiary entry on the unit sheet, beside the fields rather than under
+   them: a dragon's entry is longer than the whole form, so at the bottom it
+   opened below the fold and scrolled the page instead of itself. */
+.unitStatblock {
+    float: right;
+    width: 400px;
+    max-width: 45%;
+    max-height: calc(100vh - 90px);
+    overflow-y: auto;
+    margin: 0 8px 8px 12px;
+}
+.unitStatblock .statblock {
+    margin: 0;
+}
+.statblockEmpty {
+    font-style: italic;
+    opacity: 0.7;
+    padding: 4px 0;
+}

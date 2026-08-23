@@ -1260,11 +1260,14 @@ def on_cast_spell(data):
         spent = "used a %s casting" % casting.get("label", "?")
     else:
         spent = "cast %s — %s" % (spells or "a spell", casting.get("label", "?"))
+    # The new count first, then the line announcing it. The other way round
+    # leaves a window where a view has been told a casting was spent but is
+    # still holding -- and offering -- the old one.
+    ROOMS[room].send_updates()
     emit_to_gm("chat", {
         "chat": "%s %s, %d left" % (unit.charName, spent, casting["uses"]),
         "charName": "System",
     }, room)
-    ROOMS[room].send_updates()
 
 
 @socketio.on('reset_castings')
@@ -1278,11 +1281,11 @@ def on_reset_castings(data):
         return
     for casting in unit.castings:
         casting["uses"] = casting.get("daily", casting.get("uses", 0))
+    ROOMS[room].send_updates()
     emit_to_gm("chat", {
         "chat": "%s has its spells back." % unit.charName,
         "charName": "System",
     }, room)
-    ROOMS[room].send_updates()
 
 
 @socketio.on('roll_attack')
