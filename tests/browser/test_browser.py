@@ -2605,3 +2605,165 @@ class TestWhoSeesTheAttackRolls:
 
     def test_nothing_raised(self, attacks):
         assert attacks["errors"] == []
+
+
+CASTING_REPORT_JS = """
+() => ({
+  labels: Array.from(document.querySelectorAll("#unitCastings .castingLabel"))
+    .map(e => e.innerText),
+  spells: Array.from(document.querySelectorAll("#unitCastings .castingSpells"))
+    .map(e => e.innerText),
+  buttons: document.querySelectorAll("#unitCastings .castingUse").length,
+  spent: document.querySelectorAll("#unitCastings .castingRowSpent").length,
+  chat: document.getElementById("chatText").innerText,
+})
+"""
+
+
+@pytest.fixture(scope="module")
+def castings(browser, live_server):
+    """Spend an Aboleth's three castings of dominate monster and put them back.
+
+    A monster with a limited spell had nowhere to record that it had used one,
+    so the GM kept it on paper.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "castings")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        url = page.url
+        room = dict(pair.split("=", 1) for pair in url.split("?", 1)[1].split("&"))["room"]
+
+        player = context.new_page()
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        page.click("div.tab:text-is('Encounter')")
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+        page.fill("#creatureSearchName", "aboleth")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#creatureRows tr').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.click("#creatureRows tr:first-child button")
+        page.wait_for_function(
+            "() => !document.getElementById('modalBackground')", timeout=HANDSHAKE_TIMEOUT)
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Aboleth")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(500)
+
+        def show():
+            page.evaluate("""() => populateEditChar(gmData,
+                gmData.unitList.find(u => u.charName === "Aboleth").unitNum)""")
+
+        page.click("div.tab:text-is('Units')")
+        page.wait_for_selector("#unitCastings", state="visible")
+        show()
+        page.wait_for_function(
+            "() => document.querySelectorAll('#unitCastings .castingRow').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages = {"fresh": page.evaluate(CASTING_REPORT_JS)}
+
+        page.click("#unitCastings .castingUse")
+        page.wait_for_function(
+            """() => document.getElementById("chatText").innerText.indexOf("2 left") !== -1""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        show()
+        stages["afterOne"] = page.evaluate(CASTING_REPORT_JS)
+
+        for _ in range(2):
+            page.click("#unitCastings .castingUse")
+            page.wait_for_timeout(400)
+            show()
+        stages["spent"] = page.evaluate(CASTING_REPORT_JS)
+        player.wait_for_timeout(400)
+        stages["playerChat"] = player.inner_text("#chatText")
+
+        # The count lives on the server, so it has to survive the page going
+        # away -- which is the thing a browser-side counter would get wrong.
+        page.reload()
+        page.wait_for_function(
+            "() => typeof gmData !== 'undefined' && gmData && gmData.unitList.length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.click("div.tab:text-is('Units')")
+        show()
+        page.wait_for_timeout(400)
+        stages["afterReload"] = page.evaluate(CASTING_REPORT_JS)
+
+        page.click(".castingReset")
+        page.wait_for_timeout(600)
+        show()
+        stages["afterReset"] = page.evaluate(CASTING_REPORT_JS)
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestTheCastingPanel:
+    def test_the_limited_casting_is_listed(self, castings):
+        assert castings["fresh"]["spells"] == ["dominate monster (DC 22)"]
+
+    def test_it_is_grouped_under_how_often(self, castings):
+        assert castings["fresh"]["labels"] == ["3/day"]
+
+    def test_there_is_a_button_per_remaining_use(self, castings):
+        """The buttons are the count, rather than a number written beside
+        one -- the same idea the player's spell slots use."""
+        assert castings["fresh"]["buttons"] == 3
+
+    def test_the_at_will_spells_are_not_here(self, castings):
+        """An Aboleth has seven of them, and none needs a counter."""
+        assert "hypnotic pattern" not in " ".join(castings["fresh"]["spells"])
+
+
+class TestSpendingACasting:
+    def test_casting_takes_a_button_away(self, castings):
+        assert castings["afterOne"]["buttons"] == 2
+
+    def test_it_says_what_was_cast(self, castings):
+        assert "dominate monster" in castings["afterOne"]["chat"]
+        assert "2 left" in castings["afterOne"]["chat"]
+
+    def test_spending_them_all_leaves_the_row_showing(self, castings):
+        """Greyed rather than gone, so it is clear the creature has it and has
+        used it up."""
+        assert castings["spent"]["buttons"] == 0
+        assert castings["spent"]["spent"] == 1
+        assert castings["spent"]["spells"] == ["dominate monster (DC 22)"]
+
+    def test_the_players_are_not_told(self, castings):
+        assert "dominate monster" not in castings["playerChat"]
+
+    def test_the_count_survives_a_reload(self, castings):
+        """It lives on the server for this reason."""
+        assert castings["afterReload"]["buttons"] == 0
+        assert castings["afterReload"]["spent"] == 1
+
+    def test_resetting_gives_them_back(self, castings):
+        assert castings["afterReset"]["buttons"] == 3
+        assert castings["afterReset"]["spent"] == 0
+
+    def test_nothing_raised(self, castings):
+        assert castings["errors"] == []

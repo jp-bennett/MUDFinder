@@ -886,3 +886,146 @@ class TestCreatureWeapons:
 
     def test_a_creature_with_no_attacks_gets_an_empty_list(self):
         assert mudfinder.creature_weapons({"Name": "x"}) == []
+
+
+class TestParsingCastings:
+    """The things a creature can cast a limited number of times.
+
+    At-will and constant entries are deliberately absent: they are in the
+    statblock the picker shows and never need a counter.
+    """
+
+    def parse(self, text):
+        return [(c["label"], c["spells"], c["uses"]) for c in mudfinder.parse_castings(text)]
+
+    def test_a_per_day_group_is_a_shared_pool(self):
+        assert self.parse("Spell-Like Abilities (CL 16th) 3/day-dominate monster (DC 22)") == [
+            ("3/day", "dominate monster (DC 22)", 3)]
+
+    def test_a_pool_covers_every_spell_in_it(self):
+        """Four castings drawn from the two, not four of each."""
+        assert self.parse(
+            "Spells Known (CL 9th) 4th (4/day)-charm monster (DC 17), freedom of movement") == [
+            ("4th (4/day)", "charm monster (DC 17), freedom of movement", 4)]
+
+    def test_a_prepared_level_is_one_casting_per_spell(self):
+        assert self.parse(
+            "Spells Prepared (CL 16th) 8th-earthquake (DC 25), fire storm (DC 25)") == [
+            ("8th", "earthquake (DC 25)", 1), ("8th", "fire storm (DC 25)", 1)]
+
+    def test_a_prepared_spell_can_be_prepared_more_than_once(self):
+        assert self.parse(
+            "Spells Prepared (CL 16th) 1st-bless (2), cure light wounds (4), shield of faith") == [
+            ("1st", "bless (2)", 2), ("1st", "cure light wounds (4)", 4),
+            ("1st", "shield of faith", 1)]
+
+    def test_a_semicolon_separates_a_count_too(self):
+        """The table uses both punctuations, and matching only the comma
+        undercounts seventeen prepared spells."""
+        assert self.parse("Spells Prepared (CL 20th) 9th-implosion (2; DC 28)") == [
+            ("9th", "implosion (2; DC 28)", 2)]
+
+    def test_a_note_after_the_count_is_still_a_count(self):
+        assert self.parse("Spells Prepared (CL 9th) 3rd-remove disease (4; already cast)") == [
+            ("3rd", "remove disease (4; already cast)", 4)]
+
+    def test_damage_dice_in_the_name_are_not_a_count(self):
+        """"(2d6)" begins with a digit and is not two castings."""
+        assert self.parse("Spells Prepared (CL 5th) 2nd-acid arrow (2d6)") == [
+            ("2nd", "acid arrow (2d6)", 1)]
+
+    def test_a_dc_is_not_a_count(self):
+        """The pair is the test. A parser that reads every bracket as a count
+        passes the first of these and hands the second twenty-two castings."""
+        assert self.parse("Spells Prepared (CL 16th) 5th-dispel evil (2, DC 22)") == [
+            ("5th", "dispel evil (2, DC 22)", 2)]
+        assert self.parse("Spells Prepared (CL 16th) 5th-plane shift (DC 22)") == [
+            ("5th", "plane shift (DC 22)", 1)]
+
+    def test_at_will_is_not_tracked(self):
+        assert mudfinder.parse_castings(
+            "Spell-Like Abilities (CL 13th) At will-aid, continual flame") == []
+
+    def test_constant_is_not_tracked(self):
+        assert mudfinder.parse_castings(
+            "Spell-Like Abilities (CL 16th) Constant-detect evil, true seeing") == []
+
+    def test_cantrips_at_will_are_not_tracked(self):
+        assert mudfinder.parse_castings(
+            "Spells Known (CL 3rd) 0 (at will)-dancing lights, detect magic") == []
+
+    def test_the_limited_ones_survive_beside_the_unlimited(self):
+        castings = self.parse(
+            "Spell-Like Abilities (CL 16th) At will-hypnotic pattern (DC 15) "
+            "3/day-dominate monster (DC 22)")
+        assert castings == [("3/day", "dominate monster (DC 22)", 3)]
+
+    def test_uses_start_at_the_daily_number(self):
+        casting = mudfinder.parse_castings(
+            "Spell-Like Abilities (CL 1st) 7/day-cure light wounds")[0]
+        assert casting["uses"] == casting["daily"] == 7
+
+    def test_nothing_yields_nothing(self):
+        assert mudfinder.parse_castings("") == []
+        assert mudfinder.parse_castings(None) == []
+
+
+class TestSplittingASpellList:
+    """Commas inside brackets are not separators."""
+
+    def test_a_plain_list(self):
+        assert mudfinder.split_spell_list("bless, command, shield") == [
+            "bless", "command", "shield"]
+
+    def test_a_comma_inside_brackets_holds_the_spell_together(self):
+        assert mudfinder.split_spell_list("dispel evil (2, DC 22), plane shift (DC 22)") == [
+            "dispel evil (2, DC 22)", "plane shift (DC 22)"]
+
+    def test_nothing_yields_nothing(self):
+        assert mudfinder.split_spell_list("") == []
+
+
+class TestCreatureCastings:
+    def creature(self, name):
+        db = sqlite3.connect("mudfinder.sql")
+        db.row_factory = sqlite3.Row
+        return dict(db.execute(
+            "select rowid as id, * from creatures where Name = ? limit 1", (name,)).fetchone())
+
+    def test_an_aboleth_has_its_one_limited_casting(self):
+        castings = mudfinder.creature_castings(self.creature("Aboleth"))
+        assert len(castings) == 1
+        assert castings[0]["spells"] == "dominate monster (DC 22)"
+
+    def test_a_planetar_has_a_great_many(self):
+        assert len(mudfinder.creature_castings(self.creature("Planetar"))) == 30
+
+    def test_a_creature_that_casts_nothing_has_none(self):
+        assert mudfinder.creature_castings(self.creature("Dire Ape")) == []
+
+    def test_a_picked_creature_carries_them(self):
+        unit = mudfinder.creature_to_unit(self.creature("Aboleth"))
+        assert unit["castings"][0]["uses"] == 3
+
+    def test_they_survive_being_saved(self):
+        unit = mudfinder.creature_to_unit(self.creature("Aboleth"))
+        assert Unit(unit).to_json()["castings"] == unit["castings"]
+
+
+class TestRememberingTheCreature:
+    """A unit keeps the row it came from, so its full statblock can be looked
+    up later. The unit carries only the mapped fields; without this there is
+    nothing to look the rest up by."""
+
+    def test_a_picked_creature_records_its_id(self):
+        db = sqlite3.connect("mudfinder.sql")
+        db.row_factory = sqlite3.Row
+        creature = dict(db.execute(
+            "select rowid as id, * from creatures where Name = 'Aboleth' limit 1").fetchone())
+        assert mudfinder.creature_to_unit(creature)["creatureId"] == creature["id"]
+
+    def test_a_hand_made_unit_has_none(self):
+        assert make_unit().creatureId is None
+
+    def test_it_survives_being_saved(self):
+        assert Unit({"charName": "x", "creatureId": 412}).to_json()["creatureId"] == 412

@@ -644,6 +644,9 @@ function populateEditChar (Data, unitNum) {
             drawAttacks(document.getElementById("unitAttacks"),
                         Data.unitList[playerUnitNum].weapons,
                         Data.unitList[playerUnitNum].charName);
+            drawCastings(document.getElementById("unitCastings"),
+                         Data.unitList[playerUnitNum],
+                         Data.unitList[playerUnitNum].unitNum);
         } else {
         document.getElementById("sheetCharName").value = Data.unitList[playerUnitNum].charName;
         }
@@ -740,6 +743,85 @@ function drawAttacks(container, weapons, owner) {
     for (var w = 0; w < weapons.length; w++) {
         container.appendChild(attackRow(weapons[w], owner));
     }
+}
+
+// The castings a unit has left, one button per remaining use -- the idea
+// displaySpellSlots uses on the player sheet, where the buttons are the count
+// rather than a number written beside one.
+//
+// Only things that run out are here. At-will and constant spells are in the
+// statblock the picker shows and need no counter.
+function drawCastings(container, unit, unitNumber) {
+    removeContents(container);
+    var castings = (unit && unit.castings) || [];
+    if (castings.length === 0) {
+        var empty = document.createElement("div");
+        empty.className = "attackRowEmpty";
+        empty.innerText = "Nothing with a limited number of uses.";
+        container.appendChild(empty);
+        return;
+    }
+
+    var list = document.createElement("div");
+    list.className = "castingList";
+    var previousLabel = null;
+    for (var c = 0; c < castings.length; c++) {
+        var casting = castings[c];
+        // A prepared caster has a row per spell, so the level is printed once
+        // and the rows under it carry only their spell.
+        if (casting.label !== previousLabel) {
+            var heading = document.createElement("div");
+            heading.className = "castingLabel";
+            heading.innerText = casting.label;
+            list.appendChild(heading);
+            previousLabel = casting.label;
+        }
+        list.appendChild(castingRow(casting, c, unitNumber));
+    }
+    container.appendChild(list);
+
+    var reset = document.createElement("button");
+    reset.className = "castingReset";
+    reset.innerText = "Reset spells";
+    reset.onclick = function () {
+        socket.emit("reset_castings", {room: room, gmKey: gmKey, unitNum: unitNumber});
+    };
+    container.appendChild(reset);
+}
+
+function castingRow(casting, index, unitNumber) {
+    var row = document.createElement("div");
+    row.className = "castingRow";
+
+    var name = document.createElement("span");
+    name.className = "castingSpells";
+    name.innerText = casting.spells;
+    row.appendChild(name);
+
+    var uses = document.createElement("span");
+    uses.className = "castingUses";
+    for (var u = 0; u < casting.uses; u++) {
+        var button = document.createElement("button");
+        button.className = "castingUse";
+        button.innerText = "cast";
+        button.title = casting.uses + " of " + casting.daily + " left";
+        button.onclick = (function (index) { return function () {
+            socket.emit("cast_spell", {room: room, gmKey: gmKey,
+                                       unitNum: unitNumber, casting: index});
+        }})(index);
+        uses.appendChild(button);
+    }
+    if (casting.uses === 0) {
+        // Kept on screen rather than removed, so it is clear the creature has
+        // it and has used it up.
+        row.classList.add("castingRowSpent");
+        var spent = document.createElement("span");
+        spent.className = "castingSpent";
+        spent.innerText = "spent";
+        uses.appendChild(spent);
+    }
+    row.appendChild(uses);
+    return row;
 }
 
 function updateImages (unitInfo) {

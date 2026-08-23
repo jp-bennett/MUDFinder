@@ -162,6 +162,110 @@ ATTACK_ROUTINE_JOIN = re.compile(r"^(?:or|and)\s+", re.I)
 # two; one weapon at "+18/+13/+8" is three.
 ATTACK_COUNT_PREFIX = re.compile(r"^\s*(\d+)\s+")
 
+# A creature's castings, as the bestiary writes them across three columns:
+#
+#   Spell-Like Abilities (CL 16th)  At will-hypnotic pattern (DC 15), …
+#                                   3/day-dominate monster (DC 22)
+#   Spells Known (CL 9th)  4th (4/day)-charm monster (DC 17), freedom of movement
+#   Spells Prepared (CL 16th)  8th-earthquake (DC 25), fire storm (DC 25)
+#
+# A group opens with how often it can be used and a dash: "At will-",
+# "Constant-", "3/day-", "4th (4/day)-", "8th-".
+SPELL_GROUP = re.compile(
+    r"(?:(?<=\s)|^)("
+    r"constant|at\s*will"
+    r"|\d+\s*/\s*day"
+    r"|\d+(?:st|nd|rd|th)?\s*\(\s*(?:at\s*will|\d+\s*/\s*day)\s*\)"
+    r"|\d+(?:st|nd|rd|th)"
+    r")\s*[-\u2013]\s*", re.I)
+
+# "Spells Known (CL 9th)" and friends, which introduce the list rather than
+# belonging to it.
+SPELL_HEADER = re.compile(r"^.*?\((?:CL[^)]*)\)\s*", re.I)
+SPELL_PER_DAY = re.compile(r"(\d+)\s*/\s*day", re.I)
+SPELL_UNLIMITED = re.compile(r"at\s*will|constant", re.I)
+
+# How many of a prepared spell were prepared. A bare leading integer in the
+# brackets and nothing else after it but the end or a separator: "bless (2)"
+# is two castings, "dispel evil (2, DC 22)" and "implosion (2; DC 28)" are two
+# castings of a spell that also has a DC, and "plane shift (DC 22)" is one.
+#
+# The separator is a comma or a semicolon -- the table uses both, and matching
+# only the comma quietly undercounts seventeen prepared spells. The digits have
+# to be followed by one of those or the bracket's end, so "acid arrow (2d6)"
+# stays one casting rather than two.
+SPELL_PREPARED_COUNT = re.compile(r"\((\d+)\s*[,;)]")
+
+
+def split_spell_list(text):
+    """A comma-separated spell list, respecting brackets.
+
+    Split naively, "dispel evil (2, DC 22)" becomes two spells, one of them
+    called "DC 22)".
+    """
+    spells, depth, current = [], 0, ""
+    for character in text or "":
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+        if character == "," and depth <= 0:
+            if current.strip():
+                spells.append(current.strip())
+            current = ""
+        else:
+            current += character
+    if current.strip():
+        spells.append(current.strip())
+    return spells
+
+
+def parse_castings(text):
+    """The things in a spell column that run out, and how often.
+
+    At-will and constant entries are left out: they are in the statblock the
+    picker shows and never need a counter beside them.
+
+    The data decides the granularity. A count on the group is a shared pool --
+    "4th (4/day)" is four castings drawn from whatever is listed at that level.
+    A prepared level has no count, because there each spell is its own casting,
+    so those are expanded one row per spell.
+    """
+    if not text:
+        return []
+    body = SPELL_HEADER.sub("", str(text).strip(), count=1)
+    parts = SPELL_GROUP.split(body)
+    castings = []
+    index = 1
+    while index < len(parts):
+        label = parts[index].strip()
+        spells = parts[index + 1].strip() if index + 1 < len(parts) else ""
+        index += 2
+        if not spells:
+            continue
+        per_day = SPELL_PER_DAY.search(label)
+        if per_day:
+            uses = int(per_day.group(1))
+            castings.append({"label": label, "spells": spells,
+                             "uses": uses, "daily": uses})
+        elif SPELL_UNLIMITED.search(label):
+            continue
+        else:
+            for spell in split_spell_list(spells):
+                prepared = SPELL_PREPARED_COUNT.search(spell)
+                uses = int(prepared.group(1)) if prepared else 1
+                castings.append({"label": label, "spells": spell,
+                                 "uses": uses, "daily": uses})
+    return castings
+
+
+def creature_castings(creature):
+    """Everything a creature can cast a limited number of times."""
+    castings = []
+    for column in ("SpellLikeAbilities", "SpellsKnown", "SpellsPrepared"):
+        castings.extend(parse_castings(creature.get(column)))
+    return castings
+
 
 def attack_swings(name, to_hit):
     count = ATTACK_COUNT_PREFIX.match(str(name or ""))
@@ -392,6 +496,8 @@ def creature_to_unit(creature):
         # The same list a player's own weapons live in, so a monster's bite and
         # a longsword are the same kind of thing to everything downstream.
         "weapons": creature_weapons(creature),
+        "castings": creature_castings(creature),
+        "creatureId": creature.get("id"),
     }
     unit["maxHP"] = unit["HP"]
 
@@ -1108,6 +1214,75 @@ def initiative_bonus(value):
         return int(str(value).strip().lstrip("+") or 0)
     except (TypeError, ValueError):
         return 0
+
+
+def unit_at(room, unit_number):
+    """The unit at an index, or None rather than an IndexError."""
+    try:
+        index = int(unit_number)
+    except (TypeError, ValueError):
+        return None
+    if index < 0 or index >= len(ROOMS[room].unitList):
+        return None
+    return ROOMS[room].unitList[index]
+
+
+@socketio.on('cast_spell')
+def on_cast_spell(data):
+    """Spend one of a unit's castings.
+
+    Counted on the server rather than in the browser so the number survives a
+    reload and two GM views cannot disagree about it. The floor at zero is here
+    for the same reason: a second tab can be holding a stale count and offering
+    a button for a casting that has already gone.
+    """
+    room = data.get('room')
+    if not check_room(room) or ROOMS[room].gmKey != data.get('gmKey'):
+        return
+    unit = unit_at(room, data.get('unitNum'))
+    if unit is None:
+        return
+    try:
+        index = int(data.get('casting'))
+    except (TypeError, ValueError):
+        return
+    if index < 0 or index >= len(unit.castings):
+        return
+    casting = unit.castings[index]
+    if casting.get("uses", 0) <= 0:
+        return
+    casting["uses"] = casting["uses"] - 1
+
+    # A pool covers several spells, and naming them all reads as though every
+    # one of them was cast. Only a row that holds a single spell says which.
+    spells = casting.get("spells", "")
+    if len(split_spell_list(spells)) > 1:
+        spent = "used a %s casting" % casting.get("label", "?")
+    else:
+        spent = "cast %s — %s" % (spells or "a spell", casting.get("label", "?"))
+    emit_to_gm("chat", {
+        "chat": "%s %s, %d left" % (unit.charName, spent, casting["uses"]),
+        "charName": "System",
+    }, room)
+    ROOMS[room].send_updates()
+
+
+@socketio.on('reset_castings')
+def on_reset_castings(data):
+    """Put a unit's castings back to what it started the day with."""
+    room = data.get('room')
+    if not check_room(room) or ROOMS[room].gmKey != data.get('gmKey'):
+        return
+    unit = unit_at(room, data.get('unitNum'))
+    if unit is None:
+        return
+    for casting in unit.castings:
+        casting["uses"] = casting.get("daily", casting.get("uses", 0))
+    emit_to_gm("chat", {
+        "chat": "%s has its spells back." % unit.charName,
+        "charName": "System",
+    }, room)
+    ROOMS[room].send_updates()
 
 
 @socketio.on('roll_attack')
