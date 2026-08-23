@@ -209,6 +209,11 @@ A tab panel holding **one continuous document** rather than a set of cards: the
 character sheet, the inventory, the lore pages, the player links. Paper, ruled,
 with the resting shadow, filling its holder.
 
+`.mapSheet` is the modifier for the map tab: the same box, but with no padding
+and no scroll of its own, since everything inside it — the map, the palette, the
+alignment bar — is absolutely positioned. It has to be `position: relative` or
+those three measure themselves against the tab holder and reach past the sheet.
+
 The distinction from `.formCard` is what the panel *is*. Distinct groupings that
 happen to share a tab are cards standing on the desk; one thing that would be
 printed on a single page is a sheet.

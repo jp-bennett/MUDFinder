@@ -519,6 +519,13 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
     padding: 3px 8px;
     text-align: center;
 }
+/* No padding and no scrolling of its own: the map is a sheet whose contents
+   are absolutely positioned inside it. */
+.tabSheet.mapSheet {
+    padding: 0;
+    overflow: hidden;
+}
+
 /* A tab panel holding one continuous document rather than a set of cards:
    the character sheet, the inventory, the lore pages, the player links. These
    were left on the bare page, which was fine while the page was pale grey and
@@ -716,8 +723,14 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
     text-align:center;
     }
 
-#mapWrapper {
-    height: 100%;
+/* The map is a sheet on the desk like every other tab, with its palette
+   inside the same box. Positioned, because #mapContainer, #mapTools and
+   #alignmentControls are all absolute and have to measure against this rather
+   than against the tab holder they would otherwise reach past. */
+#mapWrapper.mapSheet {
+    position: relative;
+    padding: 0;
+    overflow: hidden;
 }
 #mapContainer {
     font-family: FreeMono, monospace;
