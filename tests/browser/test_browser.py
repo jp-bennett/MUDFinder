@@ -10,6 +10,8 @@ Run just these:      pytest -m browser
 Run everything else: pytest -m "not browser"
 """
 
+from urllib.parse import quote
+
 import pytest
 
 pytest.importorskip("playwright.sync_api")
@@ -106,6 +108,79 @@ class TestPlayerJoin:
         wait_for_socket(player)
         player.page.wait_for_timeout(1000)
         assert player.page_errors == []
+
+
+class TestThePlayerLinksPanel:
+    """The GM's panel of per-player links, and the Delete button beside each.
+
+    A player names itself, and the server stores that name as it is given, so
+    the name arrives here as untrusted text. The panel is built as elements
+    for that reason; assembled as markup, a name carrying a quote or a tag
+    escaped its row and ran as script.
+    """
+
+    HOSTILE_NAME = "Ari'a<img src=x onerror=\"window.pwned=1\">"
+
+    def test_a_player_gets_a_row_with_a_link_and_a_delete_button(
+        self, live_server, new_client, gm_client
+    ):
+        gm, room, _ = gm_client
+        new_client("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        gm.page.wait_for_function(
+            "() => document.querySelector('#links .linkRow') !== null",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        row = gm.page.query_selector("#links .linkRow")
+        assert row.query_selector("a").inner_text() == "Aria"
+        assert row.query_selector("button").inner_text() == "Delete"
+
+    def test_the_link_carries_the_room_and_the_name(self, live_server, new_client, gm_client):
+        gm, room, _ = gm_client
+        new_client("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        gm.page.wait_for_function(
+            "() => document.querySelector('#links .linkRow a') !== null",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        href = gm.page.get_attribute("#links .linkRow a", "href")
+        assert "room=%s" % room in href
+        assert "charName=Aria" in href
+
+    def test_a_name_full_of_markup_stays_text(self, live_server, new_client, gm_client):
+        """The name lands in the row as a word, not as the tag it spells.
+
+        Scoped to the panel on purpose. Other lists on this page still build
+        their rows out of markup and do run the tag -- #unitsDiv is one -- so
+        an assertion about the whole document would be reporting those, not
+        this.
+        """
+        gm, room, _ = gm_client
+        new_client(
+            "%s/player.html?room=%s&charName=%s"
+            % (live_server, room, quote(self.HOSTILE_NAME, safe=""))
+        )
+        gm.page.wait_for_function(
+            """(name) => Array.from(document.querySelectorAll("#links .linkRow a"))
+                 .some(a => a.innerText === name)""",
+            arg=self.HOSTILE_NAME,
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        assert gm.page.query_selector("#links img") is None
+        assert gm.page.eval_on_selector(
+            "#links", "el => el.querySelectorAll('*').length"
+        ) == gm.page.eval_on_selector(
+            "#links",
+            # heading + one row per player, each holding an anchor and a button
+            "el => 1 + el.querySelectorAll('.linkRow').length * 3",
+        )
+
+    def test_the_panel_builds_without_raising(self, live_server, new_client, gm_client):
+        gm, room, _ = gm_client
+        new_client(
+            "%s/player.html?room=%s&charName=%s"
+            % (live_server, room, quote(self.HOSTILE_NAME, safe=""))
+        )
+        gm.page.wait_for_timeout(1000)
+        assert gm.page_errors == []
 
 
 class TestMapSync:
@@ -1428,7 +1503,7 @@ def encounter(browser, live_server, tmp_path_factory):
 
 class TestAddingAGroupOfCreatures:
     def test_the_field_asks_for_a_count_for_one_creature(self, encounter):
-        assert encounter["opened"]["initiativeLabel"] == "Initiative Count:"
+        assert encounter["opened"]["initiativeLabel"] == "Initiative Count"
 
     def test_the_field_asks_for_a_bonus_for_several(self, encounter):
         """Six creatures cannot share one initiative count, so above one copy
@@ -1462,7 +1537,7 @@ class TestAddingAGroupOfCreatures:
     def test_the_form_resets_to_one(self, encounter):
         """Otherwise the next creature quietly arrives six times."""
         assert encounter["added"]["countField"] == "1"
-        assert encounter["added"]["initiativeLabel"] == "Initiative Count:"
+        assert encounter["added"]["initiativeLabel"] == "Initiative Count"
 
 
 class TestUploadingATokenForTheGroup:
@@ -2801,6 +2876,22 @@ STATBLOCK_PANEL_JS = """() => {
 }"""
 
 
+PALETTE_REPORT_JS = """() => {
+  const bar = document.getElementById("mapTools").getBoundingClientRect();
+  const groups = Array.from(document.querySelectorAll(".toolGroup"))
+      .filter(g => g.getBoundingClientRect().width > 0);
+  return {
+    labels: groups.map(g => g.querySelector(".toolGroupLabel").innerText),
+    barBottom: Math.round(bar.bottom),
+    viewport: window.innerHeight,
+    bottoms: groups.map(g => Math.round(g.getBoundingClientRect().bottom)),
+    rows: new Set(groups.map(g => Math.round(g.getBoundingClientRect().top))).size,
+    switches: Array.from(document.querySelectorAll(".toolToggle input"))
+        .map(i => Math.round(i.getBoundingClientRect().bottom)),
+  };
+}"""
+
+
 @pytest.fixture(scope="module")
 def unit_statblock(browser, live_server):
     """Reach a monster's bestiary entry from the encounter, four ways.
@@ -2972,6 +3063,28 @@ def unit_statblock(browser, live_server):
         stages["playerErrors"] = player.evaluate(
             "() => document.getElementById('chatText').innerText")
 
+        # The statblock is floated, and a block box does not avoid a float --
+        # only its line boxes do. Without a formatting context of their own the
+        # attack and casting rows run in behind it.
+        page.evaluate("""() => populateEditChar(gmData,
+            gmData.unitList.find(u => u.charName === "Dire Ape").unitNum)""")
+        page.wait_for_timeout(400)
+        stages["overlap"] = page.evaluate("""() => {
+            const sb = document.getElementById("unitStatblock").getBoundingClientRect();
+            const bad = [];
+            for (const sel of ["#unitAttacks *", "#unitCastings *",
+                               "#units .sectionHeading"]) {
+                for (const e of document.querySelectorAll(sel)) {
+                    const r = e.getBoundingClientRect();
+                    if (r.width > 0 && r.right > sb.left + 1
+                        && r.top < sb.bottom && r.bottom > sb.top) {
+                        bad.push(e.tagName + "." + e.className);
+                    }
+                }
+            }
+            return bad;
+        }""")
+
         stages["errors"] = errors
         return stages
     finally:
@@ -2979,6 +3092,10 @@ def unit_statblock(browser, live_server):
 
 
 class TestTheStatblockOnTheUnitSheet:
+    def test_nothing_runs_in_behind_the_statblock(self, unit_statblock):
+        """The fields sit beside it, not under it."""
+        assert unit_statblock["overlap"] == []
+
     def test_a_monster_shows_its_bestiary_entry(self, unit_statblock):
         assert unit_statblock["sheet"]["hasBlock"]
         assert unit_statblock["sheet"]["name"] == "Dire Ape"
@@ -3047,3 +3164,472 @@ class TestTheStatblockIsNotRedrawn:
 
     def test_nothing_raised(self, unit_statblock):
         assert unit_statblock["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def chrome(browser, live_server):
+    """The app's own chrome: the tab bar, and things fitting inside things.
+
+    Both of the checks here are for defects that a green suite happily agreed
+    with. A one-pixel border on the tab bar pushed the map out of the window and
+    broke the battlemap drag; the attack row's number fields ignored their
+    flex-basis and ran off the end of the card they sit in.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "chrome")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+
+        stages = {}
+        GAPS_JS = """() => {
+            const c = document.getElementById("mapContainer");
+            const box = c.getBoundingClientRect();
+            const tiles = document.querySelectorAll("#mapGraphic .mapTile");
+            let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+            for (const t of tiles) {
+                const r = t.getBoundingClientRect();
+                left = Math.min(left, r.left); top = Math.min(top, r.top);
+                right = Math.max(right, r.right); bottom = Math.max(bottom, r.bottom);
+            }
+            return {left: Math.round(left - box.left), top: Math.round(top - box.top),
+                    right: Math.round(box.right - right),
+                    bottom: Math.round(box.bottom - bottom)};
+        }"""
+
+        # A map bigger than the box it sits in, so it genuinely scrolls, and
+        # the sheet has to show on the far side of the grid as well as before
+        # it.
+        page.fill("#mapWidth", "22")
+        page.fill("#mapHeight", "18")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 396",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(400)
+        stages["insetStart"] = page.evaluate(GAPS_JS)
+        page.evaluate("""() => { const c = document.getElementById("mapContainer");
+            c.scrollLeft = c.scrollWidth; c.scrollTop = c.scrollHeight; }""")
+        page.wait_for_timeout(350)
+        stages["insetCorner"] = page.evaluate(GAPS_JS)
+
+        measure = """() => {
+            const bar = document.querySelector(".tabsDiv").getBoundingClientRect();
+            const centre = document.querySelector(".centerDiv").getBoundingClientRect();
+            return {barHeight: Math.round(bar.height),
+                    centreBottom: Math.round(centre.bottom),
+                    viewport: window.innerHeight,
+                    sideways: document.documentElement.scrollWidth > window.innerWidth,
+                    overhang: document.documentElement.scrollHeight - window.innerHeight};
+        }"""
+        stages["layout"] = page.evaluate(measure)
+
+        active = """() => {
+            const on = Array.from(document.querySelectorAll(".tab.tabActive"));
+            return on.map(t => t.innerText.trim());
+        }"""
+        stages["openedOn"] = page.evaluate(active)
+        page.click("div.tab:text-is('Encounter')")
+        stages["afterClick"] = page.evaluate(active)
+        page.click("div.tab:text-is('Map')")
+        stages["backToMap"] = page.evaluate(active)
+
+        # A creature with four attacks, to measure the row against its card.
+        page.click("div.tab:text-is('Encounter')")
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+        page.fill("#creatureSearchName", "adult occult dragon")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#creatureRows tr').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.click("#creatureRows tr:first-child button")
+        page.wait_for_function(
+            "() => !document.getElementById('modalBackground')", timeout=HANDSHAKE_TIMEOUT)
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Adult Occult Dragon")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(400)
+        page.click("div.tab:text-is('Units')")
+        page.evaluate("""() => populateEditChar(gmData,
+            gmData.unitList.find(u => u.charName === "Adult Occult Dragon").unitNum)""")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#unitAttacks .attackRow').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["attacks"] = page.evaluate("""() => {
+            const card = document.querySelector("#units .formCard").getBoundingClientRect();
+            const rows = Array.from(document.querySelectorAll("#unitAttacks .attackRow"));
+            const widest = Math.max(...rows.map(r => {
+                const kids = Array.from(r.children);
+                return Math.max(...kids.map(k => k.getBoundingClientRect().right));
+            }));
+            return {cardRight: Math.round(card.right), widestChildRight: Math.round(widest),
+                    fieldWidths: Array.from(rows[0].children).map(
+                        k => Math.round(k.getBoundingClientRect().width))};
+        }""")
+
+        # The palette, with the movement controls showing -- which is when it is
+        # at its widest, and when a floated layout pushed the switches off the
+        # bottom of the window.
+        page.click("div.tab:text-is('Encounter')")
+        page.check("#addToInit")
+        page.fill("#unitName", "Goblin")
+        page.fill("#unitHP", "6")
+        page.fill("#unitInit", "12")
+        page.click("text=Add Unit")
+        page.wait_for_timeout(400)
+        page.click("div.tab:text-is('Map')")
+        page.click("#beginInit")
+        page.wait_for_function(
+            """() => getComputedStyle(
+                 document.getElementById("movementDiv")).display !== "none" """,
+            timeout=HANDSHAKE_TIMEOUT)
+        stages["palette"] = page.evaluate(PALETTE_REPORT_JS)
+
+        # And again with the window too narrow to hold it. This is where the
+        # floated version failed: it wrapped, and a wrapped bar pinned to the
+        # bottom of the window is a bar with its last group off the screen.
+        page.set_viewport_size({"width": 1080, "height": 820})
+        page.wait_for_timeout(400)
+        stages["paletteNarrow"] = page.evaluate(PALETTE_REPORT_JS)
+        page.set_viewport_size({"width": 1500, "height": 1000})
+        page.wait_for_timeout(300)
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestThePalette:
+    def test_the_tools_are_grouped_and_named(self, chrome):
+        assert chrome["palette"]["labels"] == [
+            "Terrain", "Doors & Stairs", "Markers", "Light", "Movement",
+            "Map", "Show"]
+
+    def test_every_group_is_on_one_row(self, chrome):
+        """Floated, the last group wrapped to a second line as soon as the
+        movement controls appeared -- and on a bar pinned to the bottom of the
+        window, a second line is off the screen."""
+        assert chrome["palette"]["rows"] == 1
+
+    def test_no_group_hangs_below_the_bar(self, chrome):
+        bar_bottom = chrome["palette"]["barBottom"]
+        for bottom in chrome["palette"]["bottoms"]:
+            assert bottom <= bar_bottom + 1, (bottom, bar_bottom)
+
+    def test_the_switches_are_on_the_screen(self, chrome):
+        """The thing that actually went wrong: they were in the document, and
+        every assertion about them existing passed."""
+        viewport = chrome["palette"]["viewport"]
+        assert chrome["palette"]["switches"], "no switches found"
+        for bottom in chrome["palette"]["switches"]:
+            assert 0 < bottom <= viewport, (bottom, viewport)
+
+    def test_it_survives_a_window_too_narrow_for_it(self, chrome):
+        """The bar scrolls sideways rather than wrapping. Wrapping is what put
+        the switches off the bottom of the screen."""
+        narrow = chrome["paletteNarrow"]
+        assert narrow["rows"] == 1
+        assert narrow["labels"] == chrome["palette"]["labels"]
+        for bottom in narrow["bottoms"]:
+            assert bottom <= narrow["barBottom"] + 1, (bottom, narrow["barBottom"])
+
+
+class TestTheTabBar:
+    def test_it_keeps_to_forty_pixels(self, chrome):
+        """Everything below is laid out against calc(100% - 40px), so a taller
+        bar pushes the map a pixel out of the window."""
+        assert chrome["layout"]["barHeight"] == 40
+
+    def test_the_page_does_not_scroll(self, chrome):
+        """Sideways never; downwards only by the fraction of a pixel the
+        whitespace line box above has always cost."""
+        assert chrome["layout"]["sideways"] is False
+        assert chrome["layout"]["overhang"] <= 1
+
+    def test_the_page_reaches_the_bottom_of_the_window(self, chrome):
+        """Within a pixel: a whitespace text node between the bar and the page
+        forms an anonymous line box, which has always cost a fraction of one."""
+        assert abs(chrome["layout"]["centreBottom"] - chrome["layout"]["viewport"]) <= 1
+
+    def test_the_map_tab_starts_marked(self, chrome):
+        """Nothing on screen said which tab you were on."""
+        assert chrome["openedOn"] == ["Map"]
+
+    def test_the_mark_follows_the_click(self, chrome):
+        assert chrome["afterClick"] == ["Encounter"]
+        assert chrome["backToMap"] == ["Map"]
+
+
+class TestThingsFitInsideThings:
+    def test_the_attack_row_stays_inside_its_card(self, chrome):
+        assert chrome["attacks"]["widestChildRight"] <= chrome["attacks"]["cardRight"]
+
+    def test_the_number_fields_are_not_full_width(self, chrome):
+        """A flex item defaults to min-width:auto, which for a text input is its
+        twenty-character preferred size -- so flex-basis was being ignored and
+        every field came out the same 205px."""
+        name, bonus, damage, crit = chrome["attacks"]["fieldWidths"][:4]
+        assert bonus < 100 and damage < 120 and crit < 100
+        assert name > bonus
+
+    def test_nothing_raised(self, chrome):
+        assert chrome["errors"] == []
+
+
+# Every string of text the eye can land on, with the colour it is drawn in and
+# the colour actually behind it, as a contrast ratio. The desk went dark
+# partway through the design work and took several panels with it -- the
+# character sheet, the inventory, the lore pages and the player links were all
+# still ink on bare page, which by then meant ink on walnut.
+CONTRAST_JS = """(panelId) => {
+  const luminance = (rgb) => {
+    const [r, g, b] = rgb.map(v => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const parse = (s) => {
+    const m = s.match(/rgba?\\(([^)]+)\\)/);
+    if (!m) return null;
+    const parts = m[1].split(",").map(x => parseFloat(x));
+    return {rgb: parts.slice(0, 3), a: parts.length > 3 ? parts[3] : 1};
+  };
+  // What is actually behind an element: the first ancestor that paints.
+  const ground = (el) => {
+    let e = el;
+    while (e && e !== document.documentElement) {
+      const cs = getComputedStyle(e);
+      const bg = parse(cs.backgroundColor);
+      if (bg && bg.a > 0.5) return bg.rgb;
+      if (cs.backgroundImage !== "none") return null;  // artwork, not chrome
+      e = e.parentElement;
+    }
+    const body = parse(getComputedStyle(document.body).backgroundColor);
+    return body ? body.rgb : [255, 255, 255];
+  };
+  const panel = document.getElementById(panelId);
+  const bad = [];
+  const seen = new Set();
+  for (const el of panel.querySelectorAll("*")) {
+    if (el.offsetParent === null) continue;
+    const box = el.getBoundingClientRect();
+    if (box.width < 4 || box.height < 4) continue;
+    const own = Array.from(el.childNodes)
+        .filter(n => n.nodeType === 3).map(n => n.textContent.trim()).join("");
+    if (own.length < 2) continue;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === "hidden" || parseFloat(cs.opacity) < 0.3) continue;
+    const fg = parse(cs.color);
+    const bg = ground(el);
+    if (!fg || !bg) continue;
+    const a = luminance(fg.rgb), b = luminance(bg);
+    const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    const key = own.slice(0, 24);
+    if (ratio < 3 && !seen.has(key)) {
+      seen.add(key);
+      bad.push({text: key, ratio: Math.round(ratio * 100) / 100,
+                colour: cs.color, ground: "rgb(" + bg.join(",") + ")"});
+    }
+  }
+  return bad;
+}"""
+
+
+@pytest.fixture(scope="module")
+def legibility(browser, live_server):
+    """Walk every tab on both views and measure the text against its ground."""
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "legibility")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1) for pair in page.url.split("?", 1)[1].split("&"))["room"]
+
+        player = context.new_page()
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Aria")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        player.wait_for_timeout(700)
+
+        # Where each sheet sits, as well as what it says. An id beats a class,
+        # so a leftover height:100% on a panel overrode the sheet's own sizing
+        # and ran it past its holder, over the scrollbar.
+        FITS_JS = """(panelId) => {
+          const p = document.getElementById(panelId).getBoundingClientRect();
+          const h = document.getElementById("activeTabDiv").getBoundingClientRect();
+          return {panel: [Math.round(p.top), Math.round(p.bottom),
+                          Math.round(p.left), Math.round(p.right)],
+                  holder: [Math.round(h.top), Math.round(h.bottom),
+                           Math.round(h.left), Math.round(h.right)],
+                  viewport: window.innerHeight};
+        }"""
+
+        found = {}
+        fits = {}
+        for tab, panel in [("Encounter", "encounterContainer"), ("Save", "saveGame"),
+                           ("Players", "links"), ("Units", "units"),
+                           ("Lore", "lore"), ("Rules", "rules"),
+                           ("Options", "options")]:
+            page.click("div.tab:text-is('%s')" % tab)
+            page.wait_for_timeout(350)
+            found["gm " + tab] = page.evaluate(CONTRAST_JS, panel)
+            fits["gm " + tab] = page.evaluate(FITS_JS, panel)
+        page.click("div.tab:text-is('Map')")
+        page.wait_for_timeout(300)
+        found["gm palette"] = page.evaluate(CONTRAST_JS, "mapTools")
+
+        for tab, panel in [("Character", "charWrapper"), ("Inventory", "inventory"),
+                           ("Lore", "lore")]:
+            player.click("div.tab:text-is('%s')" % tab)
+            player.wait_for_timeout(400)
+            found["player " + tab] = player.evaluate(CONTRAST_JS, panel)
+            fits["player " + tab] = player.evaluate(FITS_JS, panel)
+
+        return {"found": found, "fits": fits, "errors": errors}
+    finally:
+        context.close()
+
+
+class TestEveryTabIsLegible:
+    def test_nothing_is_ink_on_walnut(self, legibility):
+        """A contrast ratio under 3 against whatever is actually behind it.
+
+        This is the check that would have caught the character sheet, the
+        inventory, the lore pages and the player links all at once -- every one
+        of them was in the document, laid out correctly, and unreadable.
+        """
+        offenders = {k: v for k, v in legibility["found"].items() if v}
+        assert offenders == {}
+
+    def test_no_panel_runs_past_its_holder(self, legibility):
+        """An id beats a class: a leftover height:100% on #lore overrode the
+        sheet's calc(100% - 16px) and drew the box over the scrollbar."""
+        over = {}
+        for name, box in legibility["fits"].items():
+            top, bottom, left, right = box["panel"]
+            htop, hbottom, hleft, hright = box["holder"]
+            if bottom > hbottom or top < htop or right > hright or left < hleft:
+                over[name] = box
+        assert over == {}
+
+    def test_no_panel_runs_off_the_window(self, legibility):
+        for name, box in legibility["fits"].items():
+            assert box["panel"][1] <= box["viewport"], (name, box)
+
+    def test_nothing_raised(self, legibility):
+        assert legibility["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def scrollbars(browser, live_server):
+    """Whether the page shell overflows, at several window sizes.
+
+    A single pixel of overflow puts a scrollbar down the right-hand edge, and
+    the tab panels run the full width of the window -- so the scrollbar lands
+    on top of one. Headless Chromium draws overlay scrollbars, which take no
+    width, so nothing measured as covered and the assertions all passed while
+    the panel sat under a real scrollbar in a real browser. Measuring the
+    overflow itself is the check that works either way.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "scrollbars")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1) for pair in page.url.split("?", 1)[1].split("&"))["room"]
+
+        player = context.new_page()
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        player.wait_for_timeout(600)
+
+        probe = """() => {
+            const sd = document.getElementById("screenDiv");
+            return {overflowDown: sd.scrollHeight - sd.clientHeight,
+                    overflowAcross: sd.scrollWidth - sd.clientWidth,
+                    overflowStyle: getComputedStyle(sd).overflow};
+        }"""
+        sizes = {}
+        for width, height in [(1500, 1000), (1366, 768), (1920, 1080), (1280, 720)]:
+            page.set_viewport_size({"width": width, "height": height})
+            player.set_viewport_size({"width": width, "height": height})
+            page.wait_for_timeout(250)
+            player.wait_for_timeout(250)
+            sizes["gm %dx%d" % (width, height)] = page.evaluate(probe)
+            sizes["player %dx%d" % (width, height)] = player.evaluate(probe)
+        return sizes
+    finally:
+        context.close()
+
+
+class TestThePageDoesNotOverflow:
+    def test_the_shell_never_scrolls(self, scrollbars):
+        """One pixel is all it takes to put a scrollbar over a tab panel."""
+        over = {k: v for k, v in scrollbars.items()
+                if v["overflowDown"] > 0 or v["overflowAcross"] > 0}
+        assert over == {}
+
+    def test_and_could_not_show_a_scrollbar_if_it_did(self, scrollbars):
+        """Belt and braces: the shell clips rather than scrolls, so no
+        scrollbar can appear on it whatever the content does."""
+        for name, box in scrollbars.items():
+            assert box["overflowStyle"] == "hidden", (name, box)
+
+
+class TestTheMapSitsInsideItsSheet:
+    def test_the_sheet_shows_before_the_grid(self, chrome):
+        assert chrome["insetStart"]["left"] > 0
+        assert chrome["insetStart"]["top"] > 0
+
+    def test_and_after_it_when_scrolled_to_the_far_corner(self, chrome):
+        """These two are the ones that need #mapGraphic to have a size of its
+        own: every tile in it is absolutely positioned, so without one the
+        scroll extent stops at the last tile."""
+        assert chrome["insetCorner"]["right"] > 0
+        assert chrome["insetCorner"]["bottom"] > 0
+
+    def test_the_inset_is_the_same_all_round(self, chrome):
+        assert chrome["insetStart"]["left"] == chrome["insetStart"]["top"]
+        assert chrome["insetCorner"]["right"] == chrome["insetCorner"]["bottom"]
+        assert chrome["insetStart"]["left"] == chrome["insetCorner"]["right"]

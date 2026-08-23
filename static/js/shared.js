@@ -113,6 +113,15 @@ function drawMap(mapData) {
         }
         document.getElementById("mapForm").style.display = "none";
         document.getElementById("mapGraphic").style.display = "block";
+        // Every tile is absolutely positioned, so without this the element has
+        // no height of its own. That matters because the scroll area of the
+        // container is then only as big as the tiles reach -- so the container's
+        // padding shows above and to the left of the grid and vanishes on the
+        // other two sides, where it is the scroll extent rather than a margin.
+        document.getElementById("mapGraphic").style.width =
+            mapArray[0].length * zoomSize + "px";
+        document.getElementById("mapGraphic").style.height =
+            mapArray.length * zoomSize + "px";
         backgroundDiv = document.createElement("div");
         backgroundDiv.id = "mapBackgroundDiv";
         backgroundDiv.style.height = mapArray.length * zoomSize +"px";
@@ -588,6 +597,14 @@ function enableTab(tabName) {
                 children[x].style.display = "none";
         }
         document.getElementById(tabName).style.display="block";
+        // Say which one is open. Nothing on screen did, so the only way to tell
+        // which tab you were on was to recognise what was in it.
+        var tabs = document.getElementsByClassName("tab");
+        for (var t = 0; t < tabs.length; t++) {
+            if (tabs[t].dataset.tab) {
+                tabs[t].classList.toggle("tabActive", tabs[t].dataset.tab === tabName);
+            }
+        }
         if (tabName == "inventory") {
         document.getElementById('register').scrollTop = document.getElementById('register').scrollHeight
         document.getElementById('items').scrollTop = document.getElementById('items').scrollHeight
@@ -998,12 +1015,20 @@ function updateLore(msg, num) {
         }
 
         if (isGM || typeof charName !== "undefined") {
-            document.getElementById("lorePage").innerHTML += `<div id="loreTab${i}" style="display:none;"><img id="loreFilePreview"></img><br>` +
-                `Image Link:<input type="text" id="loreURL" onchange="previewLoreURL(this.value)"><br>` +
-                `Or upload a file: <input type="file" id="loreFileUpload" onchange="previewLoreFile()"><br>` +
-                `<div style="background:blue; height: 40px; width:0px;" id="uploadProgress"></div>` +
-                `Name: <input type="text" id="loreName"><br>` +
-                `Text: <textarea id="loreText"></textarea><br>` +
+            // Rebuilt on every change, so this is the only copy of the Add
+            // form there is -- the one in the template never survives.
+            document.getElementById("lorePage").innerHTML += `<div id="loreTab${i}" style="display:none;">` +
+                `<div class="sectionHeading">Add Lore</div>` +
+                `<img id="loreFilePreview"></img><br>` +
+                `<label class="fieldLabelInline" for="loreURL">Image link</label>` +
+                `<input type="text" id="loreURL" onchange="previewLoreURL(this.value)"><br>` +
+                `<label class="fieldLabelInline" for="loreFileUpload">Or upload a file</label>` +
+                `<input type="file" id="loreFileUpload" onchange="previewLoreFile()"><br>` +
+                `<div class="uploadProgress" id="uploadProgress"></div>` +
+                `<label class="fieldLabelInline" for="loreName">Name</label>` +
+                `<input type="text" id="loreName"><br>` +
+                `<label class="fieldLabel" for="loreText">Text</label>` +
+                `<textarea id="loreText"></textarea><br>` +
                 `<button onclick="sendLoreURL()">Send</button></div>`;
                 document.getElementById("loreTabs").innerHTML += `<div class="tab" onClick="enableLoreTab('${i}')">Add</div>`;
         } else {

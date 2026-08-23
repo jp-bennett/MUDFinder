@@ -14,6 +14,7 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 
 import pytest
@@ -32,7 +33,13 @@ def _free_port():
         return sock.getsockname()[1]
 
 
-def _wait_until_serving(url, process, timeout=STARTUP_TIMEOUT):
+def _read_log(log):
+    log.flush()
+    with open(log.name, "rb") as handle:
+        return handle.read().decode("utf-8", "replace")
+
+
+def _wait_until_serving(url, process, log, timeout=STARTUP_TIMEOUT):
     from urllib.error import URLError
     from urllib.request import urlopen
 
@@ -41,7 +48,7 @@ def _wait_until_serving(url, process, timeout=STARTUP_TIMEOUT):
         if process.poll() is not None:
             raise RuntimeError(
                 "server exited during startup with code %s:\n%s"
-                % (process.returncode, process.stdout.read().decode("utf-8", "replace"))
+                % (process.returncode, _read_log(log))
             )
         try:
             with urlopen(url, timeout=1) as response:
@@ -58,8 +65,16 @@ def live_server():
 
     The port is chosen at run time rather than using the hardcoded 5000 from
     __main__, so the tests do not collide with a development server.
+
+    The server's output goes to a temporary file rather than a pipe. Nothing
+    here reads that output until the server is asked for it, and the server
+    logs a line per request; through a pipe, the suite eventually writes 64KB
+    into a buffer no one is draining, at which point the server blocks on the
+    write and stops answering. That looks like every test from that point on
+    timing out on page.goto, with no clue as to why.
     """
     port = _free_port()
+    log = tempfile.NamedTemporaryFile(prefix="mudfinder-server-", suffix=".log")
     process = subprocess.Popen(
         [
             sys.executable,
@@ -69,12 +84,12 @@ def live_server():
             "allow_unsafe_werkzeug=True)" % port,
         ],
         cwd=REPO_ROOT,
-        stdout=subprocess.PIPE,
+        stdout=log,
         stderr=subprocess.STDOUT,
     )
     url = "http://127.0.0.1:%d" % port
     try:
-        _wait_until_serving(url + "/", process)
+        _wait_until_serving(url + "/", process, log)
         yield url
     finally:
         process.terminate()
@@ -82,6 +97,7 @@ def live_server():
             process.wait(timeout=10)
         except subprocess.TimeoutExpired:
             process.kill()
+        log.close()
 
 
 @pytest.fixture(scope="session")

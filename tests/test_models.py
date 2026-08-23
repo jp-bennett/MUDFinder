@@ -4,7 +4,10 @@ These cover the save-file round trip, which is what protects existing games
 from a bad refactor, plus the initiative ordering rules.
 """
 
+import os
+import re
 import sqlite3
+import urllib.parse
 
 import pytest
 
@@ -1029,3 +1032,235 @@ class TestRememberingTheCreature:
 
     def test_it_survives_being_saved(self):
         assert Unit({"charName": "x", "creatureId": 412}).to_json()["creatureId"] == 412
+
+# The design language lives in docs/design.md. Its central claim is that every
+# colour in the app's chrome comes from the token block at the top of the
+# stylesheet, so these read the stylesheet rather than the browser.
+STYLESHEET = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "static", "css", "mudfinder.css")
+
+COLOUR_LITERAL = re.compile(
+    r"#[0-9a-fA-F]{3,8}\b"
+    r"|\brgba?\([^)]*\)"
+    r"|\b(?:white|black|lightgrey|lightgray|grey|gray|cornflowerblue|firebrick"
+    r"|red|blue|green|silver|gold|tan|beige|ivory|wheat)\b")
+
+# Chrome, as opposed to map artwork. A wall is drawn in ink the way the ink on a
+# printed map is: it is the subject, not the frame around it, and design.md says
+# so explicitly.
+CHROME_RULES = ["button", "input", ".panel", ".panelHeading", ".formCard",
+                ".tab", ".tabsDiv", ".chatText", ".fieldLabel", ".sectionHeading",
+                "#linkDiv", "#mapTools", "#creaturePicker"]
+
+
+def stylesheet():
+    """The stylesheet with its comments taken out.
+
+    Comments carry both braces and colour names -- the token block's own
+    commentary explains what black hairlines used to look like -- so leaving
+    them in makes every check below read the prose instead of the rules.
+    """
+    with open(STYLESHEET) as handle:
+        return re.sub(r"/\*.*?\*/", "", handle.read(), flags=re.S)
+
+
+def rule_body(css, selector):
+    """The declarations of the first rule whose selector list starts with this."""
+    for match in re.finditer(r"(^|\})\s*([^{}]+)\{([^{}]*)\}", css, re.M):
+        selectors = [s.strip() for s in match.group(2).split(",")]
+        if any(s == selector or s.startswith(selector + ":") for s in selectors):
+            return match.group(3)
+    raise AssertionError("no rule for %s" % selector)
+
+
+class TestTheDesignTokens:
+    def test_the_token_block_is_at_the_top(self):
+        css = stylesheet()
+        assert css.index(":root {") < css.index("html, body {")
+
+    def test_every_token_the_spec_names_exists(self):
+        css = stylesheet()
+        root = rule_body(css, ":root")
+        for token in ["--ink", "--ink-soft", "--ink-faint", "--paper",
+                      "--paper-warm", "--desk", "--rule", "--rule-faint",
+                      "--accent", "--accent-soft", "--danger", "--radius",
+                      "--radius-panel", "--heading-tracking", "--desk-grain",
+                      "--tab-wash", "--tab-wash-hover", "--shadow-lifted",
+                      "--shadow-resting", "--gilt", "--desk-light",
+                      "--cloth", "--cloth-weave"]:
+            assert token + ":" in root, token
+
+    def test_the_chrome_names_no_colour_of_its_own(self):
+        """The one rule the spec actually enforces: a component that wants a
+        shade adds a token rather than a hex code."""
+        css = stylesheet()
+        offenders = {}
+        for selector in CHROME_RULES:
+            found = COLOUR_LITERAL.findall(rule_body(css, selector))
+            if found:
+                offenders[selector] = found
+        assert offenders == {}
+
+    def test_the_statblock_draws_on_the_shared_tokens(self):
+        """It is where the palette came from, so it must not keep a private
+        copy that can drift from it."""
+        block = rule_body(stylesheet(), ".statblock")
+        assert "--sbInk: var(--ink)" in block
+        assert "--sbRule: var(--rule)" in block
+
+    def test_the_tab_bar_cannot_grow_past_forty_pixels(self):
+        """Everything below it is laid out against calc(100% - 40px). A 41px bar
+        pushed the map a pixel out of the window, which was enough to break the
+        battlemap alignment drag."""
+        bar = rule_body(stylesheet(), ".tabsDiv")
+        assert "height:40px" in bar.replace(" ", "")
+        assert "box-sizing: border-box" in bar
+
+    def test_the_grain_and_the_rings_run_along_the_board(self):
+        """Two of the four turbulences draw things that run *along* the timber
+        -- the figure of the board and the growth rings -- and their whole job
+        is being lopsided: frequent across it, barely varying down it. Even in
+        both axes they are blobs, not grain."""
+        freqs = grain_frequencies()
+        for index in (BOARD, RINGS):
+            across, down = freqs[index]
+            assert across / down >= 10, (index, across, down)
+
+    def test_the_wave_is_slow(self):
+        """The wave through the grain has to play out over hundreds of pixels.
+        In the tens it reads as fur, which is where two earlier attempts at
+        this landed."""
+        across, down = grain_frequencies()[WAVE]
+        assert across < 0.01 and down < 0.01, (across, down)
+
+    def test_the_light_is_not_painted_twice(self):
+        """The desk's light and shade belongs to --desk-light. An earlier
+        version modulated the timber for it as well, and the two together
+        flattened the colour instead of deepening it."""
+        root = rule_body(stylesheet(), ":root")
+        assert "--desk-light" in root
+        assert len(grain_frequencies()) == 3
+
+    def test_the_rings_are_one_octave(self):
+        """A growth ring is a single continuous line. Further octaves vary the
+        noise *along* the ring as well as across it, and the discrete transfer
+        that makes the line crisp turns that variation into a dashed one."""
+        grain = urllib.parse.unquote(desk_grain())
+        rings = grain[grain.index("<filter id='r'"):]
+        assert re.search(r"numOctaves='1'", rings), rings[:200]
+
+    def test_the_desk_is_planked(self):
+        """A desk is boards, not one sheet."""
+        assert len(seam_positions()) >= 5
+
+    def test_the_boards_are_not_evenly_spaced(self):
+        """Even spacing reads as tiling rather than as timber."""
+        edges = [0] + seam_positions()
+        widths = [b - a for a, b in zip(edges, edges[1:])]
+        assert len(set(widths)) == len(widths), widths
+
+    def test_each_board_carries_its_own_tone(self):
+        """The cue that actually reads. A seam line on its own is lost among
+        the growth rings, which are dark vertical lines too."""
+        grain = urllib.parse.unquote(desk_grain())
+        tinted = re.findall(r"<rect x='\d+' width='\d+' height='1000' "
+                            r"fill='(#[0-9a-f]{6})' opacity='([0-9.]+)'", grain)
+        assert len(tinted) == len(seam_positions()) + 1, tinted
+        assert len(set(tinted)) > 1, tinted
+
+    def test_the_desk_has_knots(self):
+        assert len(knot_positions()) >= 12
+
+    def test_no_knot_sits_across_a_seam(self):
+        """Knots are in boards, not in the join between two of them."""
+        seams = seam_positions()
+        for x, y in knot_positions():
+            assert all(abs(x - seam) > 30 for seam in seams), (x, y)
+
+    def test_the_knots_are_not_spread_evenly(self):
+        """Some boards are clear and some are full of them. Three per board is
+        a grid, which is what the first placement looked like."""
+        seams = seam_positions()
+        counts = []
+        edges = [0] + seams + [1400]
+        for a, b in zip(edges, edges[1:]):
+            counts.append(sum(1 for x, _ in knot_positions() if a <= x < b))
+        assert max(counts) - min(counts) >= 2, counts
+
+    def test_the_rings_are_cut_rather_than_shaded(self):
+        """discrete, not table. A linear table can only give a soft gradient;
+        an incised line needs a hard edge."""
+        grain = urllib.parse.unquote(desk_grain())
+        rings = grain[grain.index("<filter id='r'"):]
+        assert "type='discrete'" in rings
+        assert "type='table'" not in rings
+
+    def test_the_desk_fetches_nothing(self):
+        """It is drawn, not downloaded."""
+        grain = urllib.parse.unquote(desk_grain())
+        assert "data:image/svg+xml" in grain
+        # The SVG namespace is a name, not somewhere the browser goes.
+        assert re.sub(r"http://www\.w3\.org\S*", "", grain).count("http") == 0
+
+
+# Which turbulence is which, in the order the filter declares them.
+BOARD, WAVE, RINGS = 0, 1, 2
+
+
+def grain_frequencies():
+    """Every turbulence in the desk, as (across, down) pairs, in filter order."""
+    grain = urllib.parse.unquote(desk_grain())
+    found = re.findall(r"baseFrequency='([0-9.]+)\s+([0-9.]+)'", grain)
+    assert len(found) == 3, found
+    return [(float(a), float(b)) for a, b in found]
+
+
+def seam_positions():
+    """The dark centre of each board join."""
+    grain = urllib.parse.unquote(desk_grain())
+    found = re.findall(r"<rect x='([0-9.]+)' width='3.0' height='1000' "
+                       r"fill='#0d0602'", grain)
+    return [float(x) for x in found]
+
+
+def knot_positions():
+    grain = urllib.parse.unquote(desk_grain())
+    found = re.findall(r"<g transform='translate\((\d+),(\d+)\)", grain)
+    return [(int(x), int(y)) for x, y in found]
+
+
+def desk_grain():
+    root = rule_body(stylesheet(), ":root")
+    start = root.index("--desk-grain")
+    return root[start:root.index(";", start)]
+
+
+class TestNothingIsFetchedFromAnywhere:
+    """The player page used to pull a font from fontlibrary.org on every load,
+    which made the page depend on a third party and fail when offline. Nothing
+    the browser loads may name an external host."""
+
+    def files(self):
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        found = []
+        for folder in [os.path.join(here, "templates"),
+                       os.path.join(here, "static", "css"),
+                       os.path.join(here, "static", "js")]:
+            for name in sorted(os.listdir(folder)):
+                if name.endswith((".html", ".css", ".js")):
+                    found.append(os.path.join(folder, name))
+        return found
+
+    def test_no_stylesheet_or_page_names_an_external_host(self):
+        offenders = {}
+        for path in self.files():
+            with open(path, encoding="utf-8", errors="replace") as handle:
+                body = handle.read()
+            # Bare "http" inside a comment or an XML namespace is not a fetch;
+            # a URL the browser would go and get is.
+            hits = re.findall(r"""(?:src|href|url)\s*[=(]\s*["']?(https?://[^"')\s]+)""",
+                              body, re.I)
+            hits = [h for h in hits if "www.w3.org" not in h]
+            if hits:
+                offenders[os.path.basename(path)] = hits
+        assert offenders == {}

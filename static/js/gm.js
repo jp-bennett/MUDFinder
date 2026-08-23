@@ -270,16 +270,43 @@ window.onload = function() {
                 gmData.savedEncounters[i] + `<button onclick="removeEncounter('${gmData.savedEncounters[i]}')">X</button></div>`;
             }
             // populate player list
-            document.getElementById("links").innerHTML = "Links<br>";
+            // This replaces the whole panel, so the heading is built here --
+            // anything put in the template is wiped on the first update.
+            // Built as elements rather than as markup: a player names
+            // themselves, so their name reaches here as untrusted text, and
+            // through innerHTML a name with a quote in it becomes script.
+            linksDiv = document.getElementById("links");
+            linksDiv.innerHTML = "";
+            linksHeading = document.createElement("div");
+            linksHeading.classList.add("sectionHeading");
+            linksHeading.innerText = "Player Links";
+            linksDiv.appendChild(linksHeading);
             document.getElementById("connectedPlayers").innerHTML = "";
             document.getElementById("unitControlledBy").innerHTML =  '<option value="gm" selected="selected">gm</option>';
             for (var i = 0; i < Object.keys(gmData.playerList).length; i++) {
                 tmpPlayerName = Object.keys(gmData.playerList)[i];
-                document.getElementById("links").innerHTML += `<a href="player.html?room=${room}&charName=${tmpPlayerName}">${tmpPlayerName}</a>` +
-                    `<button onclick="deleteUser('${tmpPlayerName}')">Delete</button><br>`;
-                document.getElementById("unitControlledBy").innerHTML += `<option value="${tmpPlayerName}">${tmpPlayerName}</option>`;
+
+                tmpLinkRow = document.createElement("div");
+                tmpLinkRow.classList.add("linkRow");
+                tmpPlayerLink = document.createElement("a");
+                tmpPlayerLink.href = "player.html?room=" + encodeURIComponent(room) +
+                    "&charName=" + encodeURIComponent(tmpPlayerName);
+                tmpPlayerLink.innerText = tmpPlayerName;
+                tmpLinkRow.appendChild(tmpPlayerLink);
+                tmpDeleteButton = document.createElement("button");
+                tmpDeleteButton.innerText = "Delete";
+                tmpDeleteButton.addEventListener("click", deleteUser.bind(null, tmpPlayerName));
+                tmpLinkRow.appendChild(tmpDeleteButton);
+                linksDiv.appendChild(tmpLinkRow);
+
+                tmpControlOption = document.createElement("option");
+                tmpControlOption.value = tmpPlayerName;
+                tmpControlOption.innerText = tmpPlayerName;
+                document.getElementById("unitControlledBy").appendChild(tmpControlOption);
                 if (gmData.playerList[tmpPlayerName].connected) {
-                    document.getElementById("connectedPlayers").innerHTML += tmpPlayerName + "<br >";
+                    tmpConnected = document.getElementById("connectedPlayers");
+                    tmpConnected.appendChild(document.createTextNode(tmpPlayerName));
+                    tmpConnected.appendChild(document.createElement("br"));
                 }
             }
         } catch (e) {
@@ -667,6 +694,10 @@ function alignmentDragStart(e) {
     e.preventDefault();
 }
 
+function alignmentRound(value) {
+    return Math.round(value * 1000) / 1000;
+}
+
 function alignmentDragMove(e) {
     if (!aligningBackground || !alignmentDragFrom) { return; }
     // The map is scaled by a CSS transform, so a screen pixel is not a map
@@ -674,6 +705,9 @@ function alignmentDragMove(e) {
     // land in the grid squares alignment is measured in.
     scale = (typeof zoom === "number" && zoom > 0) ? zoom : 1;
     alignment = currentAlignment();
+    // Accumulated raw, and settled once the drag ends. Rounding every step
+    // instead makes it worse -- eight small roundings drift further than the
+    // float error they were meant to remove.
     alignment.backgroundOffsetX += (e.clientX - alignmentDragFrom.x) / (scale * zoomSize);
     alignment.backgroundOffsetY += (e.clientY - alignmentDragFrom.y) / (scale * zoomSize);
     alignmentDragFrom = {x: e.clientX, y: e.clientY};
@@ -684,6 +718,15 @@ function alignmentDragMove(e) {
 function alignmentDragEnd() {
     if (!aligningBackground || !alignmentDragFrom) { return; }
     alignmentDragFrom = null;
+    // A drag arrives as a run of small moves, and summing the divisions leaves
+    // values like 0.9999999999999999 -- which is what the GM then reads in the
+    // offset field, and what gets stored and added to again on the next drag.
+    // A thousandth of a square is well under a pixel, so nothing is lost.
+    alignment = currentAlignment();
+    alignment.backgroundOffsetX = alignmentRound(alignment.backgroundOffsetX);
+    alignment.backgroundOffsetY = alignmentRound(alignment.backgroundOffsetY);
+    alignment.backgroundTilesWide = alignmentRound(alignment.backgroundTilesWide);
+    applyAlignmentLocally(alignment);
     sendAlignment();
 }
 
@@ -833,7 +876,7 @@ function refreshInitiativeLabel() {
     // because that is what its statblock gives.
     var rolled = unitCount() > 1 || Boolean(chosenCreature);
     document.getElementById("unitInitLabel").innerText =
-        rolled ? "Initiative Bonus (d20 rolled for each):" : "Initiative Count:";
+        rolled ? "Initiative Bonus (d20 rolled for each)" : "Initiative Count";
 }
 
 function previewUnitToken() {
@@ -1324,7 +1367,7 @@ function hideBottomDiv() {/*
     document.getElementById("mapContainer").style.height = "";
     document.getElementById("bottomPopupButton").style.top = "";
     document.getElementById("bottomPopupButton").onclick = function() {showBottomDiv();};
-    document.getElementById("bottomPopupButton").children[0].src = "http://jp-bennett.com:17634/static/images/up.svg";
+    document.getElementById("bottomPopupButton").children[0].src = "static/images/up.svg";
     document.getElementById("bottomDiv").style.display="none";*/
 }
 
@@ -1332,6 +1375,6 @@ function showBottomDiv() {
 /*    document.getElementById("mapContainer").style.height = "80%";
     document.getElementById("bottomPopupButton").style.top = "calc(80% - 40px)";
     document.getElementById("bottomPopupButton").onclick = function() {hideBottomDiv();};
-    document.getElementById("bottomPopupButton").children[0].src = "http://jp-bennett.com:17634/static/images/down.svg";
+    document.getElementById("bottomPopupButton").children[0].src = "static/images/down.svg";
     document.getElementById("bottomDiv").style.display="block";*/
 }

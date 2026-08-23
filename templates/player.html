@@ -42,45 +42,48 @@
 
   <div id="screenDiv" class="screenDiv" style="display:none;">
     <div id="tabsDiv" class="tabsDiv">
-      <div class="tab" onClick="enableTab('mapWrapper')">Map</div>
-      <div class="tab" onClick="enableTab('charWrapper'); hackSizes();">Character</div>
+      <div class="tab tabActive" data-tab="mapWrapper" onClick="enableTab('mapWrapper')">Map</div>
+      <div class="tab" data-tab="charWrapper" onClick="enableTab('charWrapper'); hackSizes();">Character</div>
 
-      <div class="tab" onClick="enableTab('inventory')">Inventory</div>
-      <div class="tab" onClick="enableTab('lore')">Lore</div>
+      <div class="tab" data-tab="inventory" onClick="enableTab('inventory')">Inventory</div>
+      <div class="tab" data-tab="lore" onClick="enableTab('lore')">Lore</div>
     </div>
     <div id="centerDiv" class="centerDiv">
       <div class="leftDivContainer" id="leftDivContainer">
         <div id="initiativeDivContainer">
-          <div style="text-align:center;">Initiative<br></div>
-          <div class="leftDiv" id="initiativeDiv"></div>
+          <div class="panel">
+            <div class="panelHeading">Initiative</div>
+            <div class="leftDiv" id="initiativeDiv"></div>
+          </div>
           <button class="centeredButton" id="advanceInit" onclick="advanceInit()">Advance Inititiative</button>
         </div>
         <div id="unitDivContainer" style="display:none;">
-          <div style="text-align:center;">Units<br></div>
-          <div class="leftDiv" id="unitsDiv"></div>
+          <div class="panel">
+            <div class="panelHeading">Units</div>
+            <div class="leftDiv" id="unitsDiv"></div>
+          </div>
         </div>
           <div class="chatContainerDiv">
-            Chat:
-          <div id="chatText" class="chatText"></div>
+          <div class="panel">
+            <div class="panelHeading">Chat</div>
+            <div id="chatText" class="chatText"></div>
           <div id="chatInput" class="chatInput">
             <form action="javascript:sendChat()">
             <input id="newChat" style="width:100%;height:50%;text-align:left;">
             </form>
           </div>
+          </div>
         </div>
       </div>
       <div id="activeTabDiv">
-        <div id="leftPopButton">
-            <img src="static/images/up.svg" style="max-height: 100%;">
-          </div>
-        <div id="mapWrapper">
+        <div id="leftPopButton" title="Show or hide the side panel">
+          <img src="static/images/up.svg">
+        </div>
+        <div id="mapWrapper" class="tabSheet mapSheet">
           <div id="mapContainer" class="noScrollBar dragscroll">
             <div id="mapForm">
             </div>
             <div style="display:none;" id='mapGraphic'></div>
-          </div>
-          <div id="bottomPopupButton">
-            <img src="static/images/up.svg">
           </div>
           <!-- The player's own view switch. The light levels are already on
                their client; this only decides whether they are painted, so it
@@ -88,7 +91,7 @@
           <div id="playerMapTools">Show light: <input type="checkbox" id="showLight" value="showLight" onchange="lightToggle(this)" checked></div>
 
         </div><!--mapWrapper-->
-        <div id="charWrapper" style="line-height: 1.7; overflow:auto;">
+        <div id="charWrapper" class="tabSheet" style="line-height: 1.7;">
           <div style="width:100%; overflow:auto" id="sheetHeader">
             <img style="float:left;max-width:200px;max-height:200px;" id="charImageView" src="static/images/profile.svg" onclick="imageUpload(this, 'charImage', charName)">
 
@@ -1100,7 +1103,7 @@
             <button onclick="addUnit()">Add Unit</button>
           </div>
         </div><!-- CharWrapper -->
-        <div id="inventory" style="display:none; height:100%;">
+        <div id="inventory" class="tabSheet" style="display:none;">
 
           <div id="register">
             <div id="inventoryTitle">Player Inventory:</div>
@@ -1178,12 +1181,19 @@
           <div id="inventoryTabs"></div>
 
         </div> <!-- Inventory -->
-        <div id="lore" style="display:none;">
+        <div id="lore" class="tabSheet" style="display:none;">
           <div id="lorePage" class="lorePage"></div>
           <div id="loreTabs"></div>
         </div><!--lore-->
       </div>
+    <!-- The handle sits with the panel it opens, not inside the map sheet:
+         that sheet clips its contents, and the tab has to overlap the join. -->
+    <div id="bottomPopupButton" title="Show or hide the action bar">
+      <img src="static/images/up.svg">
+    </div>
     <div id="bottomDiv" class="bottomDiv">
+      <div class="panelHeading">Actions</div>
+      <div class="bottomDivBody">
       <div id="movementDiv">
         <button id="movementButton" style="float:left;" onclick="resetMovement()">Reset Movement</button>
         <div style="float:left;" id="movement"></div>
@@ -1209,6 +1219,7 @@
       <div id="bottomEffectDiv" style="display:none;float:left;"></div>
       <div id="promptDiv" class="promptDiv" style="dispay:none; float:left;"></div>
       <div id="bottomInfoDiv" style="float:right;"></div>
+      </div>
     </div>
   </div>
   <script type="text/javascript" src="static/js/socket.io.js"></script>
