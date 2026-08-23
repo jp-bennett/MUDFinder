@@ -1522,7 +1522,7 @@ function hideBottomDiv() {
     // takes the 40 off; this one never did, and since it runs on load the
     // player's tabs have always been a tab bar too tall.
     document.getElementById("activeTabDiv").style.height = "calc(100% - 40px)";
-    document.getElementById("bottomPopupButton").style.top = "calc(100% - 80px)";
+    document.getElementById("bottomPopupButton").classList.remove("panelOpen");
     document.getElementById("bottomPopupButton").onclick = function() {showBottomDiv();};
     document.getElementById("bottomPopupButton").children[0].src = "static/images/up.svg";
     document.getElementById("bottomDiv").style.display="none";
@@ -1530,8 +1530,9 @@ function hideBottomDiv() {
 
 function showBottomDiv() {
     document.getElementById("mapContainer").style.height = "100%";
-    document.getElementById("activeTabDiv").style.height = "calc(80% - 40px)";
-    document.getElementById("bottomPopupButton").style.top = "calc(100% - 40px)";
+    // Matches .bottomDiv's top in the stylesheet.
+    document.getElementById("activeTabDiv").style.height = "calc(76% - 40px)";
+    document.getElementById("bottomPopupButton").classList.add("panelOpen");
     document.getElementById("bottomPopupButton").onclick = function() {hideBottomDiv();};
     document.getElementById("bottomPopupButton").children[0].src = "static/images/down.svg";
     document.getElementById("bottomDiv").style.display="block";

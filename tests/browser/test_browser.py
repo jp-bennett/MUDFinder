@@ -3090,6 +3090,38 @@ def chrome(browser, live_server):
         page.wait_for_selector("#mapForm", state="attached")
 
         stages = {}
+        GAPS_JS = """() => {
+            const c = document.getElementById("mapContainer");
+            const box = c.getBoundingClientRect();
+            const tiles = document.querySelectorAll("#mapGraphic .mapTile");
+            let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+            for (const t of tiles) {
+                const r = t.getBoundingClientRect();
+                left = Math.min(left, r.left); top = Math.min(top, r.top);
+                right = Math.max(right, r.right); bottom = Math.max(bottom, r.bottom);
+            }
+            return {left: Math.round(left - box.left), top: Math.round(top - box.top),
+                    right: Math.round(box.right - right),
+                    bottom: Math.round(box.bottom - bottom)};
+        }"""
+
+        # A map bigger than the box it sits in, so it genuinely scrolls, and
+        # the sheet has to show on the far side of the grid as well as before
+        # it.
+        page.fill("#mapWidth", "22")
+        page.fill("#mapHeight", "18")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 396",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(400)
+        stages["insetStart"] = page.evaluate(GAPS_JS)
+        page.evaluate("""() => { const c = document.getElementById("mapContainer");
+            c.scrollLeft = c.scrollWidth; c.scrollTop = c.scrollHeight; }""")
+        page.wait_for_timeout(350)
+        stages["insetCorner"] = page.evaluate(GAPS_JS)
+
         measure = """() => {
             const bar = document.querySelector(".tabsDiv").getBoundingClientRect();
             const centre = document.querySelector(".centerDiv").getBoundingClientRect();
@@ -3482,3 +3514,21 @@ class TestThePageDoesNotOverflow:
         scrollbar can appear on it whatever the content does."""
         for name, box in scrollbars.items():
             assert box["overflowStyle"] == "hidden", (name, box)
+
+
+class TestTheMapSitsInsideItsSheet:
+    def test_the_sheet_shows_before_the_grid(self, chrome):
+        assert chrome["insetStart"]["left"] > 0
+        assert chrome["insetStart"]["top"] > 0
+
+    def test_and_after_it_when_scrolled_to_the_far_corner(self, chrome):
+        """These two are the ones that need #mapGraphic to have a size of its
+        own: every tile in it is absolutely positioned, so without one the
+        scroll extent stops at the last tile."""
+        assert chrome["insetCorner"]["right"] > 0
+        assert chrome["insetCorner"]["bottom"] > 0
+
+    def test_the_inset_is_the_same_all_round(self, chrome):
+        assert chrome["insetStart"]["left"] == chrome["insetStart"]["top"]
+        assert chrome["insetCorner"]["right"] == chrome["insetCorner"]["bottom"]
+        assert chrome["insetStart"]["left"] == chrome["insetCorner"]["right"]

@@ -113,6 +113,15 @@ function drawMap(mapData) {
         }
         document.getElementById("mapForm").style.display = "none";
         document.getElementById("mapGraphic").style.display = "block";
+        // Every tile is absolutely positioned, so without this the element has
+        // no height of its own. That matters because the scroll area of the
+        // container is then only as big as the tiles reach -- so the container's
+        // padding shows above and to the left of the grid and vanishes on the
+        // other two sides, where it is the scroll extent rather than a margin.
+        document.getElementById("mapGraphic").style.width =
+            mapArray[0].length * zoomSize + "px";
+        document.getElementById("mapGraphic").style.height =
+            mapArray.length * zoomSize + "px";
         backgroundDiv = document.createElement("div");
         backgroundDiv.id = "mapBackgroundDiv";
         backgroundDiv.style.height = mapArray.length * zoomSize +"px";

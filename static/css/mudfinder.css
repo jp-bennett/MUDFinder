@@ -68,6 +68,10 @@
        turn it is. Used sparingly enough to keep its meaning. */
     --danger: #8f2f22;
 
+    /* How much desk shows around a sheet. One number, so the gap round the
+       tab panels and the gap down the left-hand column stay in step. */
+    --sheet-gap: 16px;
+
     /* Two radii: one for controls, a slightly larger one for the sheets they
        sit on. */
     --radius: 3px;
@@ -225,9 +229,10 @@ input:focus, select:focus, textarea:focus {
 }
 .leftDivContainer {
    float:left;
-   width: calc(20% - 10px);
+   box-sizing: border-box;
+   width: 20%;
    overflow:auto;
-   padding:5px;
+   padding: var(--sheet-gap);
    height:calc(96% - 40px);
    position:absolute;
 }
@@ -409,16 +414,30 @@ div.selected {
 }
 /* The player's action bar. Paper with a ruled top edge, like the GM's
    toolbar in the same place. */
+/* The player's action bar: the same sheet as every other panel, with its name
+   ruled across the top, rather than a slab flush to three edges of the window. */
 .bottomDiv {
+    box-sizing: border-box;
     background: var(--paper);
-    border-top: 1px solid var(--rule);
-    height:20%;
-    top:80%;
-    position:absolute;
-    width:80%;
-    left:20%;
-    overflow:auto;
-    display:none;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-resting);
+    /* A quarter rather than a fifth: the heading takes a line off the top, and
+       the five action buttons are stacked, so at 20% the last one was cut in
+       half. */
+    top: 76%;
+    height: calc(24% - var(--sheet-gap));
+    position: absolute;
+    left: calc(20% + var(--sheet-gap));
+    width: calc(80% - var(--sheet-gap) * 2);
+    overflow: hidden;
+    display: none;
+}
+/* The heading is fixed and the contents scroll under it. */
+.bottomDivBody {
+    height: calc(100% - 26px);
+    overflow: auto;
+    padding: 4px 8px;
 }
 tr:nth-child(even) {background-color: var(--paper-warm);}
 
@@ -536,15 +555,15 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
     border: 1px solid var(--rule);
     border-radius: var(--radius-panel);
     box-shadow: var(--shadow-resting);
-    margin: 8px;
+    margin: var(--sheet-gap);
     padding: 10px 14px;
     overflow: auto;
-    height: calc(100% - 16px);
+    height: calc(100% - var(--sheet-gap) * 2);
     /* And never past the bottom of the window. The player view's holder is
        forty pixels taller than the window it sits in -- it is on master too --
        so sizing to the holder alone puts the foot of a full-height sheet below
        the fold. 40px of tab bar, 8px of margin at each end. */
-    max-height: calc(100vh - 56px);
+    max-height: calc(100vh - 40px - var(--sheet-gap) * 2);
 }
 
 /* Tab strips inside a sheet -- the lore pages, the inventory list -- are tabs
@@ -733,6 +752,12 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
     overflow: hidden;
 }
 #mapContainer {
+    /* Inset, so the sheet shows on all four sides of the grid rather than the
+       map running into its own frame. The tiles are laid out from
+       #mapGraphic's corner, and #mapGraphic is in normal flow here, so padding
+       moves the whole grid rather than just the first row. */
+    box-sizing: border-box;
+    padding: var(--sheet-gap);
     font-family: FreeMono, monospace;
     width:100%;
     height:90%;
@@ -750,30 +775,60 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
 .noScrollBar::-webkit-scrollbar {
     display:none;
 }
+/* The two handles that pull the side panel and the action bar back out.
+   Each is a tab joined to the thing it opens: tinted like a panel heading,
+   ruled on three sides, rounded only on the outer corners, and with no border
+   at all on the side it meets -- which is what makes it read as attached
+   rather than as a button that happens to be nearby. */
+#leftPopButton,
 #bottomPopupButton {
-    background: var(--paper);
-    border: 1px solid var(--rule);
-    border-bottom: none;
     position: absolute;
-    width: 40px;
-    height: 40px;
-    top: calc(100% - 40px);
-    border-radius: 4px 4px 0px 0px;
-    left: 10px;
-    z-index:5;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--paper-warm);
+    border: 1px solid var(--rule);
+    cursor: pointer;
 }
+#leftPopButton img,
+#bottomPopupButton img {
+    max-height: 62%;
+    max-width: 62%;
+    opacity: 0.75;
+}
+#leftPopButton:hover,
+#bottomPopupButton:hover {
+    background: var(--accent-soft);
+}
+/* On the left edge of the map sheet, opening out of it. */
 #leftPopButton {
-    z-index:5;
-    background: var(--paper);
-    border: 1px solid var(--rule);
+    width: 20px;
+    height: 58px;
+    top: calc(var(--sheet-gap) + 22px);
+    left: var(--sheet-gap);
     border-left: none;
-    position: absolute;
-    width: 40px;
-    height: 40px;
-    top: 10px;
-        border-radius: 0px 4px 4px 0px;
-    left: 0px;
+    border-radius: 0 var(--radius-panel) var(--radius-panel) 0;
 }
+/* Sitting on the top edge of the action bar, or on the foot of the window when
+   the bar is shut. */
+#bottomPopupButton {
+    width: 58px;
+    /* Exactly the gap between the map sheet and the bar, so the tab fills the
+       join rather than climbing over the sheet's bottom edge. */
+    height: var(--sheet-gap);
+    left: calc(20% + var(--sheet-gap) + 26px);
+    border-bottom: none;
+    border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+    /* Shut, the bar is off the bottom of the window and its tab is the only
+       part still showing -- so it sits flush with the foot of the window,
+       under the map sheet, rather than climbing on top of it. */
+    bottom: 0;
+}
+#bottomPopupButton.panelOpen {
+    bottom: 24%;
+}
+
 #mapText {
     display: inline-block;
     font-family: FreeMono, monospace;

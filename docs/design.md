@@ -193,6 +193,11 @@ say it is a label.
 
 ## Components
 
+`.bottomDiv` — the player's action bar — is a panel too: same sheet, same ruled
+heading, with a `.bottomDivBody` under it that scrolls while the heading stays.
+It takes a quarter of the height rather than a fifth, because the heading costs
+a line and its five action buttons are stacked.
+
 ### Panel — `.panel` + `.panelHeading`
 
 A sheet on the desk with its name ruled across the top. The initiative order,
@@ -270,6 +275,23 @@ a window too narrow to hold it.
 The swatches sit inside `.nonSelected` wrappers, and `mapTool` marks a
 selection by reaching for the swatch's `parentElement`, so **those wrappers must
 stay the direct parent** of each swatch.
+
+### Pull tab — `#leftPopButton`, `#bottomPopupButton`
+
+The two handles that open and shut the player's side panel and action bar. Each
+is a **tab joined to the thing it opens**: tinted like a panel heading, ruled on
+three sides, rounded only on the outer corners, and with **no border at all on
+the side it meets**. That last part is what makes it read as attached rather
+than as a button that happens to be nearby.
+
+Shut, the action bar's tab sits flush with the foot of the window, under the map
+sheet — the bar is off-screen and its tab is the only part still showing. Open,
+it fills the gap between the sheet and the bar exactly, so it never climbs over
+the sheet's bottom edge.
+
+The tab has to live **with the panel, not inside the map sheet**: `.mapSheet` is
+`overflow: hidden`, so a handle placed in it is clipped at the join it is meant
+to straddle.
 
 ### Tab bar
 
