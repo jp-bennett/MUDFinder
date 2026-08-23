@@ -119,6 +119,55 @@ ABILITY_SCORE = re.compile(r"\b(Str|Dex|Con|Int|Wis|Cha)\s+(-|\d+)", re.I)
 PERCEPTION_BONUS = re.compile(r"Perception\s*([+-]\s*\d+)", re.I)
 LEADING_NUMBER = re.compile(r"-?\d+")
 
+# A creature's attacks, as the bestiary writes them:
+#
+#     bite +6 (1d6+4), 2 claws +6 (1d4+4)
+#     mwk longsword +4/-1 (1d8/19-20)
+#     +2 naginata** +22/+17/+12 (2d6+15/x4)
+#
+# How many, what it is called, what it hits at, and what it does. The word
+# melee/ranged/touch turns up between the bonus and the damage in the older
+# rows; it is a qualifier there, but see ATTACK_UNNAMED below for where it is
+# also the only name an attack has.
+ATTACK_KEYWORD = r"(?:melee|ranged|incorporeal touch|touch)"
+ATTACK = re.compile(
+    r"(?:(\d+)\s+)?"                                    # how many
+    r"((?:[A-Za-z+][A-Za-z0-9'’\-+* ]*?)?)\s*"     # what it is called
+    r"((?:[+-]\s?\d+)(?:\s?/\s?[+-]?\d+)*)?\s*"         # to hit, maybe iterative
+    r"(%s)?\s*" % ATTACK_KEYWORD +                      # qualifier, or the name
+    r"\(([^)]*)\)")                                     # damage and crit
+
+# A whole entry that is nothing but a name and a bracket: "telekinesis (see
+# below)". Only tried when the pattern above finds nothing at all.
+ATTACK_SIMPLE = re.compile(r"^\s*(?:(\d+)\s+)?([A-Za-z][A-Za-z'’\- ]*?)\s*\(([^)]*)\)\s*$")
+
+# An aside inside a weapon's name, right before its to-hit: "binding contract
+# (whip) +20/+15/+10 (1d4+7)". Unwrapped before parsing, or the brackets are
+# read as the damage and the name is lost. Twenty rows do this.
+ATTACK_NAME_ASIDE = re.compile(r"\(([^)]*)\)(\s*[+-]\d)")
+
+# A swarm deals its damage without an attack roll at all. Giving it the +0 that
+# a missing bonus otherwise means would be inventing a number.
+ATTACK_NO_ROLL = re.compile(r"^(?:swarm|troop|horde attack)$", re.I)
+
+ATTACK_DAMAGE = re.compile(r"^\s*(\d+d\d+(?:[+-]\d+)?|\d+)")
+ATTACK_ONLY_BONUS = re.compile(r"^[+-]\d+$")
+ATTACK_LEADING_BONUS = re.compile(r"^\s*([+-]\d+)\s+(.+)$")
+ATTACK_CRIT_RANGE = re.compile(r"/(\d+)\s*-\s*20")
+ATTACK_CRIT_MULTIPLIER = re.compile(r"/x(\d+)", re.I)
+ATTACK_ROUTINE_JOIN = re.compile(r"^(?:or|and)\s+", re.I)
+
+# How many swings one row is worth, read back off the stored weapon: the count
+# in front of its name times the bonuses in its to-hit. "2 claws" at "+6" is
+# two; one weapon at "+18/+13/+8" is three.
+ATTACK_COUNT_PREFIX = re.compile(r"^\s*(\d+)\s+")
+
+
+def attack_swings(name, to_hit):
+    count = ATTACK_COUNT_PREFIX.match(str(name or ""))
+    bonuses = [b for b in str(to_hit or "").split("/") if b.strip()]
+    return max(1, int(count.group(1)) if count else 1) * max(1, len(bonuses))
+
 # The nine alignments. A handful of rows carry prose here instead, and a unit
 # is better off with the default than with a sentence in its alignment.
 ALIGNMENTS = ("LG", "NG", "CG", "LN", "N", "CN", "LE", "NE", "CE")
@@ -214,6 +263,103 @@ def creature_initiative_bonus(creature):
     return creature_int(creature.get("Init"), 0)
 
 
+def attack_entry(count, name, to_hit, keyword, damage):
+    """One parsed attack, as the seven-item list Unit.weapons holds.
+
+    The rules here are all things the bestiary does that the obvious reading
+    gets wrong:
+
+    A leading "+N" is an enhancement bonus only when a separate to-hit group
+    also exists. "+2 naginata** +22/+17/+12" is a +2 weapon swung at +22; "+3
+    mithral short sword (1d4+2)" is an ordinary sword swung at +3, whatever the
+    statblock's own punctuation suggests.
+
+    A missing bonus means +0 rather than a dropped attack -- "club (1d6-1)" is
+    a real attack that simply never had its bonus written down.
+
+    And in "+5 touch (6d6 negative energy)" the word touch is doing double
+    duty: it says the attack resolves against touch AC, and it is also the only
+    name the attack has.
+    """
+    name = name.strip()
+    if not to_hit:
+        leading = ATTACK_LEADING_BONUS.match(name)
+        if leading:
+            to_hit, name = leading.group(1), leading.group(2).strip()
+    if ATTACK_ONLY_BONUS.match(name):
+        to_hit, name = name, (keyword or "")
+    if not name and keyword:
+        name = keyword
+    name = ATTACK_ROUTINE_JOIN.sub("", name).strip()
+    if not name:
+        # Nothing named it, so label the row with whatever was in the brackets.
+        name = damage.strip() or "attack"
+
+    crit = ""
+    crit_range = ATTACK_CRIT_RANGE.search(damage)
+    crit_multiplier = ATTACK_CRIT_MULTIPLIER.search(damage)
+    if crit_range:
+        crit = "%s-20" % crit_range.group(1)
+    if crit_multiplier:
+        crit = (crit + "/" if crit else "") + "x" + crit_multiplier.group(1)
+
+    # "2 claws" is the count; "+18/+13/+8" is one attack made three times. Both
+    # multiply how many dice a single click rolls.
+    to_hit = (to_hit or "+0").replace(" ", "")
+    swings = max(1, int(count or 1)) * len(to_hit.split("/"))
+    if int(count or 1) > 1:
+        # Kept in the name, where it reads the way the statblock does and
+        # survives the seven-item list Unit.weapons has no room to extend.
+        name = "%s %s" % (count, name)
+    return {
+        "name": name,
+        "attack": to_hit,
+        "damage": damage.strip(),
+        "crit": crit,
+        "swings": swings,
+        # Whether there is a die to roll at all, and whether it is preceded by
+        # an attack roll. A swarm has damage and no attack; "telekinesis (see
+        # below)" has neither and is listed so the GM can see it is there.
+        "rollable": bool(ATTACK_DAMAGE.match(damage)),
+        "attacks": not ATTACK_NO_ROLL.match(name),
+    }
+
+
+def parse_attacks(text):
+    """Every attack in a Melee or Ranged column."""
+    text = ATTACK_NAME_ASIDE.sub(r"\1\2", text or "")
+    attacks = []
+    for count, name, to_hit, keyword, damage in ATTACK.findall(text):
+        if (not to_hit and not ATTACK_DAMAGE.match(damage)
+                and not ATTACK_ONLY_BONUS.match(name.strip())):
+            # No bonus and nothing that looks like damage: an aside in the
+            # weapon's name rather than an attack of its own.
+            continue
+        attacks.append(attack_entry(count, name, to_hit, keyword, damage))
+    if not attacks:
+        simple = ATTACK_SIMPLE.match(text)
+        if simple:
+            attacks.append(attack_entry(simple.group(1) or "", simple.group(2),
+                                        "", "", simple.group(3)))
+    return attacks
+
+
+def creature_weapons(creature):
+    """A creature's attacks, in the shape Unit.weapons already uses.
+
+    The list is positional and shared with the player's own weapon cards:
+    [name, attack, damage, crit, type, range, ammo]. Type carries "melee" or
+    "ranged" so the panel can say which; range and ammo stay empty, since a
+    statblock gives neither.
+    """
+    weapons = []
+    for column, kind in (("Melee", "melee"), ("Ranged", "ranged")):
+        for attack in parse_attacks(creature.get(column)):
+            weapons.append([attack["name"], attack["attack"], attack["damage"],
+                            attack["crit"], kind, "", ""])
+    return weapons
+
+
 def creature_to_unit(creature):
     """A bestiary row as the unit dict add_units wants.
 
@@ -243,6 +389,9 @@ def creature_to_unit(creature):
         "alignment": alignment if alignment in ALIGNMENTS else "N",
         "DR": creature.get("DR") or "",
         "SR": creature.get("SR") or "",
+        # The same list a player's own weapons live in, so a monster's bite and
+        # a longsword are the same kind of thing to everything downstream.
+        "weapons": creature_weapons(creature),
     }
     unit["maxHP"] = unit["HP"]
 
@@ -961,6 +1110,73 @@ def initiative_bonus(value):
         return 0
 
 
+@socketio.on('roll_attack')
+def on_roll_attack(data):
+    """Roll one of a unit's attacks, and say what it came to.
+
+    A full attack rather than a single die: "2 claws +6" is two swings and
+    "+18/+13/+8" is three, so one press of the button rolls what the creature
+    actually does in a round.
+
+    Who sees it follows who rolled, which is the convention already in place
+    rather than a new rule. A monster's attack goes to the GM's views alone,
+    the way the initiative rolls for a group of them do -- the party finds out
+    whether it hit, not what it needed. A player rolling their own weapon goes
+    to the shared chat, which is where /roll has always put it.
+    """
+    room = data.get('room')
+    if not check_room(room):
+        return
+    is_gm = ROOMS[room].gmKey == data.get('gmKey')
+    name = str(data.get('name') or "attack").strip()
+    to_hit = str(data.get('attack') or "+0")
+    damage = str(data.get('damage') or "")
+    crit = str(data.get('crit') or "")
+    attacker = str(data.get('charName') or "").strip()
+
+    if not is_gm:
+        # A player may only roll for something they control, and the unit has
+        # to be one -- otherwise the roll is somebody else's to make.
+        unit = next((u for u in ROOMS[room].unitList
+                     if u.charName == attacker and u.controlledBy == attacker), None)
+        if unit is None:
+            return
+
+    threat_on = ATTACK_CRIT_RANGE.search("/" + crit) or ATTACK_CRIT_RANGE.search(crit)
+    threshold = int(threat_on.group(1)) if threat_on else 20
+
+    bonuses = [b.strip() for b in to_hit.split("/") if b.strip()] or ["+0"]
+    count = ATTACK_COUNT_PREFIX.match(name)
+    repeats = max(1, int(count.group(1)) if count else 1)
+
+    lines = []
+    for _ in range(repeats):
+        for bonus in bonuses:
+            die = randint(1, 20)
+            total = die + initiative_bonus(bonus)
+            swing = "d20(%d)%+d = %d" % (die, initiative_bonus(bonus), total)
+            if die >= threshold:
+                swing += " — threat"
+            dice = ATTACK_DAMAGE.match(damage)
+            if dice:
+                # Only the leading expression. The rest of the field is the
+                # crit and the riders -- "1d4/19-20", "1d6+4 plus 1d6 fire" --
+                # and roll_dice keeps every digit it is given, so handing it
+                # the whole string turns a short sword into -19.9 damage and a
+                # goblin's bite into 138.
+                swing += ",  damage %s" % roll_dice(dice.group(1)).strip()
+            lines.append(swing)
+    if not lines:
+        return
+
+    message = "%s — %s: %s" % (attacker or "Unit", name, "; ".join(lines))
+    if is_gm:
+        emit_to_gm("chat", {"chat": message, "charName": "System"}, room)
+    else:
+        emit("chat", {"chat": message, "charName": attacker}, room=room)
+        emit("chat", {"chat": message, "charName": attacker}, room=ROOMS[room].gmRoom)
+
+
 @socketio.on('add_units')
 def on_add_units(data):
     """Add several copies of one creature at once, rolling each initiative.
@@ -1040,6 +1256,10 @@ def on_update_unit(data):
         tmp_unit.trapfinding = data.get("trapfinding", tmp_unit.trapfinding)
         # tmp_unit.hasted = data["hasted"]
         tmp_unit.permanentAbilities = data.get("permanentAbilities", tmp_unit.permanentAbilities)
+        # The GM's attack panel is editable, so a corrected bonus has to be
+        # able to land. Ungated like the ten fields above it, which is the
+        # existing shape of this handler rather than a decision taken here.
+        tmp_unit.weapons = data.get("weapons", tmp_unit.weapons)
         if "gmKey" in data.keys() and ROOMS[room].gmKey == data['gmKey']:
             tmp_unit.revealsMap = data.get("revealsMap", tmp_unit.revealsMap)
             tmp_unit.initiative = data.get("initiative", tmp_unit.initiative)

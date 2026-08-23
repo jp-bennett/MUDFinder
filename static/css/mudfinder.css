@@ -617,6 +617,42 @@ width:100%;
   background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
 }
 
+/* The attack rows, on the GM's unit sheet and the player's Attack tab. The
+   boxes stay editable: rolling reads them, so a bonus corrected by hand is the
+   one that gets rolled. */
+.unitAttacks {
+    margin: 2px 0 6px;
+    max-width: 620px;
+}
+.attackRow {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    margin-bottom: 3px;
+}
+.attackRow input {
+    text-align: left;
+    padding-left: 3px;
+    height: 20px;
+}
+.attackName { flex: 1 1 130px; min-width: 90px; }
+.attackBonus { flex: 0 0 70px; }
+.attackDamage { flex: 0 0 96px; }
+.attackCrit { flex: 0 0 62px; }
+.attackRollButton {
+    flex: 0 0 auto;
+    margin: 0;
+}
+/* An entry with no dice in it -- "telekinesis (see below)". Shown rather than
+   dropped, so it is clear the creature has it, with the button dead. */
+.attackRowUnrollable {
+    opacity: 0.55;
+}
+.attackRowEmpty {
+    font-style: italic;
+    opacity: 0.6;
+}
+
 /* The creature picker. Its markup is built in chooseCreature (shared.js), which
    used to set all of this inline; it is here so the layout can be adjusted
    without editing JavaScript. */
