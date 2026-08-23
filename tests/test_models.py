@@ -683,3 +683,44 @@ class TestAbilityBoundariesThatAreNotDoubleSpaces:
             "select SpecialAbilities from creatures where Name = 'Earth Elemental Construct'"
         ).fetchone()
         assert row and len(mudfinder.split_abilities(row[0]).split("\n")) == 3
+
+
+class TestStrippingTheStatblockMarkup:
+    """The import takes the markup off a FullText statblock.
+
+    Not a security boundary -- the result is stored as text and rendered with
+    textContent, never as markup -- but a pattern that misses a closing tag
+    leaves it behind in the prose, so it is written properly.
+    """
+
+    def strip(self, html_text):
+        import tools.import_creatures as importer
+        return importer.statblock_text(html_text)
+
+    def test_the_stylesheet_link_goes(self):
+        assert self.strip('<link rel="stylesheet" href="PF.css">Kept') == "Kept"
+
+    def test_a_script_and_its_contents_go(self):
+        assert self.strip("<script>alert(1)</script>Kept") == "Kept"
+
+    @pytest.mark.parametrize("closing", ["</script>", "</script >", "</SCRIPT\t>"])
+    def test_a_closing_tag_with_whitespace_still_matches(self, closing):
+        """"</script >" is valid HTML, and a pattern anchored on "</script>"
+        alone leaves the tag sitting in the text."""
+        assert self.strip("<script>bad()" + closing + "Kept") == "Kept"
+
+    def test_a_style_block_goes_the_same_way(self):
+        assert self.strip("<style >p{color:red}</style >Kept") == "Kept"
+
+    def test_block_tags_become_line_breaks(self):
+        assert self.strip("<h5>First</h5><h5>Second</h5>") == "First\nSecond"
+
+    def test_entities_are_unescaped(self):
+        assert self.strip("<p>Bell &amp; Candle</p>").startswith("Bell & Candle")
+
+    def test_the_shipped_descriptions_carry_no_markup(self):
+        db = sqlite3.connect("mudfinder.sql")
+        for pattern in ("%<script%", "%</script%", "%<style%", "%<link%"):
+            assert db.execute(
+                "select count(*) from creatures where Description like ?",
+                (pattern,)).fetchone()[0] == 0
