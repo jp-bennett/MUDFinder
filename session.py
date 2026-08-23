@@ -13,6 +13,13 @@ from math import floor
 # fill the play area, which is what every map made before this existed wants.
 BACKGROUND_ALIGNMENT_KEYS = ("backgroundTilesWide", "backgroundOffsetX", "backgroundOffsetY")
 
+# Stamped on the map every time the alignment is written, and carried with it.
+# It is what lets a client tell a payload older than the alignment it is already
+# showing from one that is newer. A full map sent in answer to a grid resize
+# carries the alignment as it stood when that resize was handled, which may be
+# behind what the GM has dragged the image to since.
+BACKGROUND_ALIGNMENT_SEQ = "backgroundAlignmentSeq"
+
 
 class Session(object):
 

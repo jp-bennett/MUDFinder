@@ -508,21 +508,51 @@ function applyAlignmentLocally(alignment) {
     refreshAlignmentFields();
 }
 
-var alignmentSendsInFlight = 0;
+// The stamp on the alignment currently shown here. The server raises it on
+// every alignment write, so comparing stamps says which of two payloads is
+// newer. Kept in step with BACKGROUND_ALIGNMENT_SEQ in session.py.
+var ALIGNMENT_SEQ_KEY = "backgroundAlignmentSeq";
+var alignmentSeqShown = 0;
+
+function alignmentIsStale(msg) {
+    // Whether the alignment in an incoming payload is older than what is
+    // already on screen.
+    //
+    // This used to be a count of our own sends still in flight, which asked
+    // the wrong question. The payload that overwrites a drag is usually not an
+    // echo of our own change at all: it is a whole map answering an earlier
+    // grid resize, carrying the alignment as it stood back then. By the time
+    // it arrives our own echo has already been counted off and the guard has
+    // stood down, so the stale values land. Compare stamps instead, and it
+    // does not matter what prompted the payload or in what order they arrive.
+    if (typeof msg[ALIGNMENT_SEQ_KEY] !== "number") {
+        // Older servers, and payloads for a map with no alignment at all.
+        // Neither can be judged, so neither is treated as stale.
+        return false;
+    }
+    return msg[ALIGNMENT_SEQ_KEY] < alignmentSeqShown;
+}
+
+function noteAlignmentSeq(msg) {
+    if (typeof msg[ALIGNMENT_SEQ_KEY] === "number" && msg[ALIGNMENT_SEQ_KEY] > alignmentSeqShown) {
+        alignmentSeqShown = msg[ALIGNMENT_SEQ_KEY];
+    }
+}
 
 function dropOwnAlignmentEcho(msg) {
-    // Every alignment change is echoed back by the server. An echo of an
-    // earlier change can arrive after a later one has been made here, and
-    // applying it would undo that: a quick second nudge jumps back to where
-    // the first one left it. While any of our own changes are still in flight,
-    // strip the alignment out of what arrives and keep the local values.
+    // Strips the alignment out of an update that is behind what is on screen,
+    // so a slow echo of an earlier nudge cannot undo a later one.
     //
     // Returns whether it dropped anything, so this can be checked on its own
     // rather than by trying to lose a race on purpose.
-    if (typeof msg.backgroundTilesWide === "undefined" || alignmentSendsInFlight < 1) {
+    if (typeof msg.backgroundTilesWide === "undefined") {
         return false;
     }
-    alignmentSendsInFlight--;
+    if (!alignmentIsStale(msg)) {
+        noteAlignmentSeq(msg);
+        return false;
+    }
+    delete msg[ALIGNMENT_SEQ_KEY];
     delete msg.backgroundTilesWide;
     delete msg.backgroundOffsetX;
     delete msg.backgroundOffsetY;
@@ -533,9 +563,12 @@ function keepLocalAlignmentIfPending(msg) {
     // A whole map arriving replaces everything, alignment included. Resizing
     // the grid answers with one, and it carries the alignment as it was when
     // the resize was handled -- which is stale if the image has been adjusted
-    // since. While any of our own alignment changes are still in flight, keep
-    // the local values on the way in.
-    if (alignmentSendsInFlight < 1 || typeof mapObject === "undefined" || !mapObject) {
+    // since. Keep the local values on the way in when that is what it is.
+    if (typeof mapObject === "undefined" || !mapObject) {
+        return;
+    }
+    if (!alignmentIsStale(msg)) {
+        noteAlignmentSeq(msg);
         return;
     }
     for (i = 0; i < BACKGROUND_ALIGNMENT_KEYS.length; i++) {
@@ -543,6 +576,7 @@ function keepLocalAlignmentIfPending(msg) {
             msg[BACKGROUND_ALIGNMENT_KEYS[i]] = mapObject[BACKGROUND_ALIGNMENT_KEYS[i]];
         }
     }
+    msg[ALIGNMENT_SEQ_KEY] = alignmentSeqShown;
 }
 
 function sendAlignment() {
@@ -550,7 +584,8 @@ function sendAlignment() {
     if (!alignment) {
         return;
     }
-    alignmentSendsInFlight++;
+    // Applied locally already. The stamp on the answer will be higher than the
+    // one on screen, so the echo is accepted rather than mistaken for stale.
     socket.emit('set_background_alignment', {
         backgroundTilesWide: alignment.backgroundTilesWide,
         backgroundOffsetX: alignment.backgroundOffsetX,
