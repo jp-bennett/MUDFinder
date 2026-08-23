@@ -224,6 +224,24 @@ own line.
 Paper, ruled edge, `--radius`. Focus is a `--accent` outline rather than a
 border change, so nothing moves when a field is focused.
 
+### Tool group — `.toolGroup` + `.toolGroupLabel`
+
+The palette under the map. Each kind of tool — terrain, doors and stairs,
+markers, light, movement, map, the view switches — is a group under a ruled
+small-caps label, separated from its neighbours by a hairline. Before this it
+was a run of swatches, checkboxes and buttons with nothing saying where one
+kind stopped and the next began.
+
+The bar is a **flex row that scrolls sideways**, not floats. Floated, the last
+group wrapped to a second line as soon as the movement controls appeared — and
+on a bar pinned to the bottom of the window, a second line is off the screen.
+Scrolling sideways loses nothing. There is a test that measures the palette at
+a window too narrow to hold it.
+
+The swatches sit inside `.nonSelected` wrappers, and `mapTool` marks a
+selection by reaching for the swatch's `parentElement`, so **those wrappers must
+stay the direct parent** of each swatch.
+
 ### Tab bar
 
 An ink bar with paper tongues. The open tab is solid `--paper` with `--ink`

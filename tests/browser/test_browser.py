@@ -2801,6 +2801,22 @@ STATBLOCK_PANEL_JS = """() => {
 }"""
 
 
+PALETTE_REPORT_JS = """() => {
+  const bar = document.getElementById("mapTools").getBoundingClientRect();
+  const groups = Array.from(document.querySelectorAll(".toolGroup"))
+      .filter(g => g.getBoundingClientRect().width > 0);
+  return {
+    labels: groups.map(g => g.querySelector(".toolGroupLabel").innerText),
+    barBottom: Math.round(bar.bottom),
+    viewport: window.innerHeight,
+    bottoms: groups.map(g => Math.round(g.getBoundingClientRect().bottom)),
+    rows: new Set(groups.map(g => Math.round(g.getBoundingClientRect().top))).size,
+    switches: Array.from(document.querySelectorAll(".toolToggle input"))
+        .map(i => Math.round(i.getBoundingClientRect().bottom)),
+  };
+}"""
+
+
 @pytest.fixture(scope="module")
 def unit_statblock(browser, live_server):
     """Reach a monster's bestiary entry from the encounter, four ways.
@@ -3132,10 +3148,72 @@ def chrome(browser, live_server):
                         k => Math.round(k.getBoundingClientRect().width))};
         }""")
 
+        # The palette, with the movement controls showing -- which is when it is
+        # at its widest, and when a floated layout pushed the switches off the
+        # bottom of the window.
+        page.click("div.tab:text-is('Encounter')")
+        page.check("#addToInit")
+        page.fill("#unitName", "Goblin")
+        page.fill("#unitHP", "6")
+        page.fill("#unitInit", "12")
+        page.click("text=Add Unit")
+        page.wait_for_timeout(400)
+        page.click("div.tab:text-is('Map')")
+        page.click("#beginInit")
+        page.wait_for_function(
+            """() => getComputedStyle(
+                 document.getElementById("movementDiv")).display !== "none" """,
+            timeout=HANDSHAKE_TIMEOUT)
+        stages["palette"] = page.evaluate(PALETTE_REPORT_JS)
+
+        # And again with the window too narrow to hold it. This is where the
+        # floated version failed: it wrapped, and a wrapped bar pinned to the
+        # bottom of the window is a bar with its last group off the screen.
+        page.set_viewport_size({"width": 1080, "height": 820})
+        page.wait_for_timeout(400)
+        stages["paletteNarrow"] = page.evaluate(PALETTE_REPORT_JS)
+        page.set_viewport_size({"width": 1500, "height": 1000})
+        page.wait_for_timeout(300)
+
         stages["errors"] = errors
         return stages
     finally:
         context.close()
+
+
+class TestThePalette:
+    def test_the_tools_are_grouped_and_named(self, chrome):
+        assert chrome["palette"]["labels"] == [
+            "Terrain", "Doors & Stairs", "Markers", "Light", "Movement",
+            "Map", "Show"]
+
+    def test_every_group_is_on_one_row(self, chrome):
+        """Floated, the last group wrapped to a second line as soon as the
+        movement controls appeared -- and on a bar pinned to the bottom of the
+        window, a second line is off the screen."""
+        assert chrome["palette"]["rows"] == 1
+
+    def test_no_group_hangs_below_the_bar(self, chrome):
+        bar_bottom = chrome["palette"]["barBottom"]
+        for bottom in chrome["palette"]["bottoms"]:
+            assert bottom <= bar_bottom + 1, (bottom, bar_bottom)
+
+    def test_the_switches_are_on_the_screen(self, chrome):
+        """The thing that actually went wrong: they were in the document, and
+        every assertion about them existing passed."""
+        viewport = chrome["palette"]["viewport"]
+        assert chrome["palette"]["switches"], "no switches found"
+        for bottom in chrome["palette"]["switches"]:
+            assert 0 < bottom <= viewport, (bottom, viewport)
+
+    def test_it_survives_a_window_too_narrow_for_it(self, chrome):
+        """The bar scrolls sideways rather than wrapping. Wrapping is what put
+        the switches off the bottom of the screen."""
+        narrow = chrome["paletteNarrow"]
+        assert narrow["rows"] == 1
+        assert narrow["labels"] == chrome["palette"]["labels"]
+        for bottom in narrow["bottoms"]:
+            assert bottom <= narrow["barBottom"] + 1, (bottom, narrow["barBottom"])
 
 
 class TestTheTabBar:

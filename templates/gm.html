@@ -159,92 +159,107 @@
           </div>
           <!--<div id="zoomControls" style="text-align:center; float:right; font-size: 5em;"> <div id="zoomIn" onclick="zoomIn()"> + </div> <div id="zoomOut" onclick="zoomOut()">-</div></div>-->
           <div id="mapTools">
-          <div class="nonSelected" style="float:left;">
-            <div id="floorTile" onclick="mapTool(event, 'floor')" style="margin:5px;" class="mapTile floorTile tooltip"><span class="tooltiptext">Floor Tile</span></div>
-          </div>
-          <div class="nonSelected" style="float:left;">
-            <div id="floorTileA" onclick="mapTool(event, 'floor')" style="margin:5px;" class="mapTile floorTileA tooltip"><span class="tooltiptext">Floor Tile</span></div>
-          </div>
-          <div class="nonSelected" style="float:left;">
-            <div id="floorTileB" onclick="mapTool(event, 'floor')" style="margin:5px;" class="mapTile floorTileB tooltip"><span class="tooltiptext">Floor Tile</span></div>
-          </div>
-          <div class="nonSelected" style="float:left;">
-            <div id="floorTileC" onclick="mapTool(event, 'floor')" style="margin:5px;" class="mapTile floorTileC tooltip"><span class="tooltiptext">Floor Tile</span></div>
-          </div>
-          <div class="nonSelected" style="float:left;">
-            <div id="wallTile" onclick="mapTool(event, 'wall')" style="margin:5px;" class="mapTile wallTile tooltip"><span class="tooltiptext">Wall Tile</span></div>
-          </div>
-          <div class="nonSelected" style="float:left;">
-            <div id="thinWallTile" onclick="mapTool(event, 'wall')" style="margin:5px;" class="mapTile wallTileRight tooltip"><span class="tooltiptext">Thin Wall</span></div>
-          </div>
-          <div class="nonSelected" style="float:left;">
-            <div id="doorClosed" onclick="mapTool(event, 'wall')" style="margin:5px;" class="mapTile doorTileA tooltip"><span class="tooltiptext">Closed Door</span></div>
-          </div>
-          <div class="nonSelected" style="float:left;">
-            <div id="doorLocked" onclick="mapTool(event, 'wall')" style="margin:5px;" class="mapTile doorTileALocked tooltip"><span class="tooltiptext">Locked Door</span></div>
-          </div>
-          <!--<div class="nonSelected" style="float:left;">
-            <div id="doorTileB" onclick="mapTool(event, 'wall')" style="margin:5px;" class="mapTile doorTileB tooltip"><span class="tooltiptext">Closed Door</span></div>
-          </div>-->
-          <div class="nonSelected" style="float:left;">
-            <div id="doorOpen" onclick="mapTool(event, 'wall')" style="margin:5px;" class="mapTile doorTileAOpen tooltip"><span class="tooltiptext">Open Door</span></div>
-          </div>
-          <!--<div class="nonSelected" style="float:left;">
-            <div id="doorTileBOpen" onclick="mapTool(event, 'wall')" style="margin:5px;" class="mapTile doorTileBOpen tooltip"><span class="tooltiptext">Open Door</span></div>
-          </div>-->
-          <div class="nonSelected" style="float:left;">
-            <div id="stairsUp" onclick="mapTool(event, 'stair')" style="margin:5px;" class="mapTile stairTileLeft tooltip"><span class="tooltiptext">Stairs Up</span></div>
-          </div>
-          <div class="nonSelected" style="float:left;">
-            <div id="stairsDown" onclick="mapTool(event, 'stair')" style="margin:5px;" class="mapTile stairDownDownTileRight tooltip"><span class="tooltiptext">Stairs Down</span></div>
-          </div>
-          <div class="nonSelected" style="float:left;">
-            <div id="seen" onclick="mapTool(event, 'seen')" style="margin:5px;" class="mapTile seen tooltip"><span class="tooltiptext">Toggle Seen</span></div>
-          </div>
-          <div class="nonSelected" style="float:left;">
-            <div id="secret" onclick="mapTool(event, 'secret')" style="margin:5px;border-color:red" class="mapTile floorTile tooltip"><span class="tooltiptext">Toggle Secret</span></div>
-          </div>
-          <!-- Light levels. The id of each swatch is the newTile string the
-               server dispatches on, so these must match LIGHT_TOOLS in
-               mudfinder.py. The swatch classes are solid rather than the
-               translucent wash classes the map uses, because a 45%-alpha tint
-               is not legible at 20 pixels square. -->
-          <div id="lightTools" style="float:left;">
-            <div class="nonSelected" style="float:left;">
-              <div id="lightBright" onclick="mapTool(event, 'light')" style="margin:5px;" class="mapTile swatchBright tooltip"><span class="tooltiptext">Bright Light</span></div>
-            </div>
-            <div class="nonSelected" style="float:left;">
-              <div id="lightNormal" onclick="mapTool(event, 'light')" style="margin:5px;" class="mapTile swatchNormal tooltip"><span class="tooltiptext">Normal Light</span></div>
-            </div>
-            <div class="nonSelected" style="float:left;">
-              <div id="lightDim" onclick="mapTool(event, 'light')" style="margin:5px;" class="mapTile swatchDim tooltip"><span class="tooltiptext">Dim Light</span></div>
-            </div>
-            <div class="nonSelected" style="float:left;">
-              <div id="lightDarkness" onclick="mapTool(event, 'light')" style="margin:5px;" class="mapTile swatchDarkness tooltip"><span class="tooltiptext">Darkness</span></div>
+          <div class="toolGroup">
+            <div class="toolGroupLabel">Terrain</div>
+            <div class="toolGroupRow">
+              <div class="nonSelected">
+                <div id="floorTile" onclick="mapTool(event, 'floor')" class="mapTile floorTile tooltip"><span class="tooltiptext">Floor Tile</span></div>
+              </div>
+              <div class="nonSelected">
+                <div id="floorTileA" onclick="mapTool(event, 'floor')" class="mapTile floorTileA tooltip"><span class="tooltiptext">Floor Tile</span></div>
+              </div>
+              <div class="nonSelected">
+                <div id="floorTileB" onclick="mapTool(event, 'floor')" class="mapTile floorTileB tooltip"><span class="tooltiptext">Floor Tile</span></div>
+              </div>
+              <div class="nonSelected">
+                <div id="floorTileC" onclick="mapTool(event, 'floor')" class="mapTile floorTileC tooltip"><span class="tooltiptext">Floor Tile</span></div>
+              </div>
+              <div class="nonSelected">
+                <div id="wallTile" onclick="mapTool(event, 'wall')" class="mapTile wallTile tooltip"><span class="tooltiptext">Wall Tile</span></div>
+              </div>
+              <div class="nonSelected">
+                <div id="thinWallTile" onclick="mapTool(event, 'wall')" class="mapTile wallTileRight tooltip"><span class="tooltiptext">Thin Wall</span></div>
+              </div>
             </div>
           </div>
-          <div id="movementDiv">
-          <button id="movementButton" style="float:left;" onclick="resetMovement()">Reset Movement</button>
-          <div style="float:left;" id="movement"></div>
-          <select id="movementSelector" style="float:left;">
-          <option>5 ft step</option>
-          <option selected>Move Action</option>
-          <option>Full Round Move</option>
-          <option>unlimited</option>
-          <option>untracked</option>
-          </select>
+          <div class="toolGroup">
+            <div class="toolGroupLabel">Doors &amp; Stairs</div>
+            <div class="toolGroupRow">
+              <div class="nonSelected">
+                <div id="doorClosed" onclick="mapTool(event, 'wall')" class="mapTile doorTileA tooltip"><span class="tooltiptext">Closed Door</span></div>
+              </div>
+              <div class="nonSelected">
+                <div id="doorLocked" onclick="mapTool(event, 'wall')" class="mapTile doorTileALocked tooltip"><span class="tooltiptext">Locked Door</span></div>
+              </div>
+              <div class="nonSelected">
+                <div id="doorOpen" onclick="mapTool(event, 'wall')" class="mapTile doorTileAOpen tooltip"><span class="tooltiptext">Open Door</span></div>
+              </div>
+              <div class="nonSelected">
+                <div id="stairsUp" onclick="mapTool(event, 'stair')" class="mapTile stairTileLeft tooltip"><span class="tooltiptext">Stairs Up</span></div>
+              </div>
+              <div class="nonSelected">
+                <div id="stairsDown" onclick="mapTool(event, 'stair')" class="mapTile stairDownDownTileRight tooltip"><span class="tooltiptext">Stairs Down</span></div>
+              </div>
+            </div>
           </div>
-          <div style="float:right;padding-right:100px;padding-top:10px;">Show discovered overlay: <input type="checkbox" id="seenOverlay" value="seenOverlay" onchange="seenOverlayToggle(this)" checked></div>
-            <div style="float:right;padding-right:100px;padding-top:10px;">Show Features: <input type="checkbox" id="showFeatures" value="showFeatures" onchange="featuresToggle(this)" checked></div>
-            <div style="float:right;padding-right:100px;padding-top:10px;">Show light: <input type="checkbox" id="showLight" value="showLight" onchange="lightToggle(this)" checked></div>
-            <div style="float:right;padding-right:100px;padding-top:10px;">MultiSelect: <input type="checkbox" id="multiSelect" value="multiSelect" onchange="multiSelectToggle(this)"></div>
-          <div style="float:right;padding-right:100px;padding-top:10px;">Align background: <input type="checkbox" id="alignBackground" value="alignBackground" onchange="alignmentToggle(this)"></div>
-          <!-- Their own row under the swatches. Left to flow, a narrow enough
-               button tucks itself onto the end of the swatch line and the two
-               of them end up on different rows. -->
-          <div class="mapToolButtons">
-            <button id="showEffectDivButton" onclick="showEffectControls()">Effect</button>
-            <button id="SelectMapBackgroundButton" onclick="imageUpload(this, 'mapBackground', '')">Background</button>
+          <div class="toolGroup">
+            <div class="toolGroupLabel">Markers</div>
+            <div class="toolGroupRow">
+              <div class="nonSelected">
+                <div id="seen" onclick="mapTool(event, 'seen')" class="mapTile seen tooltip"><span class="tooltiptext">Toggle Seen</span></div>
+              </div>
+              <div class="nonSelected">
+                <div id="secret" onclick="mapTool(event, 'secret')" style="border-color:red" class="mapTile floorTile tooltip"><span class="tooltiptext">Toggle Secret</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="toolGroup" id="lightTools">
+            <div class="toolGroupLabel">Light</div>
+            <div class="toolGroupRow">
+              <div class="nonSelected">
+                <div id="lightBright" onclick="mapTool(event, 'light')" class="mapTile swatchBright tooltip"><span class="tooltiptext">Bright Light</span></div>
+              </div>
+              <div class="nonSelected">
+                <div id="lightNormal" onclick="mapTool(event, 'light')" class="mapTile swatchNormal tooltip"><span class="tooltiptext">Normal Light</span></div>
+              </div>
+              <div class="nonSelected">
+                <div id="lightDim" onclick="mapTool(event, 'light')" class="mapTile swatchDim tooltip"><span class="tooltiptext">Dim Light</span></div>
+              </div>
+              <div class="nonSelected">
+                <div id="lightDarkness" onclick="mapTool(event, 'light')" class="mapTile swatchDarkness tooltip"><span class="tooltiptext">Darkness</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="toolGroup" id="movementDiv">
+            <div class="toolGroupLabel">Movement</div>
+            <div class="toolGroupRow">
+              <button id="movementButton" onclick="resetMovement()">Reset</button>
+              <span id="movement"></span>
+              <select id="movementSelector">
+                <option>5 ft step</option>
+                <option selected>Move Action</option>
+                <option>Full Round Move</option>
+                <option>unlimited</option>
+                <option>untracked</option>
+              </select>
+            </div>
+          </div>
+          <div class="toolGroup">
+            <div class="toolGroupLabel">Map</div>
+            <div class="toolGroupRow">
+              <button id="showEffectDivButton" onclick="showEffectControls()">Effect</button>
+              <button id="SelectMapBackgroundButton" onclick="imageUpload(this, 'mapBackground', '')">Background</button>
+            </div>
+          </div>
+          <div class="toolGroup toolGroupRight">
+            <div class="toolGroupLabel">Show</div>
+            <div class="toolGroupRow">
+              <label class="toolToggle" for="seenOverlay">Discovered<input type="checkbox" id="seenOverlay" value="seenOverlay" onchange="seenOverlayToggle(this)" checked></label>
+              <label class="toolToggle" for="showFeatures">Features<input type="checkbox" id="showFeatures" value="showFeatures" onchange="featuresToggle(this)" checked></label>
+              <label class="toolToggle" for="showLight">Light<input type="checkbox" id="showLight" value="showLight" onchange="lightToggle(this)" checked></label>
+              <label class="toolToggle" for="multiSelect">Multi-select<input type="checkbox" id="multiSelect" value="multiSelect" onchange="multiSelectToggle(this)"></label>
+              <label class="toolToggle" for="alignBackground">Align image<input type="checkbox" id="alignBackground" value="alignBackground" onchange="alignmentToggle(this)"></label>
+            </div>
           </div>
           </div>
           <div id="alignmentControls" style="display:none;">
