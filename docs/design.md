@@ -55,7 +55,7 @@ a label that exists only to name the thing under it.
 |---|---|---|
 | `--paper` | `#f5efdf` | Panel and form surfaces; text on an ink ground |
 | `--paper-warm` | `#e7dbc2` | Panel headings, alternating table rows, a pressed button |
-| `--desk` | `#6b4529` | The walnut behind everything |
+| `--desk` | `#3f2a1c` | The walnut behind everything |
 | `--cloth` | `#171c22` | The woven ground under the tab bar and the statblock plates |
 | `--desk-light` | two gradients | The pool of light, and the fall-off to the edges |
 
@@ -127,6 +127,12 @@ two rings of grain crowding past. They sit inside boards rather than across a
 join, and they are **unevenly distributed** — some boards are clear, some are
 full of them. Three per board is a grid, which is what the first placement
 looked like. All six of those rules have tests.
+
+**The rustic cues are kept quiet.** Knots, contrast between boards and the depth
+of the seams are exactly what makes timber read as *barn floor* rather than as
+*joinery*, so all three are drawn at well under half strength, and the light is
+low. The room this is meant to be is a study after dark. A bright pool of light
+in the middle of it undoes the whole effect on its own.
 
 There is deliberately **no broad light-and-dark pass in the timber**. The desk
 gets that from `--desk-light`, and an earlier version that did it in both places
