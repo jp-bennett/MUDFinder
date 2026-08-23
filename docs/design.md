@@ -97,26 +97,40 @@ One accent. It means *chosen*. Using it for decoration costs it that meaning.
 | `--desk-grain` | inline SVG | The timber |
 | `--cloth-weave` | inline SVG | The weave |
 
-Straight gradient bands read as a stripe. Bowing them with radial gradients
-reads as rings. Wood needs actual noise, so the desk is an **inline SVG**: a
-striped pattern pushed about by an `feTurbulence` displacement map, with a
-second turbulence multiplied over the top as fine tooth.
+Wood is two things at once, so the desk is two layers.
 
-`baseFrequency` is the whole trick, and it took three attempts to find. The
-wander has to play out over **hundreds** of pixels — in the tens it reads as fur
-— so both axes sit in the thousandths (`0.0026 0.0015`), with a displacement
-`scale` large enough (66) for the lines to part and crowd the way grain does.
-There is a test that both axes stay below `0.01`.
+**The board** is turbulence read directly as colour: a very anisotropic
+`fractalNoise` — frequent across the grain, barely varying along it — mapped
+through a colour table into walnut, waved by a slow displacement so it is not
+sawn dead straight, then multiplied by a low-frequency pass so parts of it are
+lighter and darker rather than one even brown.
 
-The stripe under the turbulence is **two** patterns: fibres every 6px, and
-stronger figure lines every 47px. One pattern alone gives an even corduroy; the
-second is what makes it read as a cut plank.
+Gradient stripes cannot do this. Displacing them slides bands sideways but
+cannot make one wider than its neighbour or fade one out, which is most of what
+grain actually does — three attempts went that way and all three read as
+corduroy.
 
-The cloth is the same technique at a different scale — a 6px over-under weave
-displaced by a *small* turbulence (`scale: 1.6`), just enough that the threads
+**The growth rings** are separate, and they are what those attempts kept
+missing: they are hard-edged incised lines, not blur. A **`discrete`** transfer
+function turns the noise into hard on/off bands, and taking two narrow bands out
+of ten gives crisp rings that crowd together and open out the way real ones do.
+
+Two rules the tests enforce, both learned the hard way:
+
+- **The board and the rings must be at least 10× more frequent across the grain
+  than along it.** Even in both axes they are blobs.
+- **The rings must be one octave.** Further octaves vary the noise *along* the
+  ring as well as across it, and the discrete step turns that variation into a
+  dashed line rather than a continuous one.
+
+The wave and the tone, by contrast, must both stay below `0.01` in both axes:
+they play out over hundreds of pixels, and in the tens they read as fur.
+
+The cloth is the same family of technique at a different scale — a 6px
+over-under weave displaced by a *small* turbulence, just enough that the threads
 are not machine-perfect, with a noise pass overlaid as fibre.
 
-It is drawn rather than downloaded because **the app fetches nothing** from
+Both are drawn rather than downloaded because **the app fetches nothing** from
 anywhere: the player page used to pull a font from fontlibrary.org on every
 load, which made it depend on a third party and fail when offline. A test walks
 every template, stylesheet and script and fails on any `src`/`href`/`url()`

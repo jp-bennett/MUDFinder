@@ -1116,18 +1116,41 @@ class TestTheDesignTokens:
         assert "height:40px" in bar.replace(" ", "")
         assert "box-sizing: border-box" in bar
 
-    def test_the_grain_wanders_slowly(self):
-        """baseFrequency is the whole trick, and it took three tries to find.
+    def test_the_grain_and_the_rings_run_along_the_board(self):
+        """Two of the four turbulences draw things that run *along* the timber
+        -- the figure of the board and the growth rings -- and their whole job
+        is being lopsided: frequent across it, barely varying down it. Even in
+        both axes they are blobs, not grain."""
+        freqs = grain_frequencies()
+        for index in (BOARD, RINGS):
+            across, down = freqs[index]
+            assert across / down >= 10, (index, across, down)
 
-        The wander has to play out over hundreds of pixels. In the tens it
-        reads as fur rather than wood, and the first two attempts both landed
-        there.
-        """
+    def test_the_wave_and_the_tone_are_slow(self):
+        """The other two modulate the whole board -- the wave through the grain
+        and the light and dark across it -- and have to play out over hundreds
+        of pixels. In the tens they read as fur, which is where two earlier
+        attempts at this landed."""
+        freqs = grain_frequencies()
+        for index in (WAVE, TONE):
+            across, down = freqs[index]
+            assert across < 0.01 and down < 0.01, (index, across, down)
+
+    def test_the_rings_are_one_octave(self):
+        """A growth ring is a single continuous line. Further octaves vary the
+        noise *along* the ring as well as across it, and the discrete transfer
+        that makes the line crisp turns that variation into a dashed one."""
         grain = urllib.parse.unquote(desk_grain())
-        displacement = re.search(r"baseFrequency='([0-9.]+)\s+([0-9.]+)'", grain)
-        assert displacement, "no turbulence in the grain"
-        for axis in displacement.groups():
-            assert float(axis) < 0.01, axis
+        rings = grain[grain.index("<filter id='r'"):]
+        assert re.search(r"numOctaves='1'", rings), rings[:200]
+
+    def test_the_rings_are_cut_rather_than_shaded(self):
+        """discrete, not table. A linear table can only give a soft gradient;
+        an incised line needs a hard edge."""
+        grain = urllib.parse.unquote(desk_grain())
+        rings = grain[grain.index("<filter id='r'"):]
+        assert "type='discrete'" in rings
+        assert "type='table'" not in rings
 
     def test_the_desk_fetches_nothing(self):
         """It is drawn, not downloaded."""
@@ -1135,6 +1158,18 @@ class TestTheDesignTokens:
         assert "data:image/svg+xml" in grain
         # The SVG namespace is a name, not somewhere the browser goes.
         assert re.sub(r"http://www\.w3\.org\S*", "", grain).count("http") == 0
+
+
+# Which turbulence is which, in the order the filter declares them.
+BOARD, WAVE, TONE, RINGS = 0, 1, 2, 3
+
+
+def grain_frequencies():
+    """Every turbulence in the desk, as (across, down) pairs, in filter order."""
+    grain = urllib.parse.unquote(desk_grain())
+    found = re.findall(r"baseFrequency='([0-9.]+)\s+([0-9.]+)'", grain)
+    assert len(found) == 4, found
+    return [(float(a), float(b)) for a, b in found]
 
 
 def desk_grain():
