@@ -3256,3 +3256,163 @@ class TestThingsFitInsideThings:
 
     def test_nothing_raised(self, chrome):
         assert chrome["errors"] == []
+
+
+# Every string of text the eye can land on, with the colour it is drawn in and
+# the colour actually behind it, as a contrast ratio. The desk went dark
+# partway through the design work and took several panels with it -- the
+# character sheet, the inventory, the lore pages and the player links were all
+# still ink on bare page, which by then meant ink on walnut.
+CONTRAST_JS = """(panelId) => {
+  const luminance = (rgb) => {
+    const [r, g, b] = rgb.map(v => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const parse = (s) => {
+    const m = s.match(/rgba?\\(([^)]+)\\)/);
+    if (!m) return null;
+    const parts = m[1].split(",").map(x => parseFloat(x));
+    return {rgb: parts.slice(0, 3), a: parts.length > 3 ? parts[3] : 1};
+  };
+  // What is actually behind an element: the first ancestor that paints.
+  const ground = (el) => {
+    let e = el;
+    while (e && e !== document.documentElement) {
+      const cs = getComputedStyle(e);
+      const bg = parse(cs.backgroundColor);
+      if (bg && bg.a > 0.5) return bg.rgb;
+      if (cs.backgroundImage !== "none") return null;  // artwork, not chrome
+      e = e.parentElement;
+    }
+    const body = parse(getComputedStyle(document.body).backgroundColor);
+    return body ? body.rgb : [255, 255, 255];
+  };
+  const panel = document.getElementById(panelId);
+  const bad = [];
+  const seen = new Set();
+  for (const el of panel.querySelectorAll("*")) {
+    if (el.offsetParent === null) continue;
+    const box = el.getBoundingClientRect();
+    if (box.width < 4 || box.height < 4) continue;
+    const own = Array.from(el.childNodes)
+        .filter(n => n.nodeType === 3).map(n => n.textContent.trim()).join("");
+    if (own.length < 2) continue;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === "hidden" || parseFloat(cs.opacity) < 0.3) continue;
+    const fg = parse(cs.color);
+    const bg = ground(el);
+    if (!fg || !bg) continue;
+    const a = luminance(fg.rgb), b = luminance(bg);
+    const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    const key = own.slice(0, 24);
+    if (ratio < 3 && !seen.has(key)) {
+      seen.add(key);
+      bad.push({text: key, ratio: Math.round(ratio * 100) / 100,
+                colour: cs.color, ground: "rgb(" + bg.join(",") + ")"});
+    }
+  }
+  return bad;
+}"""
+
+
+@pytest.fixture(scope="module")
+def legibility(browser, live_server):
+    """Walk every tab on both views and measure the text against its ground."""
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "legibility")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1) for pair in page.url.split("?", 1)[1].split("&"))["room"]
+
+        player = context.new_page()
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Aria")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        player.wait_for_timeout(700)
+
+        # Where each sheet sits, as well as what it says. An id beats a class,
+        # so a leftover height:100% on a panel overrode the sheet's own sizing
+        # and ran it past its holder, over the scrollbar.
+        FITS_JS = """(panelId) => {
+          const p = document.getElementById(panelId).getBoundingClientRect();
+          const h = document.getElementById("activeTabDiv").getBoundingClientRect();
+          return {panel: [Math.round(p.top), Math.round(p.bottom),
+                          Math.round(p.left), Math.round(p.right)],
+                  holder: [Math.round(h.top), Math.round(h.bottom),
+                           Math.round(h.left), Math.round(h.right)],
+                  viewport: window.innerHeight};
+        }"""
+
+        found = {}
+        fits = {}
+        for tab, panel in [("Encounter", "encounterContainer"), ("Save", "saveGame"),
+                           ("Players", "links"), ("Units", "units"),
+                           ("Lore", "lore"), ("Rules", "rules"),
+                           ("Options", "options")]:
+            page.click("div.tab:text-is('%s')" % tab)
+            page.wait_for_timeout(350)
+            found["gm " + tab] = page.evaluate(CONTRAST_JS, panel)
+            fits["gm " + tab] = page.evaluate(FITS_JS, panel)
+        page.click("div.tab:text-is('Map')")
+        page.wait_for_timeout(300)
+        found["gm palette"] = page.evaluate(CONTRAST_JS, "mapTools")
+
+        for tab, panel in [("Character", "charWrapper"), ("Inventory", "inventory"),
+                           ("Lore", "lore")]:
+            player.click("div.tab:text-is('%s')" % tab)
+            player.wait_for_timeout(400)
+            found["player " + tab] = player.evaluate(CONTRAST_JS, panel)
+            fits["player " + tab] = player.evaluate(FITS_JS, panel)
+
+        return {"found": found, "fits": fits, "errors": errors}
+    finally:
+        context.close()
+
+
+class TestEveryTabIsLegible:
+    def test_nothing_is_ink_on_walnut(self, legibility):
+        """A contrast ratio under 3 against whatever is actually behind it.
+
+        This is the check that would have caught the character sheet, the
+        inventory, the lore pages and the player links all at once -- every one
+        of them was in the document, laid out correctly, and unreadable.
+        """
+        offenders = {k: v for k, v in legibility["found"].items() if v}
+        assert offenders == {}
+
+    def test_no_panel_runs_past_its_holder(self, legibility):
+        """An id beats a class: a leftover height:100% on #lore overrode the
+        sheet's calc(100% - 16px) and drew the box over the scrollbar."""
+        over = {}
+        for name, box in legibility["fits"].items():
+            top, bottom, left, right = box["panel"]
+            htop, hbottom, hleft, hright = box["holder"]
+            if bottom > hbottom or top < htop or right > hright or left < hleft:
+                over[name] = box
+        assert over == {}
+
+    def test_no_panel_runs_off_the_window(self, legibility):
+        for name, box in legibility["fits"].items():
+            assert box["panel"][1] <= box["viewport"], (name, box)
+
+    def test_nothing_raised(self, legibility):
+        assert legibility["errors"] == []

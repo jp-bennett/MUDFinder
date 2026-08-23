@@ -71,11 +71,9 @@
             <button onclick="downloadGame()">Download Game</button>
           </div>
         </div>
-        <div id="links" style="display:none;">
-          <div class="formCard">
-            <div class="sectionHeading">Links</div>
-          </div>
-        </div>
+        <!-- Filled by gm_update, which replaces the whole of it, so the
+             heading is written there rather than here. -->
+        <div id="links" class="tabSheet" style="display:none;"></div>
         <div id="encounterContainer" style="display:none;" class="encounterContainer">
           <div id="savedEncounters" class="formCard">
             <div class="sectionHeading">Encounters</div>
@@ -371,22 +369,11 @@
 
 
         </div>
-        <div id="lore" style="display:none;">
+        <div id="lore" class="tabSheet" style="display:none;">
           <div class="lorePage" id="lorePage">
 
-            <div id="loreTab0" style="display:none;" class="formCard">
-            <div class="sectionHeading">Add Lore</div>
-            <img id="loreFilePreview" src=""><br>
-            <label class="fieldLabelInline" for="loreURL">Image Link</label>
-            <input type="text" id="loreURL" onchange="previewLoreURL(this.value)"><br>
-            <label class="fieldLabelInline" for="loreFileUpload">Or upload a file</label>
-            <input type="file" id="loreFileUpload" onchange="previewLoreFile()"><br>
-            <div class="uploadProgress" id="uploadProgress"></div>
-            <label class="fieldLabelInline" for="loreName">Name</label>
-            <input type="text" id="loreName"><br>
-            <label class="fieldLabel" for="loreText">Text</label>
-            <textarea id="loreText"></textarea><br>
-            <button onclick="sendLoreURL()">Send</button></div>
+            <!-- Every lore page, including the Add form, is built by
+                 updateLore in shared.js. -->
           </div>
           <div id="loreTabs">
             <div class="tab" onClick="enableLoreTab('0')">Add</div>

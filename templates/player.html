@@ -94,7 +94,7 @@
           <div id="playerMapTools">Show light: <input type="checkbox" id="showLight" value="showLight" onchange="lightToggle(this)" checked></div>
 
         </div><!--mapWrapper-->
-        <div id="charWrapper" style="line-height: 1.7; overflow:auto;">
+        <div id="charWrapper" class="tabSheet" style="line-height: 1.7;">
           <div style="width:100%; overflow:auto" id="sheetHeader">
             <img style="float:left;max-width:200px;max-height:200px;" id="charImageView" src="static/images/profile.svg" onclick="imageUpload(this, 'charImage', charName)">
 
@@ -1106,7 +1106,7 @@
             <button onclick="addUnit()">Add Unit</button>
           </div>
         </div><!-- CharWrapper -->
-        <div id="inventory" style="display:none; height:100%;">
+        <div id="inventory" class="tabSheet" style="display:none;">
 
           <div id="register">
             <div id="inventoryTitle">Player Inventory:</div>
@@ -1184,7 +1184,7 @@
           <div id="inventoryTabs"></div>
 
         </div> <!-- Inventory -->
-        <div id="lore" style="display:none;">
+        <div id="lore" class="tabSheet" style="display:none;">
           <div id="lorePage" class="lorePage"></div>
           <div id="loreTabs"></div>
         </div><!--lore-->

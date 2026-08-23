@@ -253,7 +253,9 @@ input:focus, select:focus, textarea:focus {
     margin-left:40px;
 }
 #lore {
-    height:100%;
+    /* No height here. An id beats a class, so height:100% overrode the sheet's
+       calc(100% - 16px) and the box ran 16px past its holder -- over the
+       scrollbar and off the bottom of the window. .tabSheet sizes it. */
     margin-left:40px;
 }
 .lorePage {
@@ -501,6 +503,56 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
     padding: 3px 8px;
     text-align: center;
 }
+/* A tab panel holding one continuous document rather than a set of cards:
+   the character sheet, the inventory, the lore pages, the player links. These
+   were left on the bare page, which was fine while the page was pale grey and
+   is not now the desk is walnut -- every label in them was ink on dark wood. */
+.tabSheet {
+    box-sizing: border-box;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-resting);
+    margin: 8px;
+    padding: 10px 14px;
+    overflow: auto;
+    height: calc(100% - 16px);
+    /* And never past the bottom of the window. The player view's holder is
+       forty pixels taller than the window it sits in -- it is on master too --
+       so sizing to the holder alone puts the foot of a full-height sheet below
+       the fold. 40px of tab bar, 8px of margin at each end. */
+    max-height: calc(100vh - 56px);
+}
+
+/* Tab strips inside a sheet -- the lore pages, the inventory list -- are tabs
+   on paper rather than tabs on the ink bar, so gilt on a dark wash leaves them
+   barely readable. Scoped to .tabSheet so any strip put on paper later is
+   covered without having to be named. */
+.tabSheet .tab {
+    color: var(--ink-soft);
+    background: var(--paper-warm);
+    border: 1px solid var(--rule);
+    border-bottom: none;
+    margin: 0 3px 0 0;
+}
+.tabSheet .tab:hover {
+    background: var(--accent-soft);
+}
+/* Browser-default link blue is the one colour in the app that belongs to no
+   part of it. */
+.tabSheet a,
+.tabSheet a:visited {
+    color: var(--accent);
+}
+
+/* One player's link and the button that removes them. */
+.linkRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+}
+
 /* A form standing on the desk -- the encounter builder, the save box. The
    same sheet a panel is cut from, sized to its contents rather than to a
    column. Without this a form was a run of labels and inputs floating on the
@@ -520,6 +572,7 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
     font-variant: small-caps;
     letter-spacing: 0.05em;
     color: var(--ink-faint);
+    margin-right: 5px;
 }
 /* The readout down the right of the action bar: HP, AC, saves. Values the
    player checks rather than sets, so they are set as a list of labelled
@@ -735,6 +788,8 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
 .toolGroupRow .nonSelected,
 .toolGroupRow .selected {
     line-height: 0;
+    /* These carry the tooltips, and .nonSelected is overflow:auto by default. */
+    overflow: visible;
 }
 .toolGroupRow .mapTile {
     float: none;
@@ -795,27 +850,43 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
     transform-origin: top left;
     transform: scale(1);
 }
+/* The swatch a tooltip belongs to has to be the thing it is positioned
+   against. Without this the tooltip anchored to #mapTools instead, which put
+   it in the same place whichever swatch was hovered. */
 .tooltip {
-  /*position: relative;
-  display: inline-block;
-  border-bottom: 1px dotted black; /* If you want dots under the hoverable text */
+  position: relative;
 }
 .tooltip .tooltiptext {
   visibility: hidden;
-  width: 120px;
+  /* Only as wide as its label. A fixed 120px centred on the swatch hangs off
+     the left-hand end of the bar, where there is nothing to hang into. */
+  width: auto;
+  white-space: nowrap;
   background-color: var(--ink);
   color: var(--paper);
   text-align: center;
-  border-radius: 6px;
-  padding: 5px 0;
+  border-radius: var(--radius);
+  padding: 4px 0;
+  /* The swatches sit in a row with line-height 0 so the tiles pack tightly;
+     the tooltip has to put its own back or the text has no height to sit in. */
+  line-height: 1.35;
+  font-size: 88%;
+  box-shadow: var(--shadow-lifted);
 
   /* Position the tooltip */
   position: absolute;
   z-index: 1;
 }
+/* Below the swatch and inside the bar. Above it would be the natural place,
+   but #mapTools scrolls sideways, and a box that scrolls on one axis clips the
+   other -- so a tooltip that reaches past the bar's top edge is cut off. There
+   is room under the swatch row, and the bar is where the tooltip belongs. */
 .tooltiptext {
-  margin-top: 40px;
-  margin-left: -60px;
+  top: calc(100% + 6px);
+  left: 0;
+  margin: 0;
+  padding: 4px 8px;
+  z-index: 8;
 }
 .tooltip:hover .tooltiptext {
   visibility: visible;

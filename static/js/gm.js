@@ -270,13 +270,19 @@ window.onload = function() {
                 gmData.savedEncounters[i] + `<button onclick="removeEncounter('${gmData.savedEncounters[i]}')">X</button></div>`;
             }
             // populate player list
-            document.getElementById("links").innerHTML = "Links<br>";
+            // This replaces the whole panel, so the heading is built here --
+            // anything put in the template is wiped on the first update.
+            document.getElementById("links").innerHTML =
+                '<div class="sectionHeading">Player Links</div>';
             document.getElementById("connectedPlayers").innerHTML = "";
             document.getElementById("unitControlledBy").innerHTML =  '<option value="gm" selected="selected">gm</option>';
             for (var i = 0; i < Object.keys(gmData.playerList).length; i++) {
                 tmpPlayerName = Object.keys(gmData.playerList)[i];
-                document.getElementById("links").innerHTML += `<a href="player.html?room=${room}&charName=${tmpPlayerName}">${tmpPlayerName}</a>` +
-                    `<button onclick="deleteUser('${tmpPlayerName}')">Delete</button><br>`;
+                document.getElementById("links").innerHTML +=
+                    `<div class="linkRow">` +
+                    `<a href="player.html?room=${room}&charName=${tmpPlayerName}">${tmpPlayerName}</a>` +
+                    `<button onclick="deleteUser('${tmpPlayerName}')">Delete</button>` +
+                    `</div>`;
                 document.getElementById("unitControlledBy").innerHTML += `<option value="${tmpPlayerName}">${tmpPlayerName}</option>`;
                 if (gmData.playerList[tmpPlayerName].connected) {
                     document.getElementById("connectedPlayers").innerHTML += tmpPlayerName + "<br >";

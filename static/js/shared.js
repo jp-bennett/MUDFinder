@@ -1006,12 +1006,20 @@ function updateLore(msg, num) {
         }
 
         if (isGM || typeof charName !== "undefined") {
-            document.getElementById("lorePage").innerHTML += `<div id="loreTab${i}" style="display:none;"><img id="loreFilePreview"></img><br>` +
-                `Image Link:<input type="text" id="loreURL" onchange="previewLoreURL(this.value)"><br>` +
-                `Or upload a file: <input type="file" id="loreFileUpload" onchange="previewLoreFile()"><br>` +
+            // Rebuilt on every change, so this is the only copy of the Add
+            // form there is -- the one in the template never survives.
+            document.getElementById("lorePage").innerHTML += `<div id="loreTab${i}" style="display:none;">` +
+                `<div class="sectionHeading">Add Lore</div>` +
+                `<img id="loreFilePreview"></img><br>` +
+                `<label class="fieldLabelInline" for="loreURL">Image link</label>` +
+                `<input type="text" id="loreURL" onchange="previewLoreURL(this.value)"><br>` +
+                `<label class="fieldLabelInline" for="loreFileUpload">Or upload a file</label>` +
+                `<input type="file" id="loreFileUpload" onchange="previewLoreFile()"><br>` +
                 `<div class="uploadProgress" id="uploadProgress"></div>` +
-                `Name: <input type="text" id="loreName"><br>` +
-                `Text: <textarea id="loreText"></textarea><br>` +
+                `<label class="fieldLabelInline" for="loreName">Name</label>` +
+                `<input type="text" id="loreName"><br>` +
+                `<label class="fieldLabel" for="loreText">Text</label>` +
+                `<textarea id="loreText"></textarea><br>` +
                 `<button onclick="sendLoreURL()">Send</button></div>`;
                 document.getElementById("loreTabs").innerHTML += `<div class="tab" onClick="enableLoreTab('${i}')">Add</div>`;
         } else {

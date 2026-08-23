@@ -203,6 +203,30 @@ with a floating caption above each.
 The heading belongs **inside** the panel. A caption sitting above a border is
 the thing this replaces.
 
+### Tab sheet — `.tabSheet`
+
+A tab panel holding **one continuous document** rather than a set of cards: the
+character sheet, the inventory, the lore pages, the player links. Paper, ruled,
+with the resting shadow, filling its holder.
+
+The distinction from `.formCard` is what the panel *is*. Distinct groupings that
+happen to share a tab are cards standing on the desk; one thing that would be
+printed on a single page is a sheet.
+
+Two rules it has to obey, both learned by breaking them:
+
+- **An id beats a class.** A leftover `height: 100%` on `#lore` overrode the
+  sheet's own `calc(100% - 16px)` and drew the box over the scrollbar.
+- **Clamp to the window, not only to the holder.** The player view's
+  `#activeTabDiv` is forty pixels taller than the window it sits in — on master
+  too — so a sheet sized to the holder alone puts its foot below the fold.
+  `max-height: calc(100vh - 56px)`.
+
+Tab strips **inside** a sheet — the lore pages, the inventory list — are on
+paper, so `.tabSheet .tab` overrides the gilt-on-dark treatment the main bar
+uses. Scoping it to `.tabSheet` rather than naming the two strips means any
+future one is covered.
+
 ### Form card — `.formCard`
 
 The same sheet, sized to its contents rather than to a column: the encounter
@@ -279,6 +303,16 @@ washes, which cost real debugging to get right:
   it, fully opaque black comes out mid-grey through 0.6 opacity.
 
 ## Working on this
+
+**Panels that JavaScript rewrites cannot be styled in the template.**
+`gm_update` replaces the whole of `#links`; `updateLore` replaces the whole of
+`#lorePage`. Anything put in the markup there is wiped on the first update, so
+the heading and the field labels have to be built in the JavaScript that builds
+the rest.
+
+**A tooltip cannot escape a box that scrolls.** `#mapTools` scrolls sideways,
+and a box that scrolls on one axis clips the other, so the palette's tooltips
+open *below* their swatch, inside the bar, rather than above it.
 
 **Look at it.** Two of the worst defects in this codebase's history were
 invisible to a green test suite: a light wash that rendered mid-grey while every
