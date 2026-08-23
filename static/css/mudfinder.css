@@ -545,6 +545,25 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
     overflow: hidden;
 }
 
+/* Beside the floated statblock rather than behind it. A block box does not
+   avoid a float -- only its line boxes do -- so the attack and casting rows
+   need a formatting context of their own, and so does the ruled heading above
+   them, whose border would otherwise run on under the statblock. */
+#units .sectionHeading,
+.unitAttacks,
+.unitCastings {
+    display: flow-root;
+}
+
+/* The unit sheet is a card on the desk rather than a full sheet, but with a
+   monster's statblock beside its fields the card is taller than the tab it
+   stands in -- so the tab scrolls rather than letting it run off the bottom. */
+#units {
+    box-sizing: border-box;
+    height: 100%;
+    overflow: auto;
+}
+
 /* A tab panel holding one continuous document rather than a set of cards:
    the character sheet, the inventory, the lore pages, the player links. These
    were left on the bare page, which was fine while the page was pale grey and
@@ -1218,6 +1237,10 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
 }
 .attackRow {
     display: flex;
+    /* Wraps, because beside the statblock the column is narrower than the
+       fields' own minimum widths add up to -- and a flex row that cannot
+       shrink any further overflows rather than reflowing. */
+    flex-wrap: wrap;
     gap: 4px;
     align-items: center;
     margin-bottom: 3px;

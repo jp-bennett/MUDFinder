@@ -2988,6 +2988,28 @@ def unit_statblock(browser, live_server):
         stages["playerErrors"] = player.evaluate(
             "() => document.getElementById('chatText').innerText")
 
+        # The statblock is floated, and a block box does not avoid a float --
+        # only its line boxes do. Without a formatting context of their own the
+        # attack and casting rows run in behind it.
+        page.evaluate("""() => populateEditChar(gmData,
+            gmData.unitList.find(u => u.charName === "Dire Ape").unitNum)""")
+        page.wait_for_timeout(400)
+        stages["overlap"] = page.evaluate("""() => {
+            const sb = document.getElementById("unitStatblock").getBoundingClientRect();
+            const bad = [];
+            for (const sel of ["#unitAttacks *", "#unitCastings *",
+                               "#units .sectionHeading"]) {
+                for (const e of document.querySelectorAll(sel)) {
+                    const r = e.getBoundingClientRect();
+                    if (r.width > 0 && r.right > sb.left + 1
+                        && r.top < sb.bottom && r.bottom > sb.top) {
+                        bad.push(e.tagName + "." + e.className);
+                    }
+                }
+            }
+            return bad;
+        }""")
+
         stages["errors"] = errors
         return stages
     finally:
@@ -2995,6 +3017,10 @@ def unit_statblock(browser, live_server):
 
 
 class TestTheStatblockOnTheUnitSheet:
+    def test_nothing_runs_in_behind_the_statblock(self, unit_statblock):
+        """The fields sit beside it, not under it."""
+        assert unit_statblock["overlap"] == []
+
     def test_a_monster_shows_its_bestiary_entry(self, unit_statblock):
         assert unit_statblock["sheet"]["hasBlock"]
         assert unit_statblock["sheet"]["name"] == "Dire Ape"
