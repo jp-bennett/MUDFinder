@@ -85,6 +85,11 @@ window.onload = function() {
     document.getElementById("mapGraphic").addEventListener("dblclick", mapDoubleClick);
     window.addEventListener("mousemove", alignmentDragMove);
     window.addEventListener("mouseup", alignmentDragEnd);
+    // Shut to start with, and this is also what puts the first handler on the
+    // tab: the two functions hand the click back and forth between them, so
+    // until one of them has run the tab is a picture of a tab that does
+    // nothing. The player view has always called this on load for that reason.
+    hideBottomDiv();
 
     socket.on('connect', function() {
         try {
@@ -309,6 +314,9 @@ window.onload = function() {
                     tmpConnected.appendChild(document.createElement("br"));
                 }
             }
+            // Last, so it redraws against the list this update just brought in
+            // -- the HP in it is the whole point of having it on screen.
+            drawMobPanel(gmData);
         } catch (e) {
             socket.emit("error_handle", room, e);
         }
@@ -1171,6 +1179,7 @@ function showUnitInfo(unitNum) {
         selectedUnits = [index];
         enableTab("units");
         populateEditChar(gmData, unitNum);
+        drawMobPanel(gmData);
         document.getElementById("unitStatblock").scrollIntoView({block: "nearest"});
     } catch (e) {
         socket.emit("error_handle", room, e);
@@ -1203,6 +1212,7 @@ function selectUnit(e, unitNum) {
         } else {
             populateEditChar(gmData, 0);
         }
+        drawMobPanel(gmData);
         drawSelected(gmData);
     } catch (e) {
         socket.emit("error_handle", room, e);
@@ -1212,6 +1222,190 @@ function selectUnit(e, unitNum) {
 function activeInitiative(initiativeNum) {
     try {
         document.getElementById("initiativeDiv").children[initiativeNum].classList.add("activeUnit");
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
+// Which creature the panel under the map is about: what the GM has selected,
+// and failing that whoever's turn it is. Selection wins so the GM can read one
+// creature's attacks while another is up, which is most of what looking at a
+// statblock mid-combat is for.
+//
+// selectedUnits holds indices into unitList; unitNum is that same index, kept
+// so by number_units() on the server after every change to the list.
+function mobPanelSubject(Data) {
+    if (!Data || !Data.unitList || Data.unitList.length === 0) {
+        return null;
+    }
+    if (typeof selectedUnits[0] !== "undefined") {
+        for (var s = 0; s < Data.unitList.length; s++) {
+            if (Data.unitList[s].unitNum == selectedUnits[0]) {
+                return Data.unitList[s];
+            }
+        }
+    }
+    if (Data.inInit && Data.initiativeList && Data.initiativeList.length > 0) {
+        var current = Data.initiativeList[Data.initiativeCount];
+        if (current) {
+            // The initiative list carries its own copies, so the unit is looked
+            // up by uuid -- its HP there can be a round out of date.
+            for (var i = 0; i < Data.unitList.length; i++) {
+                if (Data.unitList[i].uuid === current.uuid) {
+                    return Data.unitList[i];
+                }
+            }
+            return current;
+        }
+    }
+    return null;
+}
+
+// HP, AC and initiative -- the three the GM reaches for every round. HP comes
+// off the unit, which is where damage is tracked. A unit carries AC only as the
+// pieces it is added up from, so for a creature out of the bestiary it is read
+// from the cached record instead, and for one made by hand it stays blank
+// rather than showing a wrong total.
+function drawMobStats(container, unit) {
+    removeContents(container);
+    if (!unit) {
+        return;
+    }
+    var hp = (unit.HP === "" || unit.HP === null || typeof unit.HP === "undefined")
+        ? "" : String(unit.HP);
+    if (hp !== "" && unit.maxHP !== "" && unit.maxHP !== null
+        && typeof unit.maxHP !== "undefined") {
+        hp += " / " + unit.maxHP;
+    }
+    mobStat(container, "HP", hp);
+    var ac = mobStat(container, "AC", "");
+    mobStat(container, "Init", (unit.initiative === "" || unit.initiative === null)
+        ? "" : String(unit.initiative));
+
+    if (unit.creatureId) {
+        var wanted = String(unit.creatureId);
+        container.dataset.creatureId = wanted;
+        fetchCreatureCached(unit.creatureId).then(function (full) {
+            // A different creature may have been picked while this was in
+            // flight.
+            if (container.dataset.creatureId !== wanted || !full) {
+                return;
+            }
+            ac.innerText = statblockValue(full.creature, ["AC", "AC_Mods"]);
+        });
+    } else {
+        container.dataset.creatureId = "";
+    }
+}
+
+// One "LABEL value" pair in the strip. Returns the value node so a figure that
+// has to be fetched can be filled in when it arrives.
+function mobStat(container, label, value) {
+    var stat = document.createElement("div");
+    stat.className = "mobStat";
+    var name = document.createElement("span");
+    name.className = "mobStatLabel";
+    name.innerText = label;
+    stat.appendChild(name);
+    var figure = document.createElement("span");
+    figure.className = "mobStatValue";
+    figure.innerText = value;
+    stat.appendChild(figure);
+    container.appendChild(stat);
+    return figure;
+}
+
+// The creature's special abilities, folded away behind the button in the
+// heading. Everything a GM reaches for in a round is on the panel already; this
+// is the rest of the entry -- auras, breath weapons, the DCs -- for when the
+// creature actually uses one.
+function drawMobAbilities(container, unit) {
+    var button = document.getElementById("mobPanelAbilitiesButton");
+    var wanted = (unit && unit.creatureId) ? String(unit.creatureId) : "";
+    // Same reason drawStatblock guards: this runs on every update from the
+    // server, and repainting would throw away wherever the GM had scrolled to.
+    if (container.dataset.creatureId === wanted && container.firstChild) {
+        return;
+    }
+    container.dataset.creatureId = wanted;
+    removeContents(container);
+    if (!wanted) {
+        // Made by hand, or a player's own character.
+        button.disabled = true;
+        button.title = "not from the bestiary, so there is nothing recorded";
+        return;
+    }
+    button.disabled = true;
+    button.title = "looking it up";
+    fetchCreatureCached(unit.creatureId).then(function (full) {
+        if (container.dataset.creatureId !== wanted) {
+            return;
+        }
+        var abilities = full && full.creature && full.creature.SpecialAbilities;
+        if (!abilities || !String(abilities).trim()) {
+            button.disabled = true;
+            button.title = "this one has none recorded";
+            return;
+        }
+        specialAbilityLines(container, abilities);
+        button.disabled = false;
+        button.title = "";
+    });
+}
+
+function toggleMobAbilities() {
+    try {
+        var abilities = document.getElementById("mobPanelAbilities");
+        if (abilities.style.display === "none") {
+            abilities.style.display = "block";
+            document.getElementById("mobPanelAbilitiesButton").classList.add("mobAbilitiesShowing");
+        } else {
+            hideMobAbilities();
+        }
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
+function hideMobAbilities() {
+    document.getElementById("mobPanelAbilities").style.display = "none";
+    document.getElementById("mobPanelAbilitiesButton").classList.remove("mobAbilitiesShowing");
+}
+
+// Redrawn on every update from the server, so this has to be cheap and must not
+// throw when the panel is shut -- gm_update runs whether it is open or not.
+function drawMobPanel(Data) {
+    try {
+        var name = document.getElementById("mobPanelName");
+        if (!name) {
+            return;
+        }
+        var abilities = document.getElementById("mobPanelAbilities");
+        var unit = mobPanelSubject(Data);
+        // Folded away again when the panel changes creature, rather than the
+        // last one's abilities left lying open over the new one's attacks. Kept
+        // as it is otherwise: an update arrives every time anything moves, and
+        // shutting it on each one would make it unusable.
+        var showing = unit ? (unit.uuid || "") : "";
+        if (abilities.dataset.showingFor !== showing) {
+            abilities.dataset.showingFor = showing;
+            hideMobAbilities();
+        }
+        if (!unit) {
+            name.innerText = "Nothing selected";
+            removeContents(document.getElementById("mobPanelStats"));
+            removeContents(document.getElementById("mobPanelAttacks"));
+            removeContents(document.getElementById("mobPanelCastings"));
+            removeContents(abilities);
+            abilities.dataset.creatureId = "";
+            document.getElementById("mobPanelAbilitiesButton").disabled = true;
+            return;
+        }
+        name.innerText = unit.charName;
+        drawMobStats(document.getElementById("mobPanelStats"), unit);
+        drawAttacks(document.getElementById("mobPanelAttacks"), unit.weapons, unit.charName);
+        drawCastings(document.getElementById("mobPanelCastings"), unit, unit.unitNum);
+        drawMobAbilities(abilities, unit);
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
@@ -1363,18 +1557,33 @@ function multiSelectToggle(element) {
     dragscroll.reset();
 
 }
-function hideBottomDiv() {/*
-    document.getElementById("mapContainer").style.height = "";
-    document.getElementById("bottomPopupButton").style.top = "";
-    document.getElementById("bottomPopupButton").onclick = function() {showBottomDiv();};
-    document.getElementById("bottomPopupButton").children[0].src = "static/images/up.svg";
-    document.getElementById("bottomDiv").style.display="none";*/
+// The creature panel under the map, opened and shut by the tab on its top
+// edge. The player's action bar works the same way, and this shrinks the same
+// holder -- a class rather than a written-in height, so the two numbers that
+// have to agree both live in the stylesheet.
+function hideBottomDiv() {
+    try {
+        document.getElementById("activeTabDiv").classList.remove("mobPanelOpen");
+        document.getElementById("bottomPopupButton").classList.remove("panelOpen");
+        document.getElementById("bottomPopupButton").onclick = function() {showBottomDiv();};
+        document.getElementById("bottomPopupButton").children[0].src = "static/images/up.svg";
+        document.getElementById("bottomDiv").style.display = "none";
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
 }
 
 function showBottomDiv() {
-/*    document.getElementById("mapContainer").style.height = "80%";
-    document.getElementById("bottomPopupButton").style.top = "calc(80% - 40px)";
-    document.getElementById("bottomPopupButton").onclick = function() {hideBottomDiv();};
-    document.getElementById("bottomPopupButton").children[0].src = "static/images/down.svg";
-    document.getElementById("bottomDiv").style.display="block";*/
+    try {
+        document.getElementById("activeTabDiv").classList.add("mobPanelOpen");
+        document.getElementById("bottomPopupButton").classList.add("panelOpen");
+        document.getElementById("bottomPopupButton").onclick = function() {hideBottomDiv();};
+        document.getElementById("bottomPopupButton").children[0].src = "static/images/down.svg";
+        document.getElementById("bottomDiv").style.display = "block";
+        // Opened by hand is exactly when the GM wants to see it filled, and an
+        // update may not arrive for a while.
+        drawMobPanel(gmData);
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
 }

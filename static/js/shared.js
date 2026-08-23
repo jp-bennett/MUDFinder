@@ -1563,10 +1563,14 @@ function showEffectControls() {
 
     table.appendChild(tr);
         if (isGM) {
-    document.getElementById("activeTabDiv").style.height = "calc(80% - 40px)";
-    document.getElementById("bottomDiv").style.display = "block";
+    // Opened the same way the tab on its edge opens it. Writing a height here
+    // instead left an inline style on the holder that outranked the class the
+    // tab uses, so after one effect the panel could no longer make room for
+    // itself. The table goes in its own holder rather than straight into the
+    // panel, which now has a heading and a creature in it.
+    showBottomDiv();
     document.getElementById("showEffectDivButton").onclick = hideEffectControls;
-    document.getElementById("bottomDiv").appendChild(table);
+    document.getElementById("bottomEffectHolder").appendChild(table);
     } else {
         hideAllBottomDivs();
         removeContents(document.getElementById("bottomEffectDiv"));
@@ -1857,8 +1861,7 @@ function hideEffectControls() {
     document.getElementById("mapContainer").onclick = null;
     document.getElementById("effectTable").remove();
     if (isGM) {
-    document.getElementById("bottomDiv").style.display = "none";
-    document.getElementById("activeTabDiv").style.height = "calc(100% - 40px)";
+    hideBottomDiv();
     }
     document.getElementById("showEffectDivButton").onclick = showEffectControls;
 }
@@ -2418,6 +2421,12 @@ function deselectAll() {
         }
         selectedUnits = [];
         selectedTool = undefined;
+        // The GM's creature panel falls back to whoever's turn it is once
+        // nothing is selected. Guarded because the players load this file too
+        // and have no such panel.
+        if (typeof drawMobPanel === "function") {
+            drawMobPanel(gmData);
+        }
     } catch (e) {
         socket.emit("error_handle", room, e);
     }

@@ -410,13 +410,44 @@
       </div>
 
     </div>
+    <!-- The handle sits with the panel it opens, not inside the map sheet:
+         that sheet clips its contents, and the tab has to overlap the join. -->
+    <div id="bottomPopupButton" title="Show or hide the creature panel">
+      <img src="static/images/up.svg">
+    </div>
+    <!-- The creature under the map: whatever the GM has selected, or failing
+         that whoever's turn it is. The Units tab is where a unit is edited;
+         this is for running it, so it is on the map where the GM already is. -->
     <div id="bottomDiv" class="bottomDiv">
-     <!-- <div class="connectedPlayersContainer">Connected Players
-        <div id="connectedPlayers" class="connectedPlayers"></br></div>
-        <div>
-          <button onclick="requestInit()">Request initiative</button>
+      <div class="panelHeading">
+        <span id="mobPanelName">Nothing selected</span>
+        <button type="button" id="mobPanelAbilitiesButton" class="mobAbilitiesToggle"
+                onclick="toggleMobAbilities()">Special Abilities</button>
+      </div>
+      <div class="bottomDivBody mobPanelBody">
+        <div id="mobPanelStats" class="mobStats"></div>
+        <div class="mobPanelStack">
+          <div class="mobPanelColumns">
+            <div class="mobPanelColumn">
+              <div class="sectionHeading">Attacks</div>
+              <div id="mobPanelAttacks"></div>
+            </div>
+            <div class="mobPanelColumn">
+              <div class="sectionHeading">Spells</div>
+              <div id="mobPanelCastings"></div>
+            </div>
+          </div>
+          <!-- Folded away until asked for: the abilities are the longest thing
+               about a creature, and the attacks are what the panel is open for.
+               Laid over the columns rather than pushing them down, so opening
+               it does not move the roll buttons out from under the pointer --
+               and only over the columns, so HP stays on screen either way. -->
+          <div id="mobPanelAbilities" class="mobAbilities" style="display:none;"></div>
         </div>
-      </div>-->
+        <!-- The effect placer borrows the same panel; its table goes here
+             rather than at the root, under the creature it is being aimed at. -->
+        <div id="bottomEffectHolder"></div>
+      </div>
     </div>
   </div>
 <!--  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js" integrity="sha256-yr4fRk/GU1ehYJPAs8P4JlTgu0Hdsp4ZKrx8bDEDC3I=" crossorigin="anonymous"></script>-->

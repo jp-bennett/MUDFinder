@@ -72,6 +72,12 @@
        tab panels and the gap down the left-hand column stay in step. */
     --sheet-gap: 16px;
 
+    /* The tool palette under the map. A toolbar is as tall as the tools in it,
+       so this is a fixed height rather than a share of the sheet: at 10% the
+       bar was 76px in an 820px-tall window against 81px of tools, and the last
+       row of switches was cut off. The map takes whatever is left. */
+    --palette-height: 94px;
+
     /* Two radii: one for controls, a slightly larger one for the sheets they
        sit on. */
     --radius: 3px;
@@ -439,6 +445,115 @@ div.selected {
     overflow: auto;
     padding: 4px 8px;
 }
+
+/* The GM's creature panel, in the same place as the player's action bar. The
+   map tab gives up its bottom quarter when the panel is open, so the sheet ends
+   above it rather than running on behind it. The 76% has to match .bottomDiv's
+   top, and the 40px is the tab bar. */
+#activeTabDiv.mobPanelOpen {
+    height: calc(76% - 40px);
+}
+
+/* HP, AC and initiative across the top, ruled off from the attacks and spells
+   under them. */
+.mobStats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    padding: 2px 2px 6px 2px;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 6px;
+}
+.mobStat {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+}
+/* Named the way the statblock names a field: small caps, quiet, and only there
+   to say what the figure beside it is. */
+.mobStatLabel {
+    font-variant: small-caps;
+    letter-spacing: 0.04em;
+    color: var(--ink-faint);
+}
+.mobStatValue {
+    color: var(--ink);
+    font-weight: 600;
+}
+
+/* Attacks and spells side by side while there is room for it. Each column
+   scrolls on its own, so a creature with a page of spells does not push its
+   attacks out of reach. */
+.mobPanelColumns {
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+}
+.mobPanelColumn {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+/* The button in the heading that unfolds them. The heading is centred text, so
+   this is taken out of the flow rather than put in it -- in the flow it pushed
+   the creature's name off centre. */
+.panelHeading {
+    position: relative;
+}
+.mobAbilitiesToggle {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-variant: small-caps;
+    letter-spacing: var(--heading-tracking);
+}
+/* Pressed, while the abilities are showing. */
+.mobAbilitiesToggle.mobAbilitiesShowing {
+    background: var(--paper-warm);
+    border-color: var(--ink-faint);
+}
+
+/* The GM's panel lays the stat strip along the top and gives everything under
+   it whatever is left, so the columns and the abilities scroll rather than the
+   panel as a whole -- HP stays on screen wherever the GM has scrolled to.
+   Scoped to this panel: the player's action bar shares .bottomDivBody and lays
+   its contents out with floats. */
+.mobPanelBody {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.mobPanelStack {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+.mobPanelColumns,
+.mobPanelColumn {
+    height: 100%;
+}
+.mobPanelColumn {
+    overflow: auto;
+}
+
+/* Laid over the two columns rather than pushed in above them: the panel is a
+   quarter of the window, and moving the attack rows down would take the roll
+   buttons out from under the pointer just as the GM went for one. Over the
+   columns only -- the stat strip is outside the stack, so HP, AC and initiative
+   stay put. */
+.mobAbilities {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    background: var(--paper);
+    overflow: auto;
+    padding: 2px 0 6px 0;
+    z-index: 2;
+}
+
 tr:nth-child(even) {background-color: var(--paper-warm);}
 
 .inventoryTable{
@@ -779,7 +894,7 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
     padding: var(--sheet-gap);
     font-family: FreeMono, monospace;
     width:100%;
-    height:90%;
+    height: calc(100% - var(--palette-height));
     /*text-align:center;*/
     position:absolute;
     overflow:auto;
@@ -943,7 +1058,7 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
     align-items: stretch;
     overflow-x: auto;
     overflow-y: hidden;
-    height: 10%;
+    height: var(--palette-height);
     width: 100%;
     bottom: 0px;
     position: absolute;
