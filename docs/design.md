@@ -56,7 +56,7 @@ a label that exists only to name the thing under it.
 | `--paper` | `#f5efdf` | Panel and form surfaces; text on an ink ground |
 | `--paper-warm` | `#e7dbc2` | Panel headings, alternating table rows, a pressed button |
 | `--desk` | `#3f2a1c` | The walnut behind everything |
-| `--cloth` | `#171c22` | The woven ground under the tab bar and the statblock plates |
+| `--cloth` | `#232a33` | The woven ground under the tab bar and the statblock plates |
 | `--desk-light` | two gradients | The pool of light, and the fall-off to the edges |
 
 ### Rules
@@ -153,6 +153,11 @@ hundreds of pixels, and in the tens it reads as fur.
 The cloth is the same family of technique at a different scale — a 6px
 over-under weave displaced by a *small* turbulence, just enough that the threads
 are not machine-perfect, with a noise pass overlaid as fibre.
+
+It is woven **faintly**, at well under half the contrast the timber's grain
+gets. The tab bar is a strip forty pixels tall carrying eight labels, and a
+weave you can actually see in it competes with them. The threads are there to
+stop the bar reading as flat paint, not to be looked at.
 
 Both are drawn rather than downloaded because **the app fetches nothing** from
 anywhere: the player page used to pull a font from fontlibrary.org on every
