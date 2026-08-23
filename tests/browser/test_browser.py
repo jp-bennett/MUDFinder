@@ -781,7 +781,11 @@ def battlemap(browser, live_server):
 
         page.fill("#alignTilesWide", "24.5")
         page.dispatch_event("#alignTilesWide", "change")
-        page.wait_for_timeout(300)
+        # Waited on the value, not on a duration. A fixed pause here was long
+        # enough on a developer machine and not on a CI runner, so the change
+        # was measured one stage late and two assertions swapped their answers.
+        page.wait_for_function(
+            "() => mapObject.backgroundTilesWide === 24.5", timeout=HANDSHAKE_TIMEOUT)
         stages["scaled"] = page.evaluate(BACKGROUND_GEOMETRY_JS)
 
         # Drag two squares right and one down, at 70px per square.
@@ -790,7 +794,9 @@ def battlemap(browser, live_server):
         page.mouse.down()
         page.mouse.move(box["x"] + 440, box["y"] + 370, steps=8)
         page.mouse.up()
-        page.wait_for_timeout(400)
+        page.wait_for_function(
+            "() => mapObject.backgroundOffsetX === 2 && mapObject.backgroundOffsetY === 1",
+            timeout=HANDSHAKE_TIMEOUT)
         stages["dragged"] = page.evaluate(BACKGROUND_GEOMETRY_JS)
 
         # A full redraw, as toggling the discovered overlay causes.
@@ -823,7 +829,8 @@ def battlemap(browser, live_server):
         page.dispatch_event("#alignOffsetX", "change")
         page.fill("#alignOffsetY", "-0.6")
         page.dispatch_event("#alignOffsetY", "change")
-        page.wait_for_timeout(900)
+        page.wait_for_function(
+            "() => alignmentSendsInFlight === 0", timeout=HANDSHAKE_TIMEOUT)
         stages["rapid"] = page.evaluate(BACKGROUND_GEOMETRY_JS)
         # Every change sent has had its echo accounted for by now. This only
         # falls back to zero if the guard is actually wired into the handler.
