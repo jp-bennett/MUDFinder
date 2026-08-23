@@ -673,6 +673,10 @@ function alignmentDragStart(e) {
     e.preventDefault();
 }
 
+function alignmentRound(value) {
+    return Math.round(value * 1000) / 1000;
+}
+
 function alignmentDragMove(e) {
     if (!aligningBackground || !alignmentDragFrom) { return; }
     // The map is scaled by a CSS transform, so a screen pixel is not a map
@@ -680,6 +684,9 @@ function alignmentDragMove(e) {
     // land in the grid squares alignment is measured in.
     scale = (typeof zoom === "number" && zoom > 0) ? zoom : 1;
     alignment = currentAlignment();
+    // Accumulated raw, and settled once the drag ends. Rounding every step
+    // instead makes it worse -- eight small roundings drift further than the
+    // float error they were meant to remove.
     alignment.backgroundOffsetX += (e.clientX - alignmentDragFrom.x) / (scale * zoomSize);
     alignment.backgroundOffsetY += (e.clientY - alignmentDragFrom.y) / (scale * zoomSize);
     alignmentDragFrom = {x: e.clientX, y: e.clientY};
@@ -690,6 +697,15 @@ function alignmentDragMove(e) {
 function alignmentDragEnd() {
     if (!aligningBackground || !alignmentDragFrom) { return; }
     alignmentDragFrom = null;
+    // A drag arrives as a run of small moves, and summing the divisions leaves
+    // values like 0.9999999999999999 -- which is what the GM then reads in the
+    // offset field, and what gets stored and added to again on the next drag.
+    // A thousandth of a square is well under a pixel, so nothing is lost.
+    alignment = currentAlignment();
+    alignment.backgroundOffsetX = alignmentRound(alignment.backgroundOffsetX);
+    alignment.backgroundOffsetY = alignmentRound(alignment.backgroundOffsetY);
+    alignment.backgroundTilesWide = alignmentRound(alignment.backgroundTilesWide);
+    applyAlignmentLocally(alignment);
     sendAlignment();
 }
 

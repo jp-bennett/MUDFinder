@@ -3416,3 +3416,69 @@ class TestEveryTabIsLegible:
 
     def test_nothing_raised(self, legibility):
         assert legibility["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def scrollbars(browser, live_server):
+    """Whether the page shell overflows, at several window sizes.
+
+    A single pixel of overflow puts a scrollbar down the right-hand edge, and
+    the tab panels run the full width of the window -- so the scrollbar lands
+    on top of one. Headless Chromium draws overlay scrollbars, which take no
+    width, so nothing measured as covered and the assertions all passed while
+    the panel sat under a real scrollbar in a real browser. Measuring the
+    overflow itself is the check that works either way.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "scrollbars")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1) for pair in page.url.split("?", 1)[1].split("&"))["room"]
+
+        player = context.new_page()
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        player.wait_for_timeout(600)
+
+        probe = """() => {
+            const sd = document.getElementById("screenDiv");
+            return {overflowDown: sd.scrollHeight - sd.clientHeight,
+                    overflowAcross: sd.scrollWidth - sd.clientWidth,
+                    overflowStyle: getComputedStyle(sd).overflow};
+        }"""
+        sizes = {}
+        for width, height in [(1500, 1000), (1366, 768), (1920, 1080), (1280, 720)]:
+            page.set_viewport_size({"width": width, "height": height})
+            player.set_viewport_size({"width": width, "height": height})
+            page.wait_for_timeout(250)
+            player.wait_for_timeout(250)
+            sizes["gm %dx%d" % (width, height)] = page.evaluate(probe)
+            sizes["player %dx%d" % (width, height)] = player.evaluate(probe)
+        return sizes
+    finally:
+        context.close()
+
+
+class TestThePageDoesNotOverflow:
+    def test_the_shell_never_scrolls(self, scrollbars):
+        """One pixel is all it takes to put a scrollbar over a tab panel."""
+        over = {k: v for k, v in scrollbars.items()
+                if v["overflowDown"] > 0 or v["overflowAcross"] > 0}
+        assert over == {}
+
+    def test_and_could_not_show_a_scrollbar_if_it_did(self, scrollbars):
+        """Belt and braces: the shell clips rather than scrolls, so no
+        scrollbar can appear on it whatever the content does."""
+        for name, box in scrollbars.items():
+            assert box["overflowStyle"] == "hidden", (name, box)

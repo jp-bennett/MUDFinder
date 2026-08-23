@@ -310,6 +310,19 @@ washes, which cost real debugging to get right:
 the heading and the field labels have to be built in the JavaScript that builds
 the rest.
 
+**The shell must not overflow by so much as a pixel.** `.screenDiv` is a
+column flex box, not a stack of blocks, because whitespace between the tab bar
+and the page below it formed an anonymous line box that made it one pixel taller
+than the window. One pixel is enough for a scrollbar, and the tab panels run the
+full width, so the scrollbar landed on top of one. Flex containers ignore
+whitespace-only text between their children.
+
+**Headless Chromium draws overlay scrollbars, which take no width.** That is
+why every measurement said the panel fitted while it sat under a real scrollbar
+in a real browser. Assert on the *overflow* — `scrollHeight - clientHeight` —
+rather than on whether one box overlaps another, because the overflow is visible
+either way.
+
 **A tooltip cannot escape a box that scrolls.** `#mapTools` scrolls sideways,
 and a box that scrolls on one axis clips the other, so the palette's tooltips
 open *below* their swatch, inside the bar, rather than above it.

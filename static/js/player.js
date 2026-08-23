@@ -1517,7 +1517,11 @@ function populatePreparedSpells() {
 
 function hideBottomDiv() {
     document.getElementById("mapContainer").style.height = "calc(100% - 40px)";
-    document.getElementById("activeTabDiv").style.height = "100%";
+    // The panel starts 40px down, under the tab bar, so a full 100% runs it
+    // that far past the bottom of the window. Every other caller here already
+    // takes the 40 off; this one never did, and since it runs on load the
+    // player's tabs have always been a tab bar too tall.
+    document.getElementById("activeTabDiv").style.height = "calc(100% - 40px)";
     document.getElementById("bottomPopupButton").style.top = "calc(100% - 80px)";
     document.getElementById("bottomPopupButton").onclick = function() {showBottomDiv();};
     document.getElementById("bottomPopupButton").children[0].src = "static/images/up.svg";

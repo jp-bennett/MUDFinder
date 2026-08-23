@@ -356,10 +356,25 @@ div.selected {
     height:100%;
     margin:0px;
     width:100%;
-    overflow:auto;
+    /* A column flex box rather than a stack of blocks. The whitespace between
+       the tab bar and the page below it was forming an anonymous line box,
+       which made this one pixel taller than the window it fills. One pixel is
+       enough for a scrollbar, and a scrollbar is enough to sit on top of a
+       tab panel that runs the full width -- which is what it did.
+
+       Flex containers ignore whitespace-only text between their children, so
+       the phantom line goes away. Both children keep their own heights. */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    /* And the panel measures itself against this box's content rather than
+       against the window, so if a scrollbar ever does appear it takes its
+       width out of the panel instead of covering it. */
+    position: relative;
 }
 
 .tabsDiv {
+    flex: 0 0 auto;
     width:100%;
     height:40px;
     /* The rule has to come out of the 40px, not add to it. Everything below is
@@ -372,6 +387,7 @@ div.selected {
     border-bottom: 1px solid var(--rule);
 }
 .centerDiv {
+    flex: 0 0 auto;
     width:100%;
     height:calc(100% - 40px);
     display:block;

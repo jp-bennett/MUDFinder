@@ -735,8 +735,13 @@ def check_room(room):
 
 @app.route('/')
 def index():
-    """Serve the index HTML"""
-    return render_template('index.html')
+    """Serve the index HTML.
+
+    current_time is the stylesheet's cache buster, the same one every other
+    page uses. Without it a browser holds on to a stale mudfinder.css and the
+    landing page is the one place a design change does not show up.
+    """
+    return render_template('index.html', current_time=int(time.time()))
 
 
 @app.route('/functions.js')
