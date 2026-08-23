@@ -101,9 +101,8 @@ Wood is two things at once, so the desk is two layers.
 
 **The board** is turbulence read directly as colour: a very anisotropic
 `fractalNoise` — frequent across the grain, barely varying along it — mapped
-through a colour table into walnut, waved by a slow displacement so it is not
-sawn dead straight, then multiplied by a low-frequency pass so parts of it are
-lighter and darker rather than one even brown.
+through a colour table into walnut, then waved by a slow displacement so it is
+not sawn dead straight.
 
 Gradient stripes cannot do this. Displacing them slides bands sideways but
 cannot make one wider than its neighbour or fade one out, which is most of what
@@ -112,8 +111,14 @@ corduroy.
 
 **The growth rings** are separate, and they are what those attempts kept
 missing: they are hard-edged incised lines, not blur. A **`discrete`** transfer
-function turns the noise into hard on/off bands, and taking two narrow bands out
-of ten gives crisp rings that crowd together and open out the way real ones do.
+function turns the noise into hard on/off bands, and taking one narrow band in
+seven gives fine continuous rings that crowd together and open out the way real
+ones do.
+
+There is deliberately **no broad light-and-dark pass in the timber**. The desk
+gets that from `--desk-light`, and an earlier version that did it in both places
+flattened the colour instead of deepening it. There is a test that the grain
+holds exactly three turbulences.
 
 Two rules the tests enforce, both learned the hard way:
 
@@ -123,8 +128,8 @@ Two rules the tests enforce, both learned the hard way:
   ring as well as across it, and the discrete step turns that variation into a
   dashed line rather than a continuous one.
 
-The wave and the tone, by contrast, must both stay below `0.01` in both axes:
-they play out over hundreds of pixels, and in the tens they read as fur.
+The wave, by contrast, must stay below `0.01` in both axes: it plays out over
+hundreds of pixels, and in the tens it reads as fur.
 
 The cloth is the same family of technique at a different scale — a 6px
 over-under weave displaced by a *small* turbulence, just enough that the threads

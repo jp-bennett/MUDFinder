@@ -1126,15 +1126,20 @@ class TestTheDesignTokens:
             across, down = freqs[index]
             assert across / down >= 10, (index, across, down)
 
-    def test_the_wave_and_the_tone_are_slow(self):
-        """The other two modulate the whole board -- the wave through the grain
-        and the light and dark across it -- and have to play out over hundreds
-        of pixels. In the tens they read as fur, which is where two earlier
-        attempts at this landed."""
-        freqs = grain_frequencies()
-        for index in (WAVE, TONE):
-            across, down = freqs[index]
-            assert across < 0.01 and down < 0.01, (index, across, down)
+    def test_the_wave_is_slow(self):
+        """The wave through the grain has to play out over hundreds of pixels.
+        In the tens it reads as fur, which is where two earlier attempts at
+        this landed."""
+        across, down = grain_frequencies()[WAVE]
+        assert across < 0.01 and down < 0.01, (across, down)
+
+    def test_the_light_is_not_painted_twice(self):
+        """The desk's light and shade belongs to --desk-light. An earlier
+        version modulated the timber for it as well, and the two together
+        flattened the colour instead of deepening it."""
+        root = rule_body(stylesheet(), ":root")
+        assert "--desk-light" in root
+        assert len(grain_frequencies()) == 3
 
     def test_the_rings_are_one_octave(self):
         """A growth ring is a single continuous line. Further octaves vary the
@@ -1161,14 +1166,14 @@ class TestTheDesignTokens:
 
 
 # Which turbulence is which, in the order the filter declares them.
-BOARD, WAVE, TONE, RINGS = 0, 1, 2, 3
+BOARD, WAVE, RINGS = 0, 1, 2
 
 
 def grain_frequencies():
     """Every turbulence in the desk, as (across, down) pairs, in filter order."""
     grain = urllib.parse.unquote(desk_grain())
     found = re.findall(r"baseFrequency='([0-9.]+)\s+([0-9.]+)'", grain)
-    assert len(found) == 4, found
+    assert len(found) == 3, found
     return [(float(a), float(b)) for a, b in found]
 
 
