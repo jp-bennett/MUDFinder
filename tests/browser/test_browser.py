@@ -3633,3 +3633,216 @@ class TestTheMapSitsInsideItsSheet:
         assert chrome["insetStart"]["left"] == chrome["insetStart"]["top"]
         assert chrome["insetCorner"]["right"] == chrome["insetCorner"]["bottom"]
         assert chrome["insetStart"]["left"] == chrome["insetCorner"]["right"]
+
+
+@pytest.fixture(scope="module")
+def creature_panel(browser, live_server):
+    """The GM's creature panel under the map: the one the players' action bar
+    is in the same place as.
+
+    It shows whatever the GM has selected, and failing that whoever's turn it
+    is, so the states worth measuring are: shut, open with nothing to show,
+    open on a selected creature, and open on the current turn with nothing
+    selected.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "creature panel")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+
+        page.fill("#mapWidth", "14")
+        page.fill("#mapHeight", "10")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 140",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(400)
+
+        REPORT = """() => {
+            const panel = document.getElementById("bottomDiv");
+            const box = panel.getBoundingClientRect();
+            const sheet = document.getElementById("mapWrapper").getBoundingClientRect();
+            return {
+                shown: getComputedStyle(panel).display !== "none",
+                name: document.getElementById("mobPanelName").innerText.trim(),
+                stats: Array.from(document.querySelectorAll("#mobPanelStats .mobStat"))
+                            .map(s => s.innerText.replace(/\\s+/g, " ").trim()),
+                attacks: document.querySelectorAll("#mobPanelAttacks .attackRow").length,
+                castingRows: document.querySelectorAll("#mobPanelCastings .castingRow").length,
+                panelTop: Math.round(box.top),
+                panelBottom: Math.round(box.bottom),
+                sheetBottom: Math.round(sheet.bottom),
+                viewport: window.innerHeight,
+            };
+        }"""
+        # The palette lives inside the map sheet, and the sheet gets shorter
+        # when the panel opens.
+        PALETTE_FIT = """() => {
+            const bar = document.getElementById("mapTools");
+            const groups = Array.from(document.querySelectorAll(".toolGroup"))
+                .filter(g => g.getBoundingClientRect().height > 0);
+            return {
+                barHeight: Math.round(bar.getBoundingClientRect().height),
+                tallestGroup: Math.max(...groups.map(g => g.scrollHeight)),
+            };
+        }"""
+
+        stages = {}
+        stages["shut"] = page.evaluate(REPORT)
+        # Straight off a freshly loaded page: the tab's two functions hand the
+        # click back and forth to each other, so if neither has run on load the
+        # tab is dead until something else happens to call one.
+        page.click("#bottomPopupButton")
+        page.wait_for_timeout(400)
+        stages["openedFromFreshPage"] = page.evaluate(REPORT)
+        stages["paletteWithPanelOpen"] = page.evaluate(PALETTE_FIT)
+
+        # A creature with attacks and spells that run out.
+        page.click("div.tab:text-is('Encounter')")
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+        page.fill("#creatureSearchName", "adult occult dragon")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#creatureRows tr').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.click("#creatureRows tr:first-child button")
+        page.wait_for_function(
+            "() => !document.getElementById('modalBackground')", timeout=HANDSHAKE_TIMEOUT)
+        page.check("#addToInit")
+        page.fill("#unitInit", "17")
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Adult Occult Dragon")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(400)
+
+        # Selecting it from the unit list. Changing tabs shuts the panel -- it
+        # is anchored under the map -- so it is opened again after coming back.
+        page.click("div.tab:text-is('Units')")
+        page.click("#unitsDiv .unitListEntry")
+        page.wait_for_timeout(600)
+        page.click("div.tab:text-is('Map')")
+        stages["shutByChangingTabs"] = page.evaluate(REPORT)
+        page.click("#bottomPopupButton")
+        page.wait_for_timeout(700)
+        stages["selected"] = page.evaluate(REPORT)
+
+        # In initiative with nothing selected, it follows whose turn it is.
+        page.click("#beginInit")
+        page.wait_for_function(
+            """() => getComputedStyle(
+                 document.getElementById("movementDiv")).display !== "none" """,
+            timeout=HANDSHAKE_TIMEOUT)
+        page.evaluate("() => deselectAll()")
+        page.wait_for_timeout(600)
+        stages["currentTurn"] = page.evaluate(REPORT)
+
+        # The effect placer borrows the same panel. It used to write a height
+        # straight onto the tab holder, which outranked the class the tab uses
+        # and left the panel unable to make room for itself afterwards.
+        page.click("#showEffectDivButton")
+        page.wait_for_timeout(400)
+        stages["effectTableInItsHolder"] = page.evaluate(
+            "() => !!document.querySelector('#bottomEffectHolder #effectTable')")
+        stages["inlineHeightWhileEffecting"] = page.evaluate(
+            "() => document.getElementById('activeTabDiv').style.height")
+        page.click("#showEffectDivButton")
+        page.wait_for_timeout(300)
+        page.click("#bottomPopupButton")
+        page.wait_for_timeout(600)
+        stages["reopenedAfterEffects"] = page.evaluate(REPORT)
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestTheCreaturePanelOpens:
+    def test_it_starts_shut(self, creature_panel):
+        assert creature_panel["shut"]["shown"] is False
+
+    def test_the_tab_opens_it_on_a_page_nothing_else_has_touched(self, creature_panel):
+        """hideBottomDiv and showBottomDiv each install the other as the tab's
+        handler, so until one of them runs on load the tab does nothing. The
+        GM view never called either, and the tab only came alive once a tab
+        change happened to call one for it."""
+        assert creature_panel["openedFromFreshPage"]["shown"] is True
+
+    def test_changing_tabs_shuts_it(self, creature_panel):
+        assert creature_panel["shutByChangingTabs"]["shown"] is False
+
+    def test_the_map_sheet_gets_out_of_its_way(self, creature_panel):
+        open_state = creature_panel["selected"]
+        assert open_state["sheetBottom"] <= open_state["panelTop"]
+
+    def test_it_stays_inside_the_window(self, creature_panel):
+        for stage in ("openedFromFreshPage", "selected", "currentTurn"):
+            state = creature_panel[stage]
+            assert state["panelBottom"] <= state["viewport"], stage
+
+    def test_the_palette_still_fits_in_the_shortened_sheet(self, creature_panel):
+        """The palette is inside the map sheet, and the sheet gets shorter to
+        make room for the panel. Sized as a share of the sheet it was squashed
+        under its own tools, and the last row of switches was cut off."""
+        fit = creature_panel["paletteWithPanelOpen"]
+        assert fit["barHeight"] >= fit["tallestGroup"]
+
+
+class TestWhatTheCreaturePanelShows:
+    def test_nothing_selected_and_no_initiative_says_so(self, creature_panel):
+        assert creature_panel["openedFromFreshPage"]["name"] == "Nothing selected"
+        assert creature_panel["openedFromFreshPage"]["attacks"] == 0
+
+    def test_a_selected_creature_is_named(self, creature_panel):
+        assert creature_panel["selected"]["name"] == "Adult Occult Dragon"
+
+    def test_its_attacks_are_listed(self, creature_panel):
+        assert creature_panel["selected"]["attacks"] == 4
+
+    def test_and_the_spells_it_can_only_cast_so_often(self, creature_panel):
+        assert creature_panel["selected"]["castingRows"] > 0
+
+    def test_hp_ac_and_initiative_are_across_the_top(self, creature_panel):
+        stats = creature_panel["selected"]["stats"]
+        assert len(stats) == 3
+        assert stats[0].startswith("HP 138 / 138")
+        # A unit carries AC only as the pieces it adds up from, so this one is
+        # read from the bestiary record the creature came out of.
+        assert stats[1].startswith("AC 28")
+        assert stats[2].startswith("Init")
+
+    def test_with_nothing_selected_it_follows_whose_turn_it_is(self, creature_panel):
+        assert creature_panel["currentTurn"]["name"] == "Adult Occult Dragon"
+        assert creature_panel["currentTurn"]["attacks"] == 4
+
+
+class TestTheCreaturePanelAndTheEffectPlacer:
+    def test_the_effect_table_goes_in_its_own_holder(self, creature_panel):
+        assert creature_panel["effectTableInItsHolder"] is True
+
+    def test_it_leaves_no_written_in_height_behind(self, creature_panel):
+        assert creature_panel["inlineHeightWhileEffecting"] == ""
+
+    def test_and_the_panel_still_opens_afterwards(self, creature_panel):
+        after = creature_panel["reopenedAfterEffects"]
+        assert after["shown"] is True
+        assert after["sheetBottom"] <= after["panelTop"]
+
+
+class TestTheCreaturePanelRaisedNothing:
+    def test_nothing_raised(self, creature_panel):
+        assert creature_panel["errors"] == []

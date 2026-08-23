@@ -91,6 +91,7 @@ One accent. It means *chosen*. Using it for decoration costs it that meaning.
 |---|---|---|
 | `--radius` | `3px` | Controls: buttons, inputs, cells |
 | `--radius-panel` | `6px` | The sheets those controls sit on |
+| `--palette-height` | `94px` | The tool palette under the map, and what the map leaves it |
 | `--heading-tracking` | `0.09em` | Letter-spacing on small-caps headings |
 | `--shadow-resting` | soft, close | A page lying on the desk: panels and form cards |
 | `--shadow-lifted` | deep, wide | Something floating above it: only the monster picker |
@@ -275,6 +276,37 @@ a window too narrow to hold it.
 The swatches sit inside `.nonSelected` wrappers, and `mapTool` marks a
 selection by reaching for the swatch's `parentElement`, so **those wrappers must
 stay the direct parent** of each swatch.
+
+**The bar is `var(--palette-height)` tall, not a share of the sheet.** A toolbar
+is as tall as the tools in it. At `height: 10%` it was 76px in an 820px-tall
+window against 81px of tools, and the bottom row of view switches was cut off —
+and it shrank again whenever anything else took height out of the map sheet.
+`#mapContainer` takes `calc(100% - var(--palette-height))` so the two tile
+exactly. There is a test that measures the bar against its tallest group.
+
+### Creature panel — `#bottomDiv` on the GM view
+
+The GM's counterpart to the player's action bar, in the same place and opened by
+the same kind of tab: the creature the GM is running, under the map they are
+running it on. Its heading is the creature's name; under that a strip of HP, AC
+and initiative, then attacks and spells in two columns that scroll separately.
+
+It shows **whatever is selected, and failing that whoever's turn it is**, so a
+GM can read one creature's attacks while another is up. The attack and casting
+rows are the same `attackRow` and `castingRow` the unit sheet builds, so the
+roll and cast buttons work here without anything new behind them. `readAttacks`
+is scoped to the `#unitAttacks` container, which is why a second set of rows on
+the page is safe.
+
+A unit carries AC only as the pieces it is added up from, so for a creature out
+of the bestiary the figure is read from the cached record, and for one made by
+hand it stays blank rather than showing a wrong total.
+
+The effect placer borrows this panel, and its table goes in `#bottomEffectHolder`
+inside the body rather than at the panel's root. It used to write a height
+straight onto `#activeTabDiv`, which outranked the class the tab toggles and
+left the panel unable to make room for itself afterwards; it calls
+`showBottomDiv`/`hideBottomDiv` now, so there is one way to open this thing.
 
 ### Pull tab — `#leftPopButton`, `#bottomPopupButton`
 
