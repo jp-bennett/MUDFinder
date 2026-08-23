@@ -2213,3 +2213,171 @@ class TestAddingSevenOfThem:
 
     def test_nothing_raised(self, monsters):
         assert monsters["errors"] == []
+
+
+STATBLOCK_REPORT_JS = """
+() => {
+  const block = document.querySelector("#creatureDetail .statblock");
+  if (!block) { return null; }
+  const text = element => element ? element.innerText.trim() : null;
+  return {
+    name: text(block.querySelector(".sbName")),
+    cr: text(block.querySelector(".sbCR")),
+    subtitle: text(block.querySelector(".sbSubtitle")),
+    headings: Array.from(block.querySelectorAll(".sbHeading")).map(h => h.innerText.trim()),
+    abilityCells: Array.from(block.querySelectorAll(".sbAbility")).map(
+      cell => [text(cell.querySelector(".sbAbilityName")), text(cell.querySelector(".sbAbilityScore"))]),
+    missingScores: block.querySelectorAll(".sbAbilityNone").length,
+    boldLabels: Array.from(block.querySelectorAll(".sbLine b")).map(b => b.innerText.trim()),
+    specialAbilities: Array.from(block.querySelectorAll(".sbAbilityEntry")).map(
+      entry => entry.innerText.trim().slice(0, 30)),
+    specialAbilityNames: Array.from(block.querySelectorAll(".sbAbilityEntry b")).map(
+      b => b.innerText.trim()),
+    headerIsBarred: getComputedStyle(block.querySelector(".sbHeader")).backgroundColor,
+  };
+}
+"""
+
+
+@pytest.fixture(scope="module")
+def statblock(browser, live_server):
+    """The statblock a creature shows when its row is clicked.
+
+    Laid out from the columns, because the rendered version the database
+    carried was thirteen megabytes of restating them and the imported half of
+    the table had none of it.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "statblock")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        page.click("div.tab:text-is('Encounter')")
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+
+        # A construct: it has several special abilities, and no Constitution or
+        # Intelligence at all, which the ability row has to show as absent
+        # rather than as a zero.
+        page.fill("#creatureSearchName", "earth elemental construct")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#creatureRows tr').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.click("#creatureRows tr:first-child td:first-child")
+        page.wait_for_function(
+            "() => document.querySelector('#creatureDetail .statblock')",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages = {"construct": page.evaluate(STATBLOCK_REPORT_JS)}
+        stages["rowClipped"] = page.evaluate(
+            """() => {
+                 const list = document.getElementById("creatureList");
+                 const row = document.querySelector("#creatureRows tr");
+                 return row.getBoundingClientRect().bottom
+                        > list.getBoundingClientRect().bottom + 1;
+               }""")
+
+        # And one with real prose, which only the bundled half of the table has.
+        page.fill("#creatureSearchName", "dire ape")
+        page.wait_for_function(
+            """() => document.querySelectorAll('#creatureRows tr').length > 0
+                 && document.querySelectorAll('#creatureRows tr')[0]
+                      .querySelector('td').innerText === 'Dire Ape'""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.click("#creatureRows tr:first-child td:first-child")
+        page.wait_for_function(
+            "() => document.querySelector('#creatureDetail .statblock .sbDescription')",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["withProse"] = page.evaluate(STATBLOCK_REPORT_JS)
+        stages["prose"] = page.inner_text("#creatureDetail .sbDescription")
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestTheStatblockLayout:
+    def test_the_name_and_cr_head_it(self, statblock):
+        assert statblock["construct"]["name"] == "Earth Elemental Construct"
+        assert statblock["construct"]["cr"] == "CR 13"
+
+    def test_the_header_is_a_bar_not_plain_text(self, statblock):
+        colour = statblock["construct"]["headerIsBarred"]
+        assert colour not in ("rgba(0, 0, 0, 0)", "transparent")
+
+    def test_the_subtitle_says_what_it_is(self, statblock):
+        assert statblock["construct"]["subtitle"].startswith("N Huge construct")
+
+    def test_the_subtype_is_not_double_bracketed(self, statblock):
+        """Every subtype in the table already carries its own brackets."""
+        assert "((" not in statblock["construct"]["subtitle"]
+
+    def test_the_sections_are_in_the_printed_order(self, statblock):
+        assert statblock["construct"]["headings"] == [
+            "Defence", "Offence", "Statistics", "Ecology", "Special Abilities"]
+
+    def test_the_labels_are_bold_and_inline(self, statblock):
+        labels = statblock["construct"]["boldLabels"]
+        for expected in ["AC", "hp", "Saves", "Speed", "Melee"]:
+            assert expected in labels
+
+    def test_a_section_with_nothing_in_it_is_not_drawn(self, statblock):
+        """A Dire Ape's rend is a special attack, not a special ability, so it
+        has no Special Abilities section at all -- and an empty heading with a
+        rule under it would look like something failed to load."""
+        assert "Special Abilities" not in statblock["withProse"]["headings"]
+        assert "Defence" in statblock["withProse"]["headings"]
+
+
+class TestTheAbilityScoreRow:
+    def test_all_six_are_shown(self, statblock):
+        names = [cell[0] for cell in statblock["construct"]["abilityCells"]]
+        assert names == ["STR", "DEX", "CON", "INT", "WIS", "CHA"]
+
+    def test_the_scores_are_the_creatures(self, statblock):
+        cells = dict(statblock["construct"]["abilityCells"])
+        assert cells["STR"] == "38"
+        assert cells["DEX"] == "8"
+
+    def test_a_score_the_creature_lacks_is_marked_absent(self, statblock):
+        """A construct has neither Constitution nor Intelligence, and showing
+        those as zero would be wrong rather than merely ugly."""
+        assert statblock["construct"]["missingScores"] == 2
+
+
+class TestSpecialAbilitiesInTheStatblock:
+    def test_each_one_is_its_own_entry(self, statblock):
+        assert len(statblock["construct"]["specialAbilities"]) == 3
+
+    def test_their_names_are_bold(self, statblock):
+        assert "Earth Mastery (Ex)" in statblock["construct"]["specialAbilityNames"]
+
+    def test_they_were_one_paragraph_in_the_column(self, statblock):
+        """Separated by a single space after a bracket, which is why anchoring
+        the split on a double space left this creature as one block."""
+        assert "Immunity to Magic (Ex)" in statblock["construct"]["specialAbilityNames"]
+
+
+class TestProseWhereThereIsAny:
+    def test_the_bundled_bestiary_keeps_its_description(self, statblock):
+        assert "gigantopithecus" in statblock["prose"]
+
+    def test_the_results_row_is_not_clipped(self, statblock):
+        """The list must not be squeezed below its own rows to make room for a
+        long statblock."""
+        assert statblock["rowClipped"] is False
+
+    def test_nothing_raised(self, statblock):
+        assert statblock["errors"] == []

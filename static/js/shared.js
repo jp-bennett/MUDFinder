@@ -1667,65 +1667,248 @@ var CREATURE_TYPES = ["aberration", "animal", "construct", "dragon", "elemental"
     "fey", "humanoid", "magical beast", "monstrous humanoid", "ooze", "outsider",
     "plant", "undead", "vermin"];
 
-// The statblock, in the order Pathfinder prints it. Built here from the
-// columns rather than stored: the database's own rendered version was a
-// re-statement of these same fields and cost thirteen megabytes to keep.
-var STATBLOCK_SECTIONS = [
-    ["", ["Alignment", "Size", "Type", "SubType"]],
-    ["", ["Init", "Senses", "Aura"]],
-    ["DEFENSE", ["AC", "AC_Mods", "HP", "HD", "HP_Mods", "Fort", "Ref", "Will",
-                 "Save_Mods", "DefensiveAbilities", "DR", "Immune", "Resist", "SR",
-                 "Weaknesses"]],
-    ["OFFENSE", ["Speed", "Melee", "Ranged", "Space", "Reach", "SpecialAttacks",
-                 "SpellLikeAbilities", "SpellsKnown", "SpellsPrepared"]],
-    ["STATISTICS", ["AbilityScores", "BaseAtk", "CMB", "CMD", "Feats", "Skills",
-                    "RacialMods", "Languages", "SQ", "Gear", "OtherGear"]],
-    ["ECOLOGY", ["Environment", "Organization", "Treasure"]],
-    ["SPECIAL ABILITIES", ["SpecialAbilities"]],
-    ["TACTICS", ["BeforeCombat", "DuringCombat", "Morale"]],
-];
+// The statblock, laid out the way Pathfinder prints one: a name and its CR at
+// the top, then DEFENCE, OFFENCE, STATISTICS, ECOLOGY and the special
+// abilities, with the labels bold and inline rather than on lines of their own.
+//
+// Built as elements rather than a block of text, so the parts can be styled --
+// and every value goes in through textContent, because this is text out of the
+// database and none of it is ours to trust as markup.
 
-// Rendered without a "SpecialAbilities:" label, because the section heading
-// above it already says so and each ability is on its own line.
-var STATBLOCK_BARE_FIELDS = ["SpecialAbilities", "AbilityScores"];
+// label, then the columns that make up the value, joined with a space.
+var STATBLOCK_LINES = {
+    defence: [
+        ["AC", ["AC", "AC_Mods"]],
+        ["hp", ["HP", "HD", "HP_Mods"]],
+        ["Saves", ["Saves", "Save_Mods"]],
+        ["Defensive Abilities", ["DefensiveAbilities"]],
+        ["DR", ["DR"]],
+        ["Immune", ["Immune"]],
+        ["Resist", ["Resist"]],
+        ["SR", ["SR"]],
+        ["Weaknesses", ["Weaknesses"]],
+    ],
+    offence: [
+        ["Speed", ["Speed", "Speed_Mod"]],
+        ["Melee", ["Melee"]],
+        ["Ranged", ["Ranged"]],
+        ["Space", ["Space"]],
+        ["Reach", ["Reach"]],
+        ["Special Attacks", ["SpecialAttacks"]],
+        ["Spell-Like Abilities", ["SpellLikeAbilities"]],
+        ["Spells Known", ["SpellsKnown"]],
+        ["Spells Prepared", ["SpellsPrepared"]],
+        ["Domains", ["SpellDomains"]],
+    ],
+    statistics: [
+        ["Base Atk", ["BaseAtk"]],
+        ["CMB", ["CMB"]],
+        ["CMD", ["CMD"]],
+        ["Feats", ["Feats"]],
+        ["Skills", ["Skills"]],
+        ["Racial Modifiers", ["RacialMods"]],
+        ["Languages", ["Languages"]],
+        ["SQ", ["SQ"]],
+        ["Gear", ["Gear", "OtherGear"]],
+    ],
+    ecology: [
+        ["Environment", ["Environment"]],
+        ["Organization", ["Organization"]],
+        ["Treasure", ["Treasure"]],
+    ],
+};
 
-function statblockLabel(field) {
-    // AC_Mods -> "AC Mods", BeforeCombat -> "Before Combat".
-    return field.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2");
+var ABILITY_SCORES = ["Str", "Dex", "Con", "Int", "Wis", "Cha"];
+
+function statblockValue(creature, columns) {
+    var parts = [];
+    for (var c = 0; c < columns.length; c++) {
+        var value = creature[columns[c]];
+        if (value !== null && value !== undefined && String(value).trim() !== "") {
+            parts.push(String(value).trim());
+        }
+    }
+    return parts.join(" ");
 }
 
-function statblockText(creature) {
-    var lines = [creature.Name + "    CR " + (creature.CR || "—")];
-    if (creature.XP) {
-        lines.push("XP " + creature.XP);
+function statblockLine(parent, label, value) {
+    // "AC 18, touch 16, flat-footed 14" -- the label bold and the value
+    // running on from it, rather than a column of "AC: ..." pairs.
+    if (!value) {
+        return;
     }
-    for (var s = 0; s < STATBLOCK_SECTIONS.length; s++) {
-        var heading = STATBLOCK_SECTIONS[s][0];
-        var fields = STATBLOCK_SECTIONS[s][1];
-        var section = [];
-        for (var f = 0; f < fields.length; f++) {
-            var value = creature[fields[f]];
-            if (value !== null && value !== undefined && String(value).trim() !== "") {
-                section.push(STATBLOCK_BARE_FIELDS.indexOf(fields[f]) !== -1
-                    ? String(value).trim()
-                    : statblockLabel(fields[f]) + ": " + String(value).trim());
-            }
+    var line = document.createElement("div");
+    line.className = "sbLine";
+    if (label) {
+        var name = document.createElement("b");
+        name.textContent = label;
+        line.appendChild(name);
+        line.appendChild(document.createTextNode(" "));
+    }
+    // A value the server has already broken into entries gets one line each.
+    var entries = String(value).split("\n");
+    line.appendChild(document.createTextNode(entries[0]));
+    parent.appendChild(line);
+    for (var e = 1; e < entries.length; e++) {
+        var extra = document.createElement("div");
+        extra.className = "sbLine sbContinued";
+        extra.textContent = entries[e];
+        parent.appendChild(extra);
+    }
+}
+
+function statblockSection(parent, heading, creature, lines) {
+    var body = document.createElement("div");
+    for (var l = 0; l < lines.length; l++) {
+        statblockLine(body, lines[l][0], statblockValue(creature, lines[l][1]));
+    }
+    if (!body.childNodes.length) {
+        return null;
+    }
+    var title = document.createElement("div");
+    title.className = "sbHeading";
+    title.textContent = heading;
+    parent.appendChild(title);
+    parent.appendChild(body);
+    return body;
+}
+
+function abilityScoreRow(raw) {
+    // Six little boxes rather than a run of "Str 11, Dex 15" -- they are the
+    // numbers most often wanted at a glance.
+    var scores = {};
+    var pattern = /\b(Str|Dex|Con|Int|Wis|Cha)\s+(-|\d+)/gi;
+    var found;
+    while ((found = pattern.exec(String(raw || ""))) !== null) {
+        scores[found[1].toLowerCase()] = found[2];
+    }
+    if (Object.keys(scores).length === 0) {
+        return null;
+    }
+    var row = document.createElement("div");
+    row.className = "sbAbilities";
+    for (var a = 0; a < ABILITY_SCORES.length; a++) {
+        var key = ABILITY_SCORES[a].toLowerCase();
+        var cell = document.createElement("div");
+        cell.className = "sbAbility";
+        var label = document.createElement("div");
+        label.className = "sbAbilityName";
+        label.textContent = ABILITY_SCORES[a].toUpperCase();
+        var value = document.createElement("div");
+        value.className = "sbAbilityScore";
+        // A dash means the creature has no such score, as with a construct's
+        // Constitution. Shown as the dash rather than as a zero.
+        value.textContent = scores[key] === undefined ? "\u2014" : scores[key];
+        if (scores[key] === "-" || scores[key] === undefined) {
+            cell.classList.add("sbAbilityNone");
         }
-        if (section.length) {
-            lines.push("");
-            if (heading) {
-                lines.push(heading);
-            }
-            lines = lines.concat(section);
+        cell.appendChild(label);
+        cell.appendChild(value);
+        row.appendChild(cell);
+    }
+    return row;
+}
+
+function specialAbilityLines(parent, raw) {
+    // "Aura Sight (Su) An old dragon sees..." -- the name and its tag bold,
+    // the rest running on.
+    var entries = String(raw || "").split("\n");
+    for (var e = 0; e < entries.length; e++) {
+        var entry = entries[e].trim();
+        if (!entry) {
+            continue;
+        }
+        var line = document.createElement("div");
+        line.className = "sbAbilityEntry";
+        var lead = entry.match(/^(.{0,60}?\((?:Ex|Su|Sp)[^)]{0,12}\))\s*/);
+        if (lead) {
+            var name = document.createElement("b");
+            name.textContent = lead[1];
+            line.appendChild(name);
+            line.appendChild(document.createTextNode(" " + entry.slice(lead[0].length)));
+        } else {
+            line.textContent = entry;
+        }
+        parent.appendChild(line);
+    }
+}
+
+function statblockElement(creature) {
+    var root = document.createElement("div");
+    root.className = "statblock";
+
+    var header = document.createElement("div");
+    header.className = "sbHeader";
+    var name = document.createElement("span");
+    name.className = "sbName";
+    name.textContent = creature.Name || "Creature";
+    var cr = document.createElement("span");
+    cr.className = "sbCR";
+    cr.textContent = "CR " + (creature.CR || "\u2014");
+    header.appendChild(name);
+    header.appendChild(cr);
+    root.appendChild(header);
+
+    // What it is, the way a statblock opens: "CG Medium humanoid (human)".
+    var identity = [creature.Alignment, creature.Size, creature.Type].filter(Boolean).join(" ");
+    if (creature.SubType) {
+        // Every subtype in the table already carries its own brackets.
+        var subtype = String(creature.SubType).trim();
+        identity += " " + (subtype.charAt(0) === "(" ? subtype : "(" + subtype + ")");
+    }
+    var subtitle = document.createElement("div");
+    subtitle.className = "sbSubtitle";
+    subtitle.textContent = [identity.trim(), creature.XP ? "XP " + creature.XP : ""]
+        .filter(Boolean).join("  \u00b7  ");
+    root.appendChild(subtitle);
+
+    var senses = document.createElement("div");
+    senses.className = "sbSenses";
+    statblockLine(senses, "Init", creature.Init);
+    statblockLine(senses, "Senses", creature.Senses);
+    statblockLine(senses, "Aura", creature.Aura);
+    if (senses.childNodes.length) {
+        root.appendChild(senses);
+    }
+
+    statblockSection(root, "Defence", creature, STATBLOCK_LINES.defence);
+    statblockSection(root, "Offence", creature, STATBLOCK_LINES.offence);
+
+    var statistics = statblockSection(root, "Statistics", creature, STATBLOCK_LINES.statistics);
+    var abilities = abilityScoreRow(creature.AbilityScores);
+    if (abilities) {
+        if (statistics) {
+            statistics.insertBefore(abilities, statistics.firstChild);
+        } else {
+            var title = document.createElement("div");
+            title.className = "sbHeading";
+            title.textContent = "Statistics";
+            root.appendChild(title);
+            root.appendChild(abilities);
         }
     }
-    // Bundled creatures carry real prose. Imported ones mostly do not, which is
-    // why the sections above exist.
+
+    statblockSection(root, "Ecology", creature, STATBLOCK_LINES.ecology);
+
+    if (creature.SpecialAbilities && String(creature.SpecialAbilities).trim()) {
+        var abilityTitle = document.createElement("div");
+        abilityTitle.className = "sbHeading";
+        abilityTitle.textContent = "Special Abilities";
+        root.appendChild(abilityTitle);
+        var abilityBody = document.createElement("div");
+        specialAbilityLines(abilityBody, creature.SpecialAbilities);
+        root.appendChild(abilityBody);
+    }
+
+    // Bundled creatures carry real prose; most imported ones do not, which is
+    // why every section above is built from the columns.
     if (creature.Description && String(creature.Description).trim()) {
-        lines.push("");
-        lines.push(String(creature.Description).trim());
+        var description = document.createElement("div");
+        description.className = "sbDescription";
+        description.textContent = String(creature.Description).trim();
+        root.appendChild(description);
     }
-    return lines.join("\n");
+    return root;
 }
 
 // The picker's columns, in order. `field` is both the key on a result row and
@@ -1941,9 +2124,7 @@ async function chooseCreature() {
                 removeContents(creatureDetailDiv);
                 creatureDetailDiv.classList.remove("creatureDetailPrompt");
                 if (full) {
-                    // innerText throughout: this is text out of the database,
-                    // and none of it is ours to trust as markup.
-                    creatureDetailDiv.innerText = statblockText(full.creature);
+                    creatureDetailDiv.appendChild(statblockElement(full.creature));
                 }
             };
             return tableRow;

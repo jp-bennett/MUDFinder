@@ -649,3 +649,37 @@ class TestPuttingTheLineBreaksBack:
             "select SpecialAbilities from creatures where Name like 'Adult Occult Dragon%'"
         ).fetchone()
         assert row and mudfinder.split_abilities(row[0]).count("\n") >= 5
+
+
+class TestAbilityBoundariesThatAreNotDoubleSpaces:
+    """How the abilities column punctuates the gap between entries varies.
+
+    Anchoring the split on a double space caught most of it and missed the
+    rows that separate with a single space after a closing bracket, which
+    left creatures like the Earth Elemental Construct as one paragraph.
+    """
+
+    def test_a_single_space_after_a_bracket_is_a_break(self):
+        text = ("Earth Mastery (Ex) Gains a bonus. (These modifiers are not included.) "
+                "Immunity to Magic (Ex) Immune to any spell.")
+        assert mudfinder.split_abilities(text).split("\n") == [
+            "Earth Mastery (Ex) Gains a bonus. (These modifiers are not included.)",
+            "Immunity to Magic (Ex) Immune to any spell.",
+        ]
+
+    def test_a_single_space_after_a_full_stop_is_a_break(self):
+        text = "Rend (Ex) Two claws hit. Pound (Ex) Slams an opponent."
+        assert mudfinder.split_abilities(text).count("\n") == 1
+
+    def test_a_tag_mid_sentence_is_not_a_break(self):
+        """The break needs a finished sentence in front of it, or every
+        parenthesised tag in a description would start a new ability."""
+        text = "Rend (Ex) If both claws hit the same Target (Ex) is not a new ability."
+        assert "\n" not in mudfinder.split_abilities(text)
+
+    def test_the_shipped_construct_splits_into_its_three(self):
+        db = sqlite3.connect("mudfinder.sql")
+        row = db.execute(
+            "select SpecialAbilities from creatures where Name = 'Earth Elemental Construct'"
+        ).fetchone()
+        assert row and len(mudfinder.split_abilities(row[0]).split("\n")) == 3

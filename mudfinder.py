@@ -125,13 +125,23 @@ ALIGNMENTS = ("LG", "NG", "CG", "LN", "N", "CN", "LE", "NE", "CE")
 
 # Where one special ability ends and the next begins. The column runs them
 # together -- "Appraising Sight (Ex) ...free action.  Aura Sight (Su) ..." --
-# with nothing but a double space between, because the structure only ever
-# existed in the HTML statblock the import drops. Each one opens with its name
-# and an (Ex)/(Su)/(Sp) tag, which is enough to put the breaks back. Measured
-# over the table: 3,054 rows split, up to 21 abilities each, and no split point
-# landing anywhere but on an ability name.
+# because the structure only ever existed in the HTML statblock the import
+# drops.
+#
+# The break is a finished sentence followed by an ability's name and its
+# (Ex)/(Su)/(Sp) tag. Anchoring on the punctuation rather than on a double
+# space matters: plenty of rows separate with a single space after a closing
+# bracket, "...not included in the statistics block.) Immunity to Magic (Ex)".
+# Measured over the table: 3,558 rows split, up to 21 abilities each, and no
+# split point landing anywhere but on an ability name.
+# Bounded to five words, because that is the longest a real ability name gets
+# -- measured across the table, they run one to five words and never more.
+# Without the bound, "...hit the same Target (Ex)" reads as a new ability and
+# the split lands in the middle of a description.
 ABILITY_BOUNDARY = re.compile(
-    r"\s{2,}(?=[A-Z][A-Za-z0-9'\u2019\- ]{0,40}\((?:Ex|Su|Sp)[^)]{0,12}\))")
+    r"(?<=[.)\]!?])\s+"
+    r"(?=[A-Z][A-Za-z0-9'\u2019\-]*(?:\s+[A-Za-z0-9'\u2019\-]+){0,4}"
+    r"\s*\((?:Ex|Su|Sp)[^)]{0,12}\))")
 
 
 # Spell lists have the same problem and a different shape: they run on at each
