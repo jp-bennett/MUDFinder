@@ -1978,3 +1978,453 @@ class TestVisionCheckboxesStick:
 
     def test_nothing_raised(self, vision_checkboxes):
         assert vision_checkboxes["errors"] == []
+
+
+MONSTER_REPORT_JS = """
+(name) => ({
+  rows: Array.from(document.querySelectorAll("#creatureRows tr td:first-child"))
+    .map(cell => cell.innerText),
+  headings: Array.from(document.querySelectorAll(".creatureHeading"))
+    .map(cell => cell.innerText),
+  crColumn: Array.from(document.querySelectorAll("#creatureRows tr td:nth-child(2)"))
+    .map(cell => cell.innerText),
+  hpColumn: Array.from(document.querySelectorAll("#creatureRows tr td:nth-child(5)"))
+    .map(cell => cell.innerText),
+  countText: document.getElementById("creatureSearchCount")
+    ? document.getElementById("creatureSearchCount").innerText : "",
+  detailLength: document.getElementById("creatureDetail")
+    ? document.getElementById("creatureDetail").innerText.length : 0,
+  detailHead: document.getElementById("creatureDetail")
+    ? document.getElementById("creatureDetail").innerText.slice(0, 40) : "",
+  modalOpen: !!document.getElementById("modalBackground"),
+  chosenRows: document.querySelectorAll("#creatureRows .creatureRowChosen").length,
+  chosenRowName: document.querySelector("#creatureRows .creatureRowChosen td")
+    ? document.querySelector("#creatureRows .creatureRowChosen td").innerText : "",
+  chosen: document.getElementById("chosenCreature").innerText,
+  unitName: document.getElementById("unitName").value,
+  unitHP: document.getElementById("unitHP").value,
+  unitInit: document.getElementById("unitInit").value,
+  initLabel: document.getElementById("unitInitLabel").innerText,
+  added: (typeof gmData !== "undefined" && gmData)
+    ? gmData.unitList.filter(unit => unit.charName === name) : [],
+  chat: document.getElementById("chatText").innerText,
+})
+"""
+
+
+@pytest.fixture(scope="module")
+def monsters(browser, live_server):
+    """Pick a monster out of the database and put seven of them on the board.
+
+    Seven of one creature was seven trips through the encounter form, typing
+    the name, the hit points and an initiative that had been rolled somewhere
+    else each time.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 950})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "monsters")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1) for pair in page.url.split("?", 1)[1].split("&"))["room"]
+
+        player = context.new_page()
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        page.click("div.tab:text-is('Encounter')")
+        page.wait_for_selector("#chooseMonsterButton", state="visible")
+        stages = {"before": page.evaluate(MONSTER_REPORT_JS, "Dire Ape")}
+
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+        page.fill("#creatureSearchName", "dire ape")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#creatureRows tr').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["searched"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
+
+        # Filtering narrows the same search rather than starting a new one.
+        page.select_option("#creatureSearchType", "dragon")
+        page.wait_for_function(
+            "() => document.getElementById('creatureSearchCount').innerText.indexOf('No creatures') === 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["filteredAway"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
+        page.select_option("#creatureSearchType", "animal")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#creatureRows tr').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        page.click("#creatureRows tr:first-child td:first-child")
+        page.wait_for_function(
+            "() => document.getElementById('creatureDetail').innerText.length > 100",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["detail"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
+
+        page.click("#creatureRows tr:first-child button")
+        page.wait_for_function(
+            "() => !document.getElementById('modalBackground')", timeout=HANDSHAKE_TIMEOUT)
+        stages["picked"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
+
+        page.fill("#unitCount", "7")
+        page.set_checked("#addToInit", True)
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.filter(u => u.charName === "Dire Ape").length === 7""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(600)
+        stages["added"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
+        player.wait_for_timeout(400)
+        stages["playerChat"] = player.inner_text("#chatText")
+
+        # The column headings, which re-run the search rather than reordering
+        # the rows already here -- the result is capped, so those are not the
+        # same thing.
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+        page.fill("#creatureSearchName", "dragon")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#creatureRows tr').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["byName"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
+        page.click(".creatureHeading:nth-child(2)")
+        page.wait_for_function(
+            """() => document.querySelectorAll('.creatureHeading')[1].innerText.indexOf('\u25b4') !== -1""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(400)
+        stages["byCR"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
+        page.click(".creatureHeading:nth-child(2)")
+        page.wait_for_function(
+            """() => document.querySelectorAll('.creatureHeading')[1].innerText.indexOf('\u25be') !== -1""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(400)
+        stages["byCRDescending"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
+        page.click(".creatureHeading:nth-child(5)")
+        page.wait_for_timeout(700)
+        stages["byHP"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
+        # A corner of the backdrop: its centre is where the picker sits, and
+        # the picker stops the click from reaching it.
+        page.click("#modalBackground", position={"x": 5, "y": 5})
+        page.wait_for_function(
+            "() => !document.getElementById('modalBackground')", timeout=HANDSHAKE_TIMEOUT)
+
+        # Searching repeatedly must not pile up socket listeners, which is what
+        # the CR browser this replaced did on every change.
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+        for term in ["goblin", "ogre", "troll", "wolf"]:
+            page.fill("#creatureSearchName", term)
+            page.wait_for_timeout(350)
+        stages["listeners"] = page.evaluate(
+            """() => socket._callbacks
+                 ? Object.keys(socket._callbacks).filter(
+                     k => k.indexOf("database_creature") !== -1).length
+                 : 0""")
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestSearchingForAMonster:
+    def test_the_button_is_on_the_encounter_form(self, monsters):
+        assert monsters["before"]["chosen"] == ""
+
+    def test_a_name_search_finds_the_creature(self, monsters):
+        assert "Dire Ape" in monsters["searched"]["rows"]
+
+    def test_the_search_is_a_substring(self, monsters):
+        assert "Fiendish Dire Ape" in monsters["searched"]["rows"]
+
+    def test_the_result_count_is_reported(self, monsters):
+        assert "creature" in monsters["searched"]["countText"]
+
+    def test_a_type_filter_narrows_the_same_search(self, monsters):
+        """No apes are dragons."""
+        assert monsters["filteredAway"]["rows"] == []
+        assert "No creatures" in monsters["filteredAway"]["countText"]
+
+    def test_clicking_a_row_shows_its_statblock(self, monsters):
+        assert monsters["detail"]["detailLength"] > 100
+        assert monsters["detail"]["detailHead"].startswith("Dire Ape")
+
+    def test_the_clicked_row_stays_marked(self, monsters):
+        """Hover alone would leave it unclear which creature the statblock
+        below belongs to the moment the mouse moves away."""
+        assert monsters["detail"]["chosenRows"] == 1
+        assert monsters["detail"]["chosenRowName"] == "Dire Ape"
+
+    def test_only_one_row_is_marked_at_a_time(self, monsters):
+        assert monsters["byCR"]["chosenRows"] == 0
+
+    def test_the_columns_all_have_headings(self, monsters):
+        assert [h.replace(" \u25b4", "").replace(" \u25be", "")
+                for h in monsters["byName"]["headings"]] == \
+            ["Name", "CR", "Type", "Size", "HP", "Source"]
+
+    def test_the_sorted_column_is_marked(self, monsters):
+        assert "\u25b4" in monsters["byName"]["headings"][0]
+
+    def test_clicking_a_heading_sorts_by_it(self, monsters):
+        crs = [float(c) for c in monsters["byCR"]["crColumn"] if "/" not in c]
+        assert crs == sorted(crs)
+
+    def test_the_mark_moves_to_the_column_clicked(self, monsters):
+        assert "\u25b4" in monsters["byCR"]["headings"][1]
+        assert "\u25b4" not in monsters["byCR"]["headings"][0]
+
+    def test_clicking_it_again_turns_it_around(self, monsters):
+        crs = [float(c) for c in monsters["byCRDescending"]["crColumn"] if "/" not in c]
+        assert crs == sorted(crs, reverse=True)
+        assert "\u25be" in monsters["byCRDescending"]["headings"][1]
+
+    def test_hp_sorts_as_a_number(self, monsters):
+        """Sorted as text, 9 would come after 500."""
+        hp = [float(h) for h in monsters["byHP"]["hpColumn"] if h and h[0].isdigit()]
+        assert hp == sorted(hp)
+
+    def test_sorting_asks_the_server_rather_than_shuffling_the_page(self, monsters):
+        """The list is capped, so the rows themselves have to change."""
+        assert monsters["byCR"]["rows"] != monsters["byName"]["rows"]
+
+    def test_repeated_searches_do_not_pile_up_listeners(self, monsters):
+        """The picker this replaced registered one per search, for the life of
+        the page."""
+        assert monsters["listeners"] <= 1
+
+
+class TestAddingSevenOfThem:
+    def test_choosing_fills_the_form(self, monsters):
+        assert monsters["picked"]["unitName"] == "Dire Ape"
+        assert monsters["picked"]["unitHP"] == "30"
+        assert monsters["picked"]["unitInit"] == "+2"
+
+    def test_the_creature_is_named_on_the_form(self, monsters):
+        assert "Dire Ape" in monsters["picked"]["chosen"]
+
+    def test_the_initiative_field_becomes_a_bonus(self, monsters):
+        """A statblock gives a modifier, never a finished count -- and that is
+        true for one creature as much as for seven."""
+        assert "Bonus" in monsters["picked"]["initLabel"]
+
+    def test_seven_are_added(self, monsters):
+        assert len(monsters["added"]["added"]) == 7
+
+    def test_they_rolled_separately(self, monsters):
+        initiatives = {unit["initiative"] for unit in monsters["added"]["added"]}
+        assert len(initiatives) > 1
+
+    def test_the_rolls_used_the_creatures_bonus(self, monsters):
+        assert all(3 <= int(unit["initiative"]) <= 22
+                   for unit in monsters["added"]["added"])
+
+    def test_they_carry_the_statblock(self, monsters):
+        ape = monsters["added"]["added"][0]
+        assert ape["HP"] == 30
+        assert ape["size"] == "large"
+        assert ape["lowLight"] is True
+        assert ape["perception"] == 8
+
+    def test_they_are_mobs_not_animals(self, monsters):
+        """Unit.type is the role on the map, not the bestiary type."""
+        assert all(unit["type"] == "Mob" for unit in monsters["added"]["added"])
+
+    def test_the_gm_is_shown_the_rolls(self, monsters):
+        assert "Dire Ape initiative:" in monsters["added"]["chat"]
+
+    def test_the_players_are_not(self, monsters):
+        assert "initiative:" not in monsters["playerChat"]
+
+    def test_the_form_is_cleared_for_the_next_creature(self, monsters):
+        assert monsters["added"]["unitName"] == ""
+        assert monsters["added"]["chosen"] == ""
+
+    def test_nothing_raised(self, monsters):
+        assert monsters["errors"] == []
+
+
+STATBLOCK_REPORT_JS = """
+() => {
+  const block = document.querySelector("#creatureDetail .statblock");
+  if (!block) { return null; }
+  const text = element => element ? element.innerText.trim() : null;
+  return {
+    name: text(block.querySelector(".sbName")),
+    cr: text(block.querySelector(".sbCR")),
+    subtitle: text(block.querySelector(".sbSubtitle")),
+    headings: Array.from(block.querySelectorAll(".sbHeading")).map(h => h.innerText.trim()),
+    abilityCells: Array.from(block.querySelectorAll(".sbAbility")).map(
+      cell => [text(cell.querySelector(".sbAbilityName")), text(cell.querySelector(".sbAbilityScore"))]),
+    missingScores: block.querySelectorAll(".sbAbilityNone").length,
+    boldLabels: Array.from(block.querySelectorAll(".sbLine b")).map(b => b.innerText.trim()),
+    specialAbilities: Array.from(block.querySelectorAll(".sbAbilityEntry")).map(
+      entry => entry.innerText.trim().slice(0, 30)),
+    specialAbilityNames: Array.from(block.querySelectorAll(".sbAbilityEntry b")).map(
+      b => b.innerText.trim()),
+    headerIsBarred: getComputedStyle(block.querySelector(".sbHeader")).backgroundColor,
+  };
+}
+"""
+
+
+@pytest.fixture(scope="module")
+def statblock(browser, live_server):
+    """The statblock a creature shows when its row is clicked.
+
+    Laid out from the columns, because the rendered version the database
+    carried was thirteen megabytes of restating them and the imported half of
+    the table had none of it.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "statblock")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        page.click("div.tab:text-is('Encounter')")
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+
+        # A construct: it has several special abilities, and no Constitution or
+        # Intelligence at all, which the ability row has to show as absent
+        # rather than as a zero.
+        page.fill("#creatureSearchName", "earth elemental construct")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#creatureRows tr').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.click("#creatureRows tr:first-child td:first-child")
+        page.wait_for_function(
+            "() => document.querySelector('#creatureDetail .statblock')",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages = {"construct": page.evaluate(STATBLOCK_REPORT_JS)}
+        stages["rowClipped"] = page.evaluate(
+            """() => {
+                 const list = document.getElementById("creatureList");
+                 const row = document.querySelector("#creatureRows tr");
+                 return row.getBoundingClientRect().bottom
+                        > list.getBoundingClientRect().bottom + 1;
+               }""")
+
+        # And one with real prose, which only the bundled half of the table has.
+        page.fill("#creatureSearchName", "dire ape")
+        page.wait_for_function(
+            """() => document.querySelectorAll('#creatureRows tr').length > 0
+                 && document.querySelectorAll('#creatureRows tr')[0]
+                      .querySelector('td').innerText === 'Dire Ape'""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.click("#creatureRows tr:first-child td:first-child")
+        page.wait_for_function(
+            "() => document.querySelector('#creatureDetail .statblock .sbDescription')",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["withProse"] = page.evaluate(STATBLOCK_REPORT_JS)
+        stages["prose"] = page.inner_text("#creatureDetail .sbDescription")
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestTheStatblockLayout:
+    def test_the_name_and_cr_head_it(self, statblock):
+        assert statblock["construct"]["name"] == "Earth Elemental Construct"
+        assert statblock["construct"]["cr"] == "CR 13"
+
+    def test_the_header_is_a_bar_not_plain_text(self, statblock):
+        colour = statblock["construct"]["headerIsBarred"]
+        assert colour not in ("rgba(0, 0, 0, 0)", "transparent")
+
+    def test_the_subtitle_says_what_it_is(self, statblock):
+        assert statblock["construct"]["subtitle"].startswith("N Huge construct")
+
+    def test_the_subtype_is_not_double_bracketed(self, statblock):
+        """Every subtype in the table already carries its own brackets."""
+        assert "((" not in statblock["construct"]["subtitle"]
+
+    def test_the_sections_are_in_the_printed_order(self, statblock):
+        assert statblock["construct"]["headings"] == [
+            "Defence", "Offence", "Statistics", "Ecology", "Special Abilities"]
+
+    def test_the_labels_are_bold_and_inline(self, statblock):
+        labels = statblock["construct"]["boldLabels"]
+        for expected in ["AC", "hp", "Saves", "Speed", "Melee"]:
+            assert expected in labels
+
+    def test_a_section_with_nothing_in_it_is_not_drawn(self, statblock):
+        """A Dire Ape's rend is a special attack, not a special ability, so it
+        has no Special Abilities section at all -- and an empty heading with a
+        rule under it would look like something failed to load."""
+        assert "Special Abilities" not in statblock["withProse"]["headings"]
+        assert "Defence" in statblock["withProse"]["headings"]
+
+
+class TestTheAbilityScoreRow:
+    def test_all_six_are_shown(self, statblock):
+        names = [cell[0] for cell in statblock["construct"]["abilityCells"]]
+        assert names == ["STR", "DEX", "CON", "INT", "WIS", "CHA"]
+
+    def test_the_scores_are_the_creatures(self, statblock):
+        cells = dict(statblock["construct"]["abilityCells"])
+        assert cells["STR"] == "38"
+        assert cells["DEX"] == "8"
+
+    def test_a_score_the_creature_lacks_is_marked_absent(self, statblock):
+        """A construct has neither Constitution nor Intelligence, and showing
+        those as zero would be wrong rather than merely ugly."""
+        assert statblock["construct"]["missingScores"] == 2
+
+
+class TestSpecialAbilitiesInTheStatblock:
+    def test_each_one_is_its_own_entry(self, statblock):
+        assert len(statblock["construct"]["specialAbilities"]) == 3
+
+    def test_their_names_are_bold(self, statblock):
+        assert "Earth Mastery (Ex)" in statblock["construct"]["specialAbilityNames"]
+
+    def test_they_were_one_paragraph_in_the_column(self, statblock):
+        """Separated by a single space after a bracket, which is why anchoring
+        the split on a double space left this creature as one block."""
+        assert "Immunity to Magic (Ex)" in statblock["construct"]["specialAbilityNames"]
+
+
+class TestProseWhereThereIsAny:
+    def test_the_bundled_bestiary_keeps_its_description(self, statblock):
+        assert "gigantopithecus" in statblock["prose"]
+
+    def test_the_results_row_is_not_clipped(self, statblock):
+        """The list must not be squeezed below its own rows to make room for a
+        long statblock."""
+        assert statblock["rowClipped"] is False
+
+    def test_nothing_raised(self, statblock):
+        assert statblock["errors"] == []

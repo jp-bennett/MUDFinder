@@ -1660,6 +1660,291 @@ function drawSelected(data) {
         }
     }
 }
+// The creature types the search can filter on. Kept in step with
+// CREATURE_TYPES in mudfinder.py, which is in step with the TypeNorm column
+// that tools/import_creatures.py writes.
+var CREATURE_TYPES = ["aberration", "animal", "construct", "dragon", "elemental",
+    "fey", "humanoid", "magical beast", "monstrous humanoid", "ooze", "outsider",
+    "plant", "undead", "vermin"];
+
+// The statblock, laid out the way Pathfinder prints one: a name and its CR at
+// the top, then DEFENCE, OFFENCE, STATISTICS, ECOLOGY and the special
+// abilities, with the labels bold and inline rather than on lines of their own.
+//
+// Built as elements rather than a block of text, so the parts can be styled --
+// and every value goes in through textContent, because this is text out of the
+// database and none of it is ours to trust as markup.
+
+// label, then the columns that make up the value, joined with a space.
+var STATBLOCK_LINES = {
+    defence: [
+        ["AC", ["AC", "AC_Mods"]],
+        ["hp", ["HP", "HD", "HP_Mods"]],
+        ["Saves", ["Saves", "Save_Mods"]],
+        ["Defensive Abilities", ["DefensiveAbilities"]],
+        ["DR", ["DR"]],
+        ["Immune", ["Immune"]],
+        ["Resist", ["Resist"]],
+        ["SR", ["SR"]],
+        ["Weaknesses", ["Weaknesses"]],
+    ],
+    offence: [
+        ["Speed", ["Speed", "Speed_Mod"]],
+        ["Melee", ["Melee"]],
+        ["Ranged", ["Ranged"]],
+        ["Space", ["Space"]],
+        ["Reach", ["Reach"]],
+        ["Special Attacks", ["SpecialAttacks"]],
+        ["Spell-Like Abilities", ["SpellLikeAbilities"]],
+        ["Spells Known", ["SpellsKnown"]],
+        ["Spells Prepared", ["SpellsPrepared"]],
+        ["Domains", ["SpellDomains"]],
+    ],
+    statistics: [
+        ["Base Atk", ["BaseAtk"]],
+        ["CMB", ["CMB"]],
+        ["CMD", ["CMD"]],
+        ["Feats", ["Feats"]],
+        ["Skills", ["Skills"]],
+        ["Racial Modifiers", ["RacialMods"]],
+        ["Languages", ["Languages"]],
+        ["SQ", ["SQ"]],
+        ["Gear", ["Gear", "OtherGear"]],
+    ],
+    ecology: [
+        ["Environment", ["Environment"]],
+        ["Organization", ["Organization"]],
+        ["Treasure", ["Treasure"]],
+    ],
+};
+
+var ABILITY_SCORES = ["Str", "Dex", "Con", "Int", "Wis", "Cha"];
+
+function statblockValue(creature, columns) {
+    var parts = [];
+    for (var c = 0; c < columns.length; c++) {
+        var value = creature[columns[c]];
+        if (value !== null && value !== undefined && String(value).trim() !== "") {
+            parts.push(String(value).trim());
+        }
+    }
+    return parts.join(" ");
+}
+
+function statblockLine(parent, label, value) {
+    // "AC 18, touch 16, flat-footed 14" -- the label bold and the value
+    // running on from it, rather than a column of "AC: ..." pairs.
+    if (!value) {
+        return;
+    }
+    var line = document.createElement("div");
+    line.className = "sbLine";
+    if (label) {
+        var name = document.createElement("b");
+        name.textContent = label;
+        line.appendChild(name);
+        line.appendChild(document.createTextNode(" "));
+    }
+    // A value the server has already broken into entries gets one line each.
+    var entries = String(value).split("\n");
+    line.appendChild(document.createTextNode(entries[0]));
+    parent.appendChild(line);
+    for (var e = 1; e < entries.length; e++) {
+        var extra = document.createElement("div");
+        extra.className = "sbLine sbContinued";
+        extra.textContent = entries[e];
+        parent.appendChild(extra);
+    }
+}
+
+function statblockSection(parent, heading, creature, lines) {
+    var body = document.createElement("div");
+    for (var l = 0; l < lines.length; l++) {
+        statblockLine(body, lines[l][0], statblockValue(creature, lines[l][1]));
+    }
+    if (!body.childNodes.length) {
+        return null;
+    }
+    var title = document.createElement("div");
+    title.className = "sbHeading";
+    title.textContent = heading;
+    parent.appendChild(title);
+    parent.appendChild(body);
+    return body;
+}
+
+function abilityScoreRow(raw) {
+    // Six little boxes rather than a run of "Str 11, Dex 15" -- they are the
+    // numbers most often wanted at a glance.
+    var scores = {};
+    var pattern = /\b(Str|Dex|Con|Int|Wis|Cha)\s+(-|\d+)/gi;
+    var found;
+    while ((found = pattern.exec(String(raw || ""))) !== null) {
+        scores[found[1].toLowerCase()] = found[2];
+    }
+    if (Object.keys(scores).length === 0) {
+        return null;
+    }
+    var row = document.createElement("div");
+    row.className = "sbAbilities";
+    for (var a = 0; a < ABILITY_SCORES.length; a++) {
+        var key = ABILITY_SCORES[a].toLowerCase();
+        var cell = document.createElement("div");
+        cell.className = "sbAbility";
+        var label = document.createElement("div");
+        label.className = "sbAbilityName";
+        label.textContent = ABILITY_SCORES[a].toUpperCase();
+        var value = document.createElement("div");
+        value.className = "sbAbilityScore";
+        // A dash means the creature has no such score, as with a construct's
+        // Constitution. Shown as the dash rather than as a zero.
+        value.textContent = scores[key] === undefined ? "\u2014" : scores[key];
+        if (scores[key] === "-" || scores[key] === undefined) {
+            cell.classList.add("sbAbilityNone");
+        }
+        cell.appendChild(label);
+        cell.appendChild(value);
+        row.appendChild(cell);
+    }
+    return row;
+}
+
+function specialAbilityLines(parent, raw) {
+    // "Aura Sight (Su) An old dragon sees..." -- the name and its tag bold,
+    // the rest running on.
+    var entries = String(raw || "").split("\n");
+    for (var e = 0; e < entries.length; e++) {
+        var entry = entries[e].trim();
+        if (!entry) {
+            continue;
+        }
+        var line = document.createElement("div");
+        line.className = "sbAbilityEntry";
+        var lead = entry.match(/^(.{0,60}?\((?:Ex|Su|Sp)[^)]{0,12}\))\s*/);
+        if (lead) {
+            var name = document.createElement("b");
+            name.textContent = lead[1];
+            line.appendChild(name);
+            line.appendChild(document.createTextNode(" " + entry.slice(lead[0].length)));
+        } else {
+            line.textContent = entry;
+        }
+        parent.appendChild(line);
+    }
+}
+
+function statblockElement(creature) {
+    var root = document.createElement("div");
+    root.className = "statblock";
+
+    var header = document.createElement("div");
+    header.className = "sbHeader";
+    var name = document.createElement("span");
+    name.className = "sbName";
+    name.textContent = creature.Name || "Creature";
+    var cr = document.createElement("span");
+    cr.className = "sbCR";
+    cr.textContent = "CR " + (creature.CR || "\u2014");
+    header.appendChild(name);
+    header.appendChild(cr);
+    root.appendChild(header);
+
+    // What it is, the way a statblock opens: "CG Medium humanoid (human)".
+    var identity = [creature.Alignment, creature.Size, creature.Type].filter(Boolean).join(" ");
+    if (creature.SubType) {
+        // Every subtype in the table already carries its own brackets.
+        var subtype = String(creature.SubType).trim();
+        identity += " " + (subtype.charAt(0) === "(" ? subtype : "(" + subtype + ")");
+    }
+    var subtitle = document.createElement("div");
+    subtitle.className = "sbSubtitle";
+    subtitle.textContent = [identity.trim(), creature.XP ? "XP " + creature.XP : ""]
+        .filter(Boolean).join("  \u00b7  ");
+    root.appendChild(subtitle);
+
+    var senses = document.createElement("div");
+    senses.className = "sbSenses";
+    statblockLine(senses, "Init", creature.Init);
+    statblockLine(senses, "Senses", creature.Senses);
+    statblockLine(senses, "Aura", creature.Aura);
+    if (senses.childNodes.length) {
+        root.appendChild(senses);
+    }
+
+    statblockSection(root, "Defence", creature, STATBLOCK_LINES.defence);
+    statblockSection(root, "Offence", creature, STATBLOCK_LINES.offence);
+
+    var statistics = statblockSection(root, "Statistics", creature, STATBLOCK_LINES.statistics);
+    var abilities = abilityScoreRow(creature.AbilityScores);
+    if (abilities) {
+        if (statistics) {
+            statistics.insertBefore(abilities, statistics.firstChild);
+        } else {
+            var title = document.createElement("div");
+            title.className = "sbHeading";
+            title.textContent = "Statistics";
+            root.appendChild(title);
+            root.appendChild(abilities);
+        }
+    }
+
+    statblockSection(root, "Ecology", creature, STATBLOCK_LINES.ecology);
+
+    if (creature.SpecialAbilities && String(creature.SpecialAbilities).trim()) {
+        var abilityTitle = document.createElement("div");
+        abilityTitle.className = "sbHeading";
+        abilityTitle.textContent = "Special Abilities";
+        root.appendChild(abilityTitle);
+        var abilityBody = document.createElement("div");
+        specialAbilityLines(abilityBody, creature.SpecialAbilities);
+        root.appendChild(abilityBody);
+    }
+
+    // Bundled creatures carry real prose; most imported ones do not, which is
+    // why every section above is built from the columns.
+    if (creature.Description && String(creature.Description).trim()) {
+        var description = document.createElement("div");
+        description.className = "sbDescription";
+        description.textContent = String(creature.Description).trim();
+        root.appendChild(description);
+    }
+    return root;
+}
+
+// The picker's columns, in order. `field` is both the key on a result row and
+// the sort the server is asked for, so the two cannot drift apart.
+//
+// Source earns its place: 364 names appear more than once now that the
+// bestiary and the adventure statblocks share a table, and it is often the
+// only thing telling two rows apart.
+var CREATURE_COLUMNS = [
+    {field: "Name", heading: "Name"},
+    {field: "CR", heading: "CR"},
+    {field: "TypeNorm", heading: "Type"},
+    {field: "Size", heading: "Size"},
+    {field: "HP", heading: "HP"},
+    {field: "Source", heading: "Source"},
+];
+
+function searchCreatures(criteria) {
+    // An ack rather than a named response event. The CR browser used to listen
+    // for one, and registered a fresh listener on every search -- they piled up
+    // for the life of the page and every later response ran all of them.
+    return new Promise(function (resolve) {
+        socket.emit("database_creature_search", criteria, function (data) {
+            resolve(data || {creatures: [], truncated: false});
+        });
+    });
+}
+
+function fetchCreature(id) {
+    // The wide columns, one creature at a time, with the unit already mapped
+    // server-side.
+    return new Promise(function (resolve) {
+        socket.emit("database_creature", id, function (data) { resolve(data); });
+    });
+}
+
 async function chooseCreature() {
     var choice = await new Promise(async function(resolve) {
         var modalBackground = document.createElement("div");
@@ -1668,119 +1953,199 @@ async function chooseCreature() {
         modalBackground.onclick = function () {document.getElementById('modalBackground').remove(); resolve(undefined)};
 
         var modaldiv = document.createElement("div");
-        modaldiv.style.width = "80%";
-        modaldiv.style.height = "90%";
-        modaldiv.style.position = "absolute";
-        modaldiv.style.right = "10%";
-        modaldiv.style.top = "5%";
-        modaldiv.style.background = "white";
-        modaldiv.style.border = "black";
-        modaldiv.style.borderStyle = "solid";
-        modaldiv.style.borderRadius = "25px";
-        modaldiv.style.textAlign = "center";
+        modaldiv.id = "creaturePicker";
         modaldiv.onclick = function () {event.stopPropagation()}
         document.body.appendChild(modalBackground);
         document.getElementById("modalBackground").appendChild(modaldiv);
-        modaldiv.innerText = "CR:";
-        crSelect = document.createElement("select");
 
-        for (i=0;i<crNumbers.length;i++) {
-            crOption = document.createElement("option");
-            crOption.innerText = crNumbers[i];
-            crSelect.appendChild(crOption);
-        }
+        var controls = document.createElement("div");
+        controls.id = "creatureSearchControls";
+        modaldiv.appendChild(controls);
 
-        crSelect.onchange = function () {
-            populateCreatures(this.value);
-        }
-        modaldiv.appendChild(crSelect);
-        creatureListDiv = document.createElement("div");
-        creatureListDiv.style.height = "50%";
-        creatureListDiv.style.overflow = "auto";
-        creatureListDiv.style.width = "90%";
-        creatureListDiv.style.margin = "auto";
+        var nameInput = document.createElement("input");
+        nameInput.id = "creatureSearchName";
+        nameInput.type = "text";
+        nameInput.placeholder = "search by name";
+        controls.appendChild(nameInput);
+
+        var crSelect = document.createElement("select");
+        crSelect.id = "creatureSearchCR";
+        appendOptions(crSelect, ["any CR"].concat(crNumbers));
+        controls.appendChild(crSelect);
+
+        var typeSelect = document.createElement("select");
+        typeSelect.id = "creatureSearchType";
+        appendOptions(typeSelect, ["any type"].concat(CREATURE_TYPES));
+        controls.appendChild(typeSelect);
+
+        var countDiv = document.createElement("div");
+        countDiv.id = "creatureSearchCount";
+        modaldiv.appendChild(countDiv);
+
+        var creatureListDiv = document.createElement("div");
+        creatureListDiv.id = "creatureList";
         modaldiv.appendChild(creatureListDiv);
 
-        creatureTable = document.createElement("table");
-        creatureTable.style.minWidth = "80%";
-        creatureTable.style.margin = "auto";
+        var creatureTable = document.createElement("table");
+        creatureTable.id = "creatureTable";
+        var creatureHead = document.createElement("thead");
+        creatureTable.appendChild(creatureHead);
+        var creatureRows = document.createElement("tbody");
+        creatureRows.id = "creatureRows";
+        creatureTable.appendChild(creatureRows);
         creatureListDiv.appendChild(creatureTable);
 
-        creatureDetailDiv = document.createElement("div");
-        creatureDetailDiv.style.height = "40%";
-        creatureDetailDiv.style.overflow = "auto";
-        creatureDetailDiv.style.width = "90%";
-        creatureDetailDiv.style.margin = "auto";
+        // Which column the list is ordered by. The server does the ordering,
+        // because the result is capped -- sorting the rows already here would
+        // give the first 300 by name rearranged, not the first 300 by CR.
+        var sortField = "Name";
+        var sortDescending = false;
+
+        function drawHeadings() {
+            removeContents(creatureHead);
+            var headingRow = document.createElement("tr");
+            for (var c = 0; c < CREATURE_COLUMNS.length; c++) {
+                var column = CREATURE_COLUMNS[c];
+                var heading = document.createElement("th");
+                heading.className = "creatureHeading";
+                heading.innerText = column.heading
+                    + (sortField === column.field ? (sortDescending ? " \u25be" : " \u25b4") : "");
+                if (sortField === column.field) {
+                    heading.classList.add("sortedBy");
+                }
+                heading.onclick = (function (field) { return function () {
+                    // Clicking the column already sorted on turns it around.
+                    if (sortField === field) {
+                        sortDescending = !sortDescending;
+                    } else {
+                        sortField = field;
+                        sortDescending = false;
+                    }
+                    drawHeadings();
+                    runSearch();
+                }})(column.field);
+                headingRow.appendChild(heading);
+            }
+            // The select button's column, which nothing sorts by.
+            headingRow.appendChild(document.createElement("th"));
+            creatureHead.appendChild(headingRow);
+        }
+        drawHeadings();
+
+        var creatureDetailDiv = document.createElement("div");
+        creatureDetailDiv.id = "creatureDetail";
         modaldiv.appendChild(creatureDetailDiv);
-        populateCreatures(crSelect.value);
 
-        async function populateCreatures(CR) {
-            removeContents(creatureTable);
-            removeContents(creatureDetailDiv);
-            msg = await new Promise((resolve, reject) =>  {
-                socket.emit("database_creatures", {"cr": CR});
-                socket.on("database_creatures_response", function (data) {resolve(data)});
-            });
+        function detailPrompt() {
+            creatureDetailDiv.innerText = "Click a creature to read its statblock.";
+            creatureDetailDiv.classList.add("creatureDetailPrompt");
+        }
+        detailPrompt();
 
-            for (i=0;i<msg.length;i++) {
-                var tableRow = document.createElement("tr");
-
-                var tableData = document.createElement("td");
-                tableData.innerText = msg[i].Name;
-                tableRow.appendChild(tableData);
-                var tableData = document.createElement("td");
-                tableData.innerText = msg[i].Type;
-                tableRow.appendChild(tableData);
-                var tableData = document.createElement("td");
-                tableData.innerText = msg[i].Size;
-                tableRow.appendChild(tableData);
-                var tableData = document.createElement("td");
-                var button = document.createElement("button");
-                button.innerText = "select";
-                button.onclick = (function (i) { return function () {
-                    document.getElementById('modalBackground').remove();
-                    resolve(msg[i]);
-                }})(i);
-                tableData.appendChild(button);
-                tableRow.appendChild(tableData);
-                tableRow.onclick = (function (i) { return function () {
-                    //show the details of the selected creature here
-                    removeContents(creatureDetailDiv);
-                    creatureDetailDiv.innerText = msg[i].Name;
-                    creatureDetailDiv.innerHTML += "<br>";
-                    creatureDetailDiv.innerText += msg[i].Description;
-                }})(i);
-                creatureTable.appendChild(tableRow);
+        function appendOptions(select, values) {
+            for (var v = 0; v < values.length; v++) {
+                var option = document.createElement("option");
+                option.innerText = values[v];
+                select.appendChild(option);
             }
         }
 
+        // The name box searches as it is typed, but only once typing pauses --
+        // otherwise every keystroke is a query against ten thousand rows.
+        var searchTimer;
+        nameInput.oninput = function () {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(runSearch, 250);
+        };
+        crSelect.onchange = runSearch;
+        typeSelect.onchange = runSearch;
+        nameInput.focus();
+        runSearch();
 
+        async function runSearch() {
+            var criteria = {
+                name: nameInput.value,
+                cr: crSelect.selectedIndex > 0 ? crSelect.value : "",
+                type: typeSelect.selectedIndex > 0 ? typeSelect.value : "",
+            };
+            criteria.sort = sortField;
+            criteria.descending = sortDescending;
+            removeContents(creatureRows);
+            removeContents(creatureDetailDiv);
+            detailPrompt();
+            if (!criteria.name && !criteria.cr && !criteria.type) {
+                countDiv.innerText = "Search by name, or pick a CR or a type.";
+                return;
+            }
+            countDiv.innerText = "searching…";
+            var result = await searchCreatures(criteria);
+            var creatures = result.creatures;
+            if (creatures.length === 0) {
+                countDiv.innerText = "No creatures match.";
+                return;
+            }
+            countDiv.innerText = result.truncated
+                ? creatures.length + " shown, and there are more — narrow the search"
+                : creatures.length + (creatures.length === 1 ? " creature" : " creatures");
+            for (var i = 0; i < creatures.length; i++) {
+                creatureRows.appendChild(creatureRow(creatures[i]));
+            }
+        }
+
+        function creatureRow(creature) {
+            var tableRow = document.createElement("tr");
+            tableRow.className = "creatureRow";
+            for (var f = 0; f < CREATURE_COLUMNS.length; f++) {
+                var value = creature[CREATURE_COLUMNS[f].field];
+                var tableData = document.createElement("td");
+                tableData.innerText = (value === null || value === undefined) ? "" : value;
+                tableRow.appendChild(tableData);
+            }
+            var buttonCell = document.createElement("td");
+            var button = document.createElement("button");
+            button.innerText = "select";
+            button.onclick = async function (event) {
+                event.stopPropagation();
+                var full = await fetchCreature(creature.id);
+                document.getElementById('modalBackground').remove();
+                resolve(full);
+            };
+            buttonCell.appendChild(button);
+            tableRow.appendChild(buttonCell);
+            tableRow.onclick = async function () {
+                // The row stays marked after the mouse moves away, so it is
+                // clear which creature the statblock below belongs to.
+                var previous = creatureRows.querySelector(".creatureRowChosen");
+                if (previous) {
+                    previous.classList.remove("creatureRowChosen");
+                }
+                tableRow.classList.add("creatureRowChosen");
+                var full = await fetchCreature(creature.id);
+                removeContents(creatureDetailDiv);
+                creatureDetailDiv.classList.remove("creatureDetailPrompt");
+                if (full) {
+                    creatureDetailDiv.appendChild(statblockElement(full.creature));
+                }
+            };
+            return tableRow;
+        }
     })
     return choice;
 }
 async function selectAddUnit (owner) {
-    unitToAdd = await chooseCreature();
-    if (typeof unitToAdd == "undefined") {
+    // The player's Summon button. The GM adds monsters through the encounter
+    // form instead, so that the count and the initiative rolls come for free.
+    var chosen = await chooseCreature();
+    if (!chosen) {
         return;
     }
-    var unit = {};
-    unit.charName = unitToAdd.Name;
+    // Mapped server-side now, so this and the GM's picker cannot drift apart
+    // over which columns become which fields.
+    var unit = chosen.unit;
     unit.color = "black";
-    unit.HP = unitToAdd.HP
-    unit.maxHP = unit.HP;
-    unit.movementSpeed = parseInt(unitToAdd.Speed);
-    if (isNaN(unit.movementSpeed)) {
-        unit.movementSpeed = 30;
-    }
-    if (isGM) {
-        unit.controlledBy = "gm";
-        unit.type = "Mob";
-        socket.emit('add_unit', {addToInitiative: false ,unit: unit, room: room, gmKey: gmKey});
-    } else {
-        unit.type = "Summon";
-        unit.controlledBy = charName;
-        socket.emit('add_unit', {addToInitiative: inInit ,unit: unit, room: room, charName: charName});
-    }
+    unit.type = "Summon";
+    unit.controlledBy = charName;
+    socket.emit('add_unit', {addToInitiative: inInit, unit: unit, room: room, charName: charName});
 }
 function deselectAll() {
     try {

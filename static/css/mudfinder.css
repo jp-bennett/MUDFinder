@@ -617,6 +617,214 @@ width:100%;
   background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
 }
 
+/* The creature picker. Its markup is built in chooseCreature (shared.js), which
+   used to set all of this inline; it is here so the layout can be adjusted
+   without editing JavaScript. */
+#creaturePicker {
+    width: 80%;
+    height: 90%;
+    position: absolute;
+    right: 10%;
+    top: 5%;
+    background: white;
+    border: solid black;
+    border-radius: 25px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+}
+#creatureSearchControls {
+    padding: 10px;
+}
+#creatureSearchControls input,
+#creatureSearchControls select {
+    margin: 0 4px;
+}
+#creatureSearchName {
+    width: 40%;
+    text-align: left;
+    padding-left: 4px;
+}
+#creatureSearchCount {
+    font-size: 90%;
+    padding-bottom: 4px;
+}
+/* Shrinks to the results when there are few, and stops at half the modal when
+   there are many, so a single match does not push its statblock off-screen. */
+#creatureList {
+    /* Does not shrink: allowed to, flexbox squeezes it below its own rows to
+       make room for a long statblock, and the last result ends up clipped. */
+    flex: 0 0 auto;
+    max-height: 55%;
+    overflow: auto;
+    width: 94%;
+    margin: auto;
+}
+#creatureTable {
+    min-width: 90%;
+    margin: auto;
+    border-collapse: collapse;
+}
+#creatureTable td {
+    padding: 3px 8px;
+    text-align: left;
+}
+/* Clickable column headings. Sticky so they stay put while a long result list
+   scrolls under them, and opaque so the rows do not show through. */
+.creatureHeading {
+    padding: 4px 8px;
+    text-align: left;
+    cursor: pointer;
+    position: sticky;
+    top: 0;
+    background: white;
+    border-bottom: 1px solid black;
+    user-select: none;
+    white-space: nowrap;
+}
+.creatureHeading:hover {
+    background: #e8eefc;
+}
+.creatureHeading.sortedBy {
+    font-weight: bold;
+}
+.creatureDetailPrompt {
+    font-style: italic;
+    opacity: 0.6;
+}
+.creatureRow {
+    cursor: pointer;
+}
+.creatureRow:hover {
+    background: #e8eefc;
+}
+/* The row whose statblock is being shown. Declared after the hover rule so it
+   wins at equal specificity, and stronger than the hover tint so the two can
+   be told apart when the mouse is over a different row. */
+.creatureRow.creatureRowChosen {
+    background: cornflowerblue;
+}
+/* The statblock, laid out like a printed one: a name and its CR at the top,
+   ruled section headings, and bold labels with their values running on from
+   them. The palette is the app's own -- ink on the parchment the maps use,
+   with the existing cornflower accent -- rather than the reference's. */
+.statblock {
+    --sbInk: #1d1b16;
+    --sbRule: #b9a887;
+    --sbAccent: cornflowerblue;
+    color: var(--sbInk);
+    line-height: 1.35;
+}
+.sbHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    background: var(--sbInk);
+    color: #f7f2e6;
+    padding: 5px 10px;
+    border-radius: 3px 3px 0 0;
+}
+.sbName {
+    font-size: 118%;
+    font-weight: bold;
+    letter-spacing: 0.01em;
+}
+.sbCR {
+    white-space: nowrap;
+    font-variant: small-caps;
+    letter-spacing: 0.06em;
+}
+.sbSubtitle {
+    padding: 3px 10px 5px;
+    border-bottom: 1px solid var(--sbRule);
+    font-style: italic;
+    opacity: 0.85;
+}
+.sbSenses {
+    padding: 6px 10px 0;
+}
+/* Small caps and a double rule, which is what makes a statblock read as one
+   without borrowing anybody's colours. */
+.sbHeading {
+    margin: 9px 0 3px;
+    padding: 0 10px 2px;
+    font-variant: small-caps;
+    font-weight: bold;
+    letter-spacing: 0.09em;
+    border-bottom: 3px double var(--sbRule);
+}
+.sbLine {
+    padding: 1px 10px;
+}
+/* A continuation of the line above it -- one spell level, or one of several
+   entries the database ran together. */
+.sbContinued {
+    padding-left: 26px;
+    text-indent: -14px;
+}
+/* The six numbers most often wanted at a glance, as cells rather than a run of
+   prose. Our own departure from the printed layout. */
+.sbAbilities {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 4px 10px 7px;
+}
+.sbAbility {
+    flex: 1 1 54px;
+    min-width: 48px;
+    text-align: center;
+    border: 1px solid var(--sbRule);
+    border-radius: 3px;
+    padding: 2px 0 3px;
+    background: rgba(185, 168, 135, 0.12);
+}
+.sbAbilityName {
+    font-size: 78%;
+    letter-spacing: 0.08em;
+    opacity: 0.7;
+}
+.sbAbilityScore {
+    font-weight: bold;
+    font-size: 108%;
+}
+/* A score the creature does not have at all, such as a construct's
+   Constitution. */
+.sbAbilityNone {
+    opacity: 0.45;
+}
+.sbAbilityEntry {
+    padding: 3px 10px;
+}
+.sbAbilityEntry + .sbAbilityEntry {
+    border-top: 1px dotted var(--sbRule);
+}
+/* The prose, where a creature has any. Set apart from the numbers above it. */
+.sbDescription {
+    margin: 10px 10px 4px;
+    padding-top: 8px;
+    border-top: 1px solid var(--sbRule);
+    white-space: pre-wrap;
+    font-style: italic;
+}
+
+/* The statblock of whichever row is being looked at. Pre-wrap because the text
+   was stripped out of an HTML statblock and its line breaks are the layout. */
+#creatureDetail {
+    flex: 1 1 auto;
+    overflow: auto;
+    width: 94%;
+    margin: auto;
+    text-align: left;
+    font-size: 90%;
+    border-top: 1px solid black;
+    padding-top: 6px;
+}
+/* Which creature the encounter form is currently carrying, if any. */
+.chosenCreature {
+    font-style: italic;
+}
 .modal {
   position: fixed; /* Stay in place */
   z-index: 6; /* Sit on top */
