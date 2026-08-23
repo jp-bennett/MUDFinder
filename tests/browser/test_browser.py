@@ -830,11 +830,11 @@ def battlemap(browser, live_server):
         page.fill("#alignOffsetY", "-0.6")
         page.dispatch_event("#alignOffsetY", "change")
         page.wait_for_function(
-            "() => alignmentSendsInFlight === 0", timeout=HANDSHAKE_TIMEOUT)
+            "() => mapObject.backgroundOffsetY === -0.6", timeout=HANDSHAKE_TIMEOUT)
         stages["rapid"] = page.evaluate(BACKGROUND_GEOMETRY_JS)
-        # Every change sent has had its echo accounted for by now. This only
-        # falls back to zero if the guard is actually wired into the handler.
-        stages["sendsInFlight"] = page.evaluate("() => alignmentSendsInFlight")
+        # Three changes went out and the newest is what is on screen, so every
+        # echo has been judged against the stamp rather than applied blindly.
+        stages["seqShown"] = page.evaluate("() => alignmentSeqShown")
 
         # A refresh while the GM is typing must leave that box alone. The
         # half-typed value is put back before blurring, because blurring a
@@ -853,19 +853,39 @@ def battlemap(browser, live_server):
             return result;
         }""")
 
-        # The echo guard on its own. Losing the race on purpose is not
-        # reproducible, so the rule it enforces is checked directly.
+        # The staleness rule on its own. Losing the race on purpose is not
+        # reproducible, so the rule it enforces is checked directly. An update
+        # stamped behind what is on screen is stripped; one stamped ahead of it
+        # is applied and becomes the new mark.
         stages["echo"] = page.evaluate("""() => {
-            const own = {backgroundTilesWide: 99, backgroundOffsetX: 9, backgroundOffsetY: 9};
-            alignmentSendsInFlight = 1;
-            const droppedOwn = dropOwnAlignmentEcho(own);
-            const other = {backgroundTilesWide: 99, backgroundOffsetX: 9, backgroundOffsetY: 9};
-            const droppedOther = dropOwnAlignmentEcho(other);
-            return {droppedOwn: droppedOwn,
-                    ownStripped: !("backgroundTilesWide" in own),
-                    droppedOther: droppedOther,
-                    otherKept: "backgroundTilesWide" in other,
-                    counter: alignmentSendsInFlight};
+            const shown = alignmentSeqShown;
+            const stale = {backgroundTilesWide: 99, backgroundOffsetX: 9,
+                           backgroundOffsetY: 9, backgroundAlignmentSeq: shown - 1};
+            const droppedStale = dropOwnAlignmentEcho(stale);
+            const fresh = {backgroundTilesWide: 99, backgroundOffsetX: 9,
+                           backgroundOffsetY: 9, backgroundAlignmentSeq: shown + 1};
+            const droppedFresh = dropOwnAlignmentEcho(fresh);
+            return {droppedStale: droppedStale,
+                    staleStripped: !("backgroundTilesWide" in stale),
+                    droppedFresh: droppedFresh,
+                    freshKept: "backgroundTilesWide" in fresh,
+                    markMoved: alignmentSeqShown === shown + 1};
+        }""")
+
+        # And the same rule where it actually bit: a whole map, sent in answer
+        # to a grid resize, carrying an alignment older than what is on screen.
+        stages["staleFullMap"] = page.evaluate("""() => {
+            const before = {tilesWide: mapObject.backgroundTilesWide,
+                            offsetX: mapObject.backgroundOffsetX};
+            const resizeAnswer = {mapArray: mapObject.mapArray,
+                                  backgroundTilesWide: 20,
+                                  backgroundOffsetX: 0,
+                                  backgroundOffsetY: 0,
+                                  backgroundAlignmentSeq: alignmentSeqShown - 1};
+            keepLocalAlignmentIfPending(resizeAnswer);
+            return {before: before,
+                    kept: {tilesWide: resizeAnswer.backgroundTilesWide,
+                           offsetX: resizeAnswer.backgroundOffsetX}};
         }""")
 
         # What a player sees of the same room.
@@ -992,29 +1012,56 @@ class TestBattlemapFromAnImage:
 
 
 class TestAlignmentEchoes:
-    """Alignment changes come back from the server, and a late echo of an
-    earlier one must not undo a later local adjustment."""
+    """Alignment changes come back from the server, and one that is behind
+    what is already on screen must not undo a later adjustment.
 
-    def test_our_own_echo_is_dropped(self, battlemap):
-        assert battlemap["echo"]["droppedOwn"]
+    Which payload is older is decided by the stamp the server puts on every
+    alignment write, not by whether this client has a send outstanding. The
+    payload that used to win this race was not an echo of our own change at
+    all -- it was a whole map answering an earlier grid resize.
+    """
 
-    def test_the_dropped_echo_carries_no_alignment_on(self, battlemap):
+    def test_a_stale_update_is_dropped(self, battlemap):
+        assert battlemap["echo"]["droppedStale"]
+
+    def test_the_dropped_update_carries_no_alignment_on(self, battlemap):
         """Stripped rather than ignored, so updateMap cannot apply it either."""
-        assert battlemap["echo"]["ownStripped"]
+        assert battlemap["echo"]["staleStripped"]
 
-    def test_a_change_from_elsewhere_is_kept(self, battlemap):
-        """With nothing of ours outstanding, an update is somebody else's and
-        has to be applied, or a second GM tab could never move the image."""
-        assert not battlemap["echo"]["droppedOther"]
-        assert battlemap["echo"]["otherKept"]
+    def test_a_newer_change_is_kept(self, battlemap):
+        """A second GM tab moving the image sends a higher stamp, and that has
+        to be applied or the two views never agree."""
+        assert not battlemap["echo"]["droppedFresh"]
+        assert battlemap["echo"]["freshKept"]
 
-    def test_the_counter_is_spent(self, battlemap):
-        assert battlemap["echo"]["counter"] == 0
+    def test_accepting_one_moves_the_mark(self, battlemap):
+        """Otherwise the same update would be accepted twice."""
+        assert battlemap["echo"]["markMoved"]
 
     def test_the_guard_is_wired_into_the_handler(self, battlemap):
-        """Three changes were sent and three echoes came back. A non-zero count
-        means the handler is not consuming them, so the guard is inert."""
-        assert battlemap["sendsInFlight"] == 0
+        """Three changes were sent and the last of them is what is on screen,
+        so the echoes were judged rather than applied blindly."""
+        assert battlemap["seqShown"] > 0
+
+
+class TestAStaleFullMapCannotUndoADrag:
+    """The failure this replaced a counter to fix.
+
+    Resizing the grid answers with a whole map, carrying the alignment as it
+    stood when the resize was handled. On a slow connection that map arrives
+    after the GM has dragged the image, and the old guard had already stood
+    down by then -- it counted our own sends, and this is not one.
+    """
+
+    def test_the_stale_map_does_not_move_the_image(self, battlemap):
+        before = battlemap["staleFullMap"]["before"]
+        kept = battlemap["staleFullMap"]["kept"]
+        assert kept["tilesWide"] == before["tilesWide"]
+        assert kept["offsetX"] == before["offsetX"]
+
+    def test_it_was_carrying_something_different(self, battlemap):
+        """Otherwise the test above would pass for the wrong reason."""
+        assert battlemap["staleFullMap"]["before"]["tilesWide"] != 20
 
 
 class TestTypingIntoAlignmentFields:
