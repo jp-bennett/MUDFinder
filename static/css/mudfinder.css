@@ -494,6 +494,66 @@ div.selected {
     min-width: 0;
 }
 
+/* The button in the heading that unfolds them. The heading is centred text, so
+   this is taken out of the flow rather than put in it -- in the flow it pushed
+   the creature's name off centre. */
+.panelHeading {
+    position: relative;
+}
+.mobAbilitiesToggle {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-variant: small-caps;
+    letter-spacing: var(--heading-tracking);
+}
+/* Pressed, while the abilities are showing. */
+.mobAbilitiesToggle.mobAbilitiesShowing {
+    background: var(--paper-warm);
+    border-color: var(--ink-faint);
+}
+
+/* The GM's panel lays the stat strip along the top and gives everything under
+   it whatever is left, so the columns and the abilities scroll rather than the
+   panel as a whole -- HP stays on screen wherever the GM has scrolled to.
+   Scoped to this panel: the player's action bar shares .bottomDivBody and lays
+   its contents out with floats. */
+.mobPanelBody {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.mobPanelStack {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+.mobPanelColumns,
+.mobPanelColumn {
+    height: 100%;
+}
+.mobPanelColumn {
+    overflow: auto;
+}
+
+/* Laid over the two columns rather than pushed in above them: the panel is a
+   quarter of the window, and moving the attack rows down would take the roll
+   buttons out from under the pointer just as the GM went for one. Over the
+   columns only -- the stat strip is outside the stack, so HP, AC and initiative
+   stay put. */
+.mobAbilities {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    background: var(--paper);
+    overflow: auto;
+    padding: 2px 0 6px 0;
+    z-index: 2;
+}
+
 tr:nth-child(even) {background-color: var(--paper-warm);}
 
 .inventoryTable{

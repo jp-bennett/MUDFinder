@@ -302,6 +302,24 @@ A unit carries AC only as the pieces it is added up from, so for a creature out
 of the bestiary the figure is read from the cached record, and for one made by
 hand it stays blank rather than showing a wrong total.
 
+**Special abilities are folded away behind a button in the heading.** They are
+the longest thing about a creature and the panel is a quarter of the window, so
+they stay shut until something actually uses one. Unfolded they are **laid over
+the two columns, not pushed in above them** — opening the fold must not move the
+roll buttons out from under the pointer — and the stat strip sits outside the
+stack they cover, so HP and AC stay on screen either way. The entries come from
+`specialAbilityLines`, the same builder the statblock uses, so a name and its
+`(Ex)`/`(Su)`/`(Sp)` tag read the same in both places. On a unit with no
+bestiary entry the button is **disabled with a reason in its title** rather than
+absent, the way an unrollable attack keeps its dead button. The fold shuts
+itself when the panel changes creature, and stays as it is otherwise — an update
+arrives whenever anything moves, and shutting on each one would make it
+unusable.
+
+Description is deliberately not here. It is flavour rather than something a GM
+reaches for mid-round, and most imported creatures carry none, so a slot for it
+would be empty more often than not. It is on the full statblock.
+
 The effect placer borrows this panel, and its table goes in `#bottomEffectHolder`
 inside the body rather than at the panel's root. It used to write a height
 straight onto `#activeTabDiv`, which outranked the class the tab toggles and

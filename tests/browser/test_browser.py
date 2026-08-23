@@ -3750,6 +3750,68 @@ def creature_panel(browser, live_server):
         page.wait_for_timeout(600)
         stages["currentTurn"] = page.evaluate(REPORT)
 
+        # The abilities, folded away behind the button in the heading.
+        ABILITIES = """() => {
+            const ab = document.getElementById("mobPanelAbilities");
+            const btn = document.getElementById("mobPanelAbilitiesButton");
+            const showing = getComputedStyle(ab).display !== "none";
+            const box = ab.getBoundingClientRect();
+            const cols = document.querySelector(".mobPanelColumns").getBoundingClientRect();
+            const stats = document.getElementById("mobPanelStats").getBoundingClientRect();
+            return {
+                showing: showing,
+                buttonDisabled: btn.disabled,
+                buttonTitle: btn.title,
+                entries: ab.querySelectorAll(".sbAbilityEntry").length,
+                boldLeads: ab.querySelectorAll(".sbAbilityEntry b").length,
+                statsStillVisible: stats.height > 0,
+                coversTheColumns: showing
+                    ? Math.round(box.top) <= Math.round(cols.top) + 1
+                      && Math.round(box.bottom) >= Math.round(cols.bottom) - 1 : null,
+                clearsTheStatStrip: showing
+                    ? Math.round(box.top) >= Math.round(stats.bottom) - 1 : null,
+            };
+        }"""
+        stages["abilitiesFolded"] = page.evaluate(ABILITIES)
+        page.click("#mobPanelAbilitiesButton")
+        page.wait_for_timeout(400)
+        stages["abilitiesOpen"] = page.evaluate(ABILITIES)
+        page.click("#mobPanelAbilitiesButton")
+        page.wait_for_timeout(300)
+        stages["abilitiesFoldedAgain"] = page.evaluate(ABILITIES)
+
+        # Left open, then the panel changes creature: the last one's abilities
+        # must not stay lying over the new one's attacks.
+        page.click("#mobPanelAbilitiesButton")
+        page.wait_for_timeout(300)
+        page.click("div.tab:text-is('Encounter')")
+        page.fill("#unitName", "Bandit")
+        page.fill("#unitHP", "9")
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Bandit")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(400)
+        page.evaluate(
+            """() => { selectedUnits =
+                 [gmData.unitList.find(u => u.charName === "Bandit").unitNum];
+               drawMobPanel(gmData); }""")
+        page.wait_for_timeout(600)
+        page.click("div.tab:text-is('Map')")
+        page.click("#bottomPopupButton")
+        page.wait_for_timeout(700)
+        stages["handMadeUnit"] = page.evaluate(ABILITIES)
+        stages["handMadeName"] = page.evaluate(
+            "() => document.getElementById('mobPanelName').innerText.trim()")
+
+        # Back to the dragon for the effect-placer checks below.
+        page.evaluate(
+            """() => { selectedUnits =
+                 [gmData.unitList.find(u => u.charName === "Adult Occult Dragon").unitNum];
+               drawMobPanel(gmData); }""")
+        page.wait_for_timeout(500)
+
         # The effect placer borrows the same panel. It used to write a height
         # straight onto the tab holder, which outranked the class the tab uses
         # and left the panel unable to make room for itself afterwards.
@@ -3846,3 +3908,53 @@ class TestTheCreaturePanelAndTheEffectPlacer:
 class TestTheCreaturePanelRaisedNothing:
     def test_nothing_raised(self, creature_panel):
         assert creature_panel["errors"] == []
+
+
+class TestTheSpecialAbilitiesFold:
+    """The rest of the bestiary entry, behind a button in the heading.
+
+    Everything a GM reaches for in a round is on the panel already; the
+    abilities are the longest thing about a creature, so they stay folded until
+    something actually uses one.
+    """
+
+    def test_they_start_folded_away(self, creature_panel):
+        assert creature_panel["abilitiesFolded"]["showing"] is False
+
+    def test_the_button_is_live_for_a_bestiary_creature(self, creature_panel):
+        assert creature_panel["abilitiesFolded"]["buttonDisabled"] is False
+
+    def test_the_button_unfolds_them(self, creature_panel):
+        assert creature_panel["abilitiesOpen"]["showing"] is True
+        assert creature_panel["abilitiesOpen"]["entries"] > 0
+
+    def test_each_one_leads_with_its_name_and_tag(self, creature_panel):
+        """"Aura Sight (Su) An old dragon sees..." -- the same shape the
+        statblock gives them, from the same builder."""
+        state = creature_panel["abilitiesOpen"]
+        assert state["boldLeads"] == state["entries"]
+
+    def test_they_lie_over_the_columns(self, creature_panel):
+        assert creature_panel["abilitiesOpen"]["coversTheColumns"] is True
+
+    def test_but_leave_hp_and_ac_on_screen(self, creature_panel):
+        """The stat strip is outside the stack they are laid over, so the
+        figures the GM is tracking stay put while the abilities are open."""
+        assert creature_panel["abilitiesOpen"]["clearsTheStatStrip"] is True
+        assert creature_panel["abilitiesOpen"]["statsStillVisible"] is True
+
+    def test_the_button_folds_them_again(self, creature_panel):
+        assert creature_panel["abilitiesFoldedAgain"]["showing"] is False
+
+    def test_changing_creature_folds_them_away(self, creature_panel):
+        """Left open, the last creature's abilities would otherwise stay lying
+        over the new one's attacks."""
+        assert creature_panel["handMadeName"] == "Bandit"
+        assert creature_panel["handMadeUnit"]["showing"] is False
+
+    def test_a_unit_made_by_hand_says_why_there_are_none(self, creature_panel):
+        """Dead with a reason rather than absent, which would read as something
+        failing to load -- the same way an unrollable attack keeps its button."""
+        state = creature_panel["handMadeUnit"]
+        assert state["buttonDisabled"] is True
+        assert "bestiary" in state["buttonTitle"]

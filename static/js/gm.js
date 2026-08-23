@@ -1315,6 +1315,63 @@ function mobStat(container, label, value) {
     return figure;
 }
 
+// The creature's special abilities, folded away behind the button in the
+// heading. Everything a GM reaches for in a round is on the panel already; this
+// is the rest of the entry -- auras, breath weapons, the DCs -- for when the
+// creature actually uses one.
+function drawMobAbilities(container, unit) {
+    var button = document.getElementById("mobPanelAbilitiesButton");
+    var wanted = (unit && unit.creatureId) ? String(unit.creatureId) : "";
+    // Same reason drawStatblock guards: this runs on every update from the
+    // server, and repainting would throw away wherever the GM had scrolled to.
+    if (container.dataset.creatureId === wanted && container.firstChild) {
+        return;
+    }
+    container.dataset.creatureId = wanted;
+    removeContents(container);
+    if (!wanted) {
+        // Made by hand, or a player's own character.
+        button.disabled = true;
+        button.title = "not from the bestiary, so there is nothing recorded";
+        return;
+    }
+    button.disabled = true;
+    button.title = "looking it up";
+    fetchCreatureCached(unit.creatureId).then(function (full) {
+        if (container.dataset.creatureId !== wanted) {
+            return;
+        }
+        var abilities = full && full.creature && full.creature.SpecialAbilities;
+        if (!abilities || !String(abilities).trim()) {
+            button.disabled = true;
+            button.title = "this one has none recorded";
+            return;
+        }
+        specialAbilityLines(container, abilities);
+        button.disabled = false;
+        button.title = "";
+    });
+}
+
+function toggleMobAbilities() {
+    try {
+        var abilities = document.getElementById("mobPanelAbilities");
+        if (abilities.style.display === "none") {
+            abilities.style.display = "block";
+            document.getElementById("mobPanelAbilitiesButton").classList.add("mobAbilitiesShowing");
+        } else {
+            hideMobAbilities();
+        }
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
+function hideMobAbilities() {
+    document.getElementById("mobPanelAbilities").style.display = "none";
+    document.getElementById("mobPanelAbilitiesButton").classList.remove("mobAbilitiesShowing");
+}
+
 // Redrawn on every update from the server, so this has to be cheap and must not
 // throw when the panel is shut -- gm_update runs whether it is open or not.
 function drawMobPanel(Data) {
@@ -1323,18 +1380,32 @@ function drawMobPanel(Data) {
         if (!name) {
             return;
         }
+        var abilities = document.getElementById("mobPanelAbilities");
         var unit = mobPanelSubject(Data);
+        // Folded away again when the panel changes creature, rather than the
+        // last one's abilities left lying open over the new one's attacks. Kept
+        // as it is otherwise: an update arrives every time anything moves, and
+        // shutting it on each one would make it unusable.
+        var showing = unit ? (unit.uuid || "") : "";
+        if (abilities.dataset.showingFor !== showing) {
+            abilities.dataset.showingFor = showing;
+            hideMobAbilities();
+        }
         if (!unit) {
             name.innerText = "Nothing selected";
             removeContents(document.getElementById("mobPanelStats"));
             removeContents(document.getElementById("mobPanelAttacks"));
             removeContents(document.getElementById("mobPanelCastings"));
+            removeContents(abilities);
+            abilities.dataset.creatureId = "";
+            document.getElementById("mobPanelAbilitiesButton").disabled = true;
             return;
         }
         name.innerText = unit.charName;
         drawMobStats(document.getElementById("mobPanelStats"), unit);
         drawAttacks(document.getElementById("mobPanelAttacks"), unit.weapons, unit.charName);
         drawCastings(document.getElementById("mobPanelCastings"), unit, unit.unitNum);
+        drawMobAbilities(abilities, unit);
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
