@@ -1931,3 +1931,203 @@ class TestVisionCheckboxesStick:
 
     def test_nothing_raised(self, vision_checkboxes):
         assert vision_checkboxes["errors"] == []
+
+
+MONSTER_REPORT_JS = """
+(name) => ({
+  rows: Array.from(document.querySelectorAll("#creatureTable tr td:first-child"))
+    .map(cell => cell.innerText),
+  countText: document.getElementById("creatureSearchCount")
+    ? document.getElementById("creatureSearchCount").innerText : "",
+  detailLength: document.getElementById("creatureDetail")
+    ? document.getElementById("creatureDetail").innerText.length : 0,
+  detailHead: document.getElementById("creatureDetail")
+    ? document.getElementById("creatureDetail").innerText.slice(0, 40) : "",
+  modalOpen: !!document.getElementById("modalBackground"),
+  chosen: document.getElementById("chosenCreature").innerText,
+  unitName: document.getElementById("unitName").value,
+  unitHP: document.getElementById("unitHP").value,
+  unitInit: document.getElementById("unitInit").value,
+  initLabel: document.getElementById("unitInitLabel").innerText,
+  added: (typeof gmData !== "undefined" && gmData)
+    ? gmData.unitList.filter(unit => unit.charName === name) : [],
+  chat: document.getElementById("chatText").innerText,
+})
+"""
+
+
+@pytest.fixture(scope="module")
+def monsters(browser, live_server):
+    """Pick a monster out of the database and put seven of them on the board.
+
+    Seven of one creature was seven trips through the encounter form, typing
+    the name, the hit points and an initiative that had been rolled somewhere
+    else each time.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 950})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "monsters")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1) for pair in page.url.split("?", 1)[1].split("&"))["room"]
+
+        player = context.new_page()
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        page.click("div.tab:text-is('Encounter')")
+        page.wait_for_selector("#chooseMonsterButton", state="visible")
+        stages = {"before": page.evaluate(MONSTER_REPORT_JS, "Dire Ape")}
+
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+        page.fill("#creatureSearchName", "dire ape")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#creatureTable tr').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["searched"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
+
+        # Filtering narrows the same search rather than starting a new one.
+        page.select_option("#creatureSearchType", "dragon")
+        page.wait_for_function(
+            "() => document.getElementById('creatureSearchCount').innerText.indexOf('No creatures') === 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["filteredAway"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
+        page.select_option("#creatureSearchType", "animal")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#creatureTable tr').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        page.click("#creatureTable tr:first-child td:first-child")
+        page.wait_for_function(
+            "() => document.getElementById('creatureDetail').innerText.length > 100",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        stages["detail"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
+
+        page.click("#creatureTable tr:first-child button")
+        page.wait_for_function(
+            "() => !document.getElementById('modalBackground')", timeout=HANDSHAKE_TIMEOUT)
+        stages["picked"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
+
+        page.fill("#unitCount", "7")
+        page.set_checked("#addToInit", True)
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.filter(u => u.charName === "Dire Ape").length === 7""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(600)
+        stages["added"] = page.evaluate(MONSTER_REPORT_JS, "Dire Ape")
+        player.wait_for_timeout(400)
+        stages["playerChat"] = player.inner_text("#chatText")
+
+        # Searching repeatedly must not pile up socket listeners, which is what
+        # the CR browser this replaced did on every change.
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+        for term in ["goblin", "ogre", "troll", "wolf"]:
+            page.fill("#creatureSearchName", term)
+            page.wait_for_timeout(350)
+        stages["listeners"] = page.evaluate(
+            """() => socket._callbacks
+                 ? Object.keys(socket._callbacks).filter(
+                     k => k.indexOf("database_creature") !== -1).length
+                 : 0""")
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestSearchingForAMonster:
+    def test_the_button_is_on_the_encounter_form(self, monsters):
+        assert monsters["before"]["chosen"] == ""
+
+    def test_a_name_search_finds_the_creature(self, monsters):
+        assert "Dire Ape" in monsters["searched"]["rows"]
+
+    def test_the_search_is_a_substring(self, monsters):
+        assert "Fiendish Dire Ape" in monsters["searched"]["rows"]
+
+    def test_the_result_count_is_reported(self, monsters):
+        assert "creature" in monsters["searched"]["countText"]
+
+    def test_a_type_filter_narrows_the_same_search(self, monsters):
+        """No apes are dragons."""
+        assert monsters["filteredAway"]["rows"] == []
+        assert "No creatures" in monsters["filteredAway"]["countText"]
+
+    def test_clicking_a_row_shows_its_statblock(self, monsters):
+        assert monsters["detail"]["detailLength"] > 100
+        assert monsters["detail"]["detailHead"].startswith("Dire Ape")
+
+    def test_repeated_searches_do_not_pile_up_listeners(self, monsters):
+        """The picker this replaced registered one per search, for the life of
+        the page."""
+        assert monsters["listeners"] <= 1
+
+
+class TestAddingSevenOfThem:
+    def test_choosing_fills_the_form(self, monsters):
+        assert monsters["picked"]["unitName"] == "Dire Ape"
+        assert monsters["picked"]["unitHP"] == "30"
+        assert monsters["picked"]["unitInit"] == "+2"
+
+    def test_the_creature_is_named_on_the_form(self, monsters):
+        assert "Dire Ape" in monsters["picked"]["chosen"]
+
+    def test_the_initiative_field_becomes_a_bonus(self, monsters):
+        """A statblock gives a modifier, never a finished count -- and that is
+        true for one creature as much as for seven."""
+        assert "Bonus" in monsters["picked"]["initLabel"]
+
+    def test_seven_are_added(self, monsters):
+        assert len(monsters["added"]["added"]) == 7
+
+    def test_they_rolled_separately(self, monsters):
+        initiatives = {unit["initiative"] for unit in monsters["added"]["added"]}
+        assert len(initiatives) > 1
+
+    def test_the_rolls_used_the_creatures_bonus(self, monsters):
+        assert all(3 <= int(unit["initiative"]) <= 22
+                   for unit in monsters["added"]["added"])
+
+    def test_they_carry_the_statblock(self, monsters):
+        ape = monsters["added"]["added"][0]
+        assert ape["HP"] == 30
+        assert ape["size"] == "large"
+        assert ape["lowLight"] is True
+        assert ape["perception"] == 8
+
+    def test_they_are_mobs_not_animals(self, monsters):
+        """Unit.type is the role on the map, not the bestiary type."""
+        assert all(unit["type"] == "Mob" for unit in monsters["added"]["added"])
+
+    def test_the_gm_is_shown_the_rolls(self, monsters):
+        assert "Dire Ape initiative:" in monsters["added"]["chat"]
+
+    def test_the_players_are_not(self, monsters):
+        assert "initiative:" not in monsters["playerChat"]
+
+    def test_the_form_is_cleared_for_the_next_creature(self, monsters):
+        assert monsters["added"]["unitName"] == ""
+        assert monsters["added"]["chosen"] == ""
+
+    def test_nothing_raised(self, monsters):
+        assert monsters["errors"] == []

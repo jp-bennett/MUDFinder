@@ -50,6 +50,173 @@ SPELL_QUERY = (
     " short_description, description_formated from spells where {column}=?;"
 )
 
+# What the creature picker lists. Everything else in the table is fetched one
+# row at a time, when a creature is actually chosen.
+#
+# rowid rather than the id column, which is TEXT and unindexed: looking a
+# creature up by it takes 15ms against 0.03ms for the rowid, and the import
+# renumbers id to match rowid anyway.
+CREATURE_LIST_COLUMNS = "rowid as id, Name, CR, Type, TypeNorm, Size, HP, Init, Source"
+
+# Enough to browse, few enough that a broad search is not a megabyte. The
+# search says when it has cut a list short rather than quietly truncating.
+MAX_CREATURE_RESULTS = 300
+
+# The Pathfinder creature types, as normalised into TypeNorm by
+# tools/import_creatures.py. Keep the two in step.
+CREATURE_TYPES = (
+    "aberration", "animal", "construct", "dragon", "elemental", "fey",
+    "humanoid", "magical beast", "monstrous humanoid", "ooze", "outsider",
+    "plant", "undead", "vermin",
+)
+
+# The map is drawn in three sizes, and the bestiary uses nine. Anything above
+# Large occupies the same two-by-two footprint, which is all the app models.
+CREATURE_SIZES = {
+    "fine": "small", "diminutive": "small", "tiny": "small", "small": "small",
+    "medium": "medium",
+    "large": "large", "huge": "large", "gargantuan": "large", "colossal": "large",
+}
+
+ABILITY_SCORE = re.compile(r"\b(Str|Dex|Con|Int|Wis|Cha)\s+(-|\d+)", re.I)
+PERCEPTION_BONUS = re.compile(r"Perception\s*([+-]\s*\d+)", re.I)
+LEADING_NUMBER = re.compile(r"-?\d+")
+
+# The nine alignments. A handful of rows carry prose here instead, and a unit
+# is better off with the default than with a sentence in its alignment.
+ALIGNMENTS = ("LG", "NG", "CG", "LN", "N", "CN", "LE", "NE", "CE")
+
+# Where one special ability ends and the next begins. The column runs them
+# together -- "Appraising Sight (Ex) ...free action.  Aura Sight (Su) ..." --
+# with nothing but a double space between, because the structure only ever
+# existed in the HTML statblock the import drops. Each one opens with its name
+# and an (Ex)/(Su)/(Sp) tag, which is enough to put the breaks back. Measured
+# over the table: 3,054 rows split, up to 21 abilities each, and no split point
+# landing anywhere but on an ability name.
+ABILITY_BOUNDARY = re.compile(
+    r"\s{2,}(?=[A-Z][A-Za-z0-9'\u2019\- ]{0,40}\((?:Ex|Su|Sp)[^)]{0,12}\))")
+
+
+# Spell lists have the same problem and a different shape: they run on at each
+# spell level, "3rd (5/day)-gaseous form...  2nd (7/day)-hideous laughter...".
+# Measured: 1,107 of the 1,230 rows carrying spells split, none off-target.
+SPELL_LEVEL_BOUNDARY = re.compile(
+    r"\s{2,}(?=(?:\d+(?:st|nd|rd|th)|\d)\s*\((?:at.will|\d)[^)]*\)\s*[-\u2013])")
+
+# Which pattern puts the breaks back into which column.
+RUN_TOGETHER_COLUMNS = {
+    "SpecialAbilities": ABILITY_BOUNDARY,
+    "SpecialAttacks": ABILITY_BOUNDARY,
+    "SpellsKnown": SPELL_LEVEL_BOUNDARY,
+    "SpellsPrepared": SPELL_LEVEL_BOUNDARY,
+    "SpellLikeAbilities": SPELL_LEVEL_BOUNDARY,
+}
+
+
+def split_abilities(text, boundary=ABILITY_BOUNDARY):
+    """A run-together column, one entry to a line."""
+    if not text:
+        return ""
+    return "\n".join(part.strip() for part in boundary.split(text) if part.strip())
+
+
+# A creature's abilities are copied onto every copy added, and go back out with
+# every update and into every autosave. The longest in the table is 5.8kB, and
+# seven of those on the wire forever is not worth the last paragraph. The
+# picker's detail pane shows the whole list either way.
+MAX_PERMANENT_ABILITIES = 2000
+
+
+def creature_database():
+    """A read-only connection to the bundled database.
+
+    Read-only because no handler has any business writing to a shipped asset,
+    and a typo that would corrupt it should fail instead.
+    """
+    return sqlite3.connect("file:mudfinder.sql?mode=ro", uri=True)
+
+
+def like_literal(text):
+    """A LIKE pattern matching `text` anywhere, with its wildcards defused.
+
+    Without this a GM searching for "%" matches every creature in the table and
+    "_" quietly matches any character.
+    """
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return "%" + escaped + "%"
+
+
+def creature_int(text, fallback=0):
+    """The leading number in a bestiary field, or a fallback.
+
+    These columns are mostly bare numbers but not reliably: Init is a plain
+    signed integer in all but 42 of the bundled rows, and Speed is prose like
+    "30 ft., fly 30 ft. (poor)".
+    """
+    match = LEADING_NUMBER.search(str(text or ""))
+    if not match:
+        return fallback
+    try:
+        return int(match.group())
+    except ValueError:
+        return fallback
+
+
+def creature_initiative_bonus(creature):
+    """The creature's initiative modifier, for the server to roll against."""
+    return creature_int(creature.get("Init"), 0)
+
+
+def creature_to_unit(creature):
+    """A bestiary row as the unit dict add_units wants.
+
+    Only the fields the app actually reads or shows. The rest of the row stays
+    in the database, where the picker can display it without every creature
+    dragging a hundred columns onto the map.
+    """
+    senses = str(creature.get("Senses") or "")
+    alignment = str(creature.get("Alignment") or "").strip()
+    unit = {
+        "charName": creature.get("Name") or "Creature",
+        # At least 1: four rows have a fractional HP that would otherwise floor
+        # to zero, and a creature that arrives already dead is no use.
+        "HP": max(1, creature_int(creature.get("HP"), 1)),
+        # The creature's *role* on the map, not its bestiary type. This is the
+        # most tempting wrong move in this function: Unit.type is checked
+        # against "player" all over the server, and "humanoid" is not that.
+        "type": "Mob",
+        "controlledBy": "gm",
+        "size": CREATURE_SIZES.get(str(creature.get("Size") or "").strip().lower(), "medium"),
+        "movementSpeed": creature_int(creature.get("Speed"), 30),
+        # These two now decide what a creature can see by the light rules, so
+        # they are worth taking from the statblock rather than leaving the GM
+        # to tick 2,695 boxes by hand.
+        "darkvision": "darkvision" in senses.lower(),
+        "lowLight": "low-light" in senses.lower(),
+        "alignment": alignment if alignment in ALIGNMENTS else "N",
+        "DR": creature.get("DR") or "",
+        "SR": creature.get("SR") or "",
+    }
+    unit["maxHP"] = unit["HP"]
+
+    perception = PERCEPTION_BONUS.search(senses)
+    if perception:
+        unit["perception"] = int(perception.group(1).replace(" ", ""))
+
+    for ability, score in ABILITY_SCORE.findall(str(creature.get("AbilityScores") or "")):
+        # A dash means the creature has no such score at all, as with a
+        # construct's Constitution. Left blank, which is what Unit defaults to.
+        unit[ability.upper()] = "" if score == "-" else score
+
+    abilities = [split_abilities(creature.get(column),
+                                 RUN_TOGETHER_COLUMNS.get(column, ABILITY_BOUNDARY))
+                 for column in ("SpecialAbilities", "SpecialAttacks", "SQ")]
+    text = "\n\n".join(a.strip() for a in abilities if a and a.strip())
+    if len(text) > MAX_PERMANENT_ABILITIES:
+        text = text[:MAX_PERMANENT_ABILITIES].rstrip() + "…"
+    unit["permanentAbilities"] = text
+    return unit
+
 
 def roll_int(text, fallback=0):
     """int() that yields a fallback instead of raising on player input.
@@ -755,6 +922,12 @@ def on_add_units(data):
     times. Above one copy this takes the modifier and rolls a d20 per creature
     instead. A single copy keeps meaning what it always did, an exact count,
     because a GM adding one creature often already knows where it goes.
+
+    Rolling can also be asked for outright with rollInitiative, which is what
+    the monster picker does. A creature out of the bestiary carries a modifier,
+    never a finished count, so taking its Init as an initiative would put a Dire
+    Ape at 2 rather than rolling for it -- and that is as wrong for one ape as
+    it is for seven.
     """
     room = data['room']
     if not check_room(room) or ROOMS[room].gmKey != data.get('gmKey'):
@@ -767,6 +940,9 @@ def on_add_units(data):
     # hold one image between them instead of six identical ones.
     token = store_image(room, template.get("token", ""))
     bonus = initiative_bonus(data.get('initiativeBonus'))
+    roll_initiative = data.get("rollInitiative")
+    if roll_initiative is None:
+        roll_initiative = count > 1
     rolls = []
     for _ in range(count):
         unit_data = dict(template)
@@ -774,7 +950,7 @@ def on_add_units(data):
         # Every copy is its own creature, so it cannot inherit the template's
         # identity -- the map and the initiative list both track units by uuid.
         unit_data.pop("uuid", None)
-        if count > 1:
+        if roll_initiative:
             die = randint(1, 20)
             unit_data["initiative"] = die + bonus
             rolls.append("d20(%d)%+d = %d" % (die, bonus, die + bonus))
@@ -1663,7 +1839,7 @@ def database_spells(casterClass, level):
     column = SPELL_CLASS_COLUMNS.get(casterClass)
     if column is None:
         return []
-    conn = sqlite3.connect("mudfinder.sql")
+    conn = creature_database()
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.execute(SPELL_QUERY.format(column=column), (level, ))
@@ -1674,12 +1850,102 @@ def database_spells(casterClass, level):
 
 @socketio.on('database_creatures')
 def database_creatures(data):
-    conn = sqlite3.connect("mudfinder.sql")
+    # The columns the picker lists, not every column there is. This used to be
+    # "select *", which meant 342 rows and three megabytes for CR 2 alone.
+    conn = creature_database()
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    c.execute("select * from creatures where cr = ?", (data["cr"], ))
+    c.execute("select %s from creatures where CR = ? limit ?" % CREATURE_LIST_COLUMNS,
+              (data["cr"], MAX_CREATURE_RESULTS))
     result = [dict(row) for row in c.fetchall()]
+    conn.close()
     emit("database_creatures_response", result)
+
+
+@socketio.on('database_creature_search')
+def database_creature_search(criteria):
+    """Creatures matching any combination of name, CR and type.
+
+    Returns rather than emits, unlike database_creatures above: an ack is
+    answered once, where a named response event has to be listened for, and the
+    picker was registering a fresh listener for every search it ran.
+
+    Source is in the list because it is often the only thing separating two
+    rows -- 612 names appear more than once now that the bestiary and the
+    adventure-path statblocks live in one table, and eleven of them are called
+    "Goblin Leader".
+    """
+    criteria = criteria or {}
+    where = []
+    values = []
+
+    name = str(criteria.get("name") or "").strip()
+    if name:
+        where.append("Name like ? escape '\\'")
+        values.append(like_literal(name))
+
+    cr = str(criteria.get("cr") or "").strip()
+    if cr:
+        where.append("CR = ?")
+        values.append(cr)
+
+    creature_type = str(criteria.get("type") or "").strip().lower()
+    if creature_type:
+        # Checked against our own list rather than trusted, the way
+        # SPELL_CLASS_COLUMNS does it. This one is a bound value so it could not
+        # be injected anyway, but an unknown type should return nothing rather
+        # than everything.
+        if creature_type not in CREATURE_TYPES:
+            return {"creatures": [], "truncated": False}
+        where.append("TypeNorm = ?")
+        values.append(creature_type)
+
+    if not where:
+        # An empty search is not a request for all ten thousand.
+        return {"creatures": [], "truncated": False}
+
+    conn = creature_database()
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    # One more than the cap, so the client can be told the list was cut short
+    # rather than being handed a truncated list that looks complete.
+    c.execute("select %s from creatures where %s order by Name limit ?"
+              % (CREATURE_LIST_COLUMNS, " and ".join(where)),
+              values + [MAX_CREATURE_RESULTS + 1])
+    rows = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return {"creatures": rows[:MAX_CREATURE_RESULTS],
+            "truncated": len(rows) > MAX_CREATURE_RESULTS}
+
+
+@socketio.on('database_creature')
+def database_creature(creature_id):
+    """One creature by id, with a unit ready to hand to add_units.
+
+    The only place the wide columns are read, and only ever one row at a time.
+    The mapping happens here rather than in the browser so that every parsing
+    rule can be tested without one.
+    """
+    try:
+        creature_id = int(creature_id)
+    except (TypeError, ValueError):
+        return None
+    conn = creature_database()
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("select * from creatures where rowid = ?", (creature_id,))
+    row = c.fetchone()
+    conn.close()
+    if row is None:
+        return None
+    creature = dict(row)
+    # Put the breaks back before the picker draws them, so the detail pane shows
+    # a list rather than one long paragraph.
+    for column, boundary in RUN_TOGETHER_COLUMNS.items():
+        if creature.get(column):
+            creature[column] = split_abilities(creature[column], boundary)
+    return {"creature": creature, "unit": creature_to_unit(creature),
+            "initiativeBonus": creature_initiative_bonus(creature)}
 
 @socketio.on('request_images')
 def request_images(room):

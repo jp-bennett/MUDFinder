@@ -617,6 +617,79 @@ width:100%;
   background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
 }
 
+/* The creature picker. Its markup is built in chooseCreature (shared.js), which
+   used to set all of this inline; it is here so the layout can be adjusted
+   without editing JavaScript. */
+#creaturePicker {
+    width: 80%;
+    height: 90%;
+    position: absolute;
+    right: 10%;
+    top: 5%;
+    background: white;
+    border: solid black;
+    border-radius: 25px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+}
+#creatureSearchControls {
+    padding: 10px;
+}
+#creatureSearchControls input,
+#creatureSearchControls select {
+    margin: 0 4px;
+}
+#creatureSearchName {
+    width: 40%;
+    text-align: left;
+    padding-left: 4px;
+}
+#creatureSearchCount {
+    font-size: 90%;
+    padding-bottom: 4px;
+}
+/* Shrinks to the results when there are few, and stops at half the modal when
+   there are many, so a single match does not push its statblock off-screen. */
+#creatureList {
+    flex: 0 1 auto;
+    max-height: 55%;
+    overflow: auto;
+    width: 94%;
+    margin: auto;
+}
+#creatureTable {
+    min-width: 90%;
+    margin: auto;
+    border-collapse: collapse;
+}
+#creatureTable td {
+    padding: 3px 8px;
+    text-align: left;
+}
+.creatureRow {
+    cursor: pointer;
+}
+.creatureRow:hover {
+    background: cornflowerblue;
+}
+/* The statblock of whichever row is being looked at. Pre-wrap because the text
+   was stripped out of an HTML statblock and its line breaks are the layout. */
+#creatureDetail {
+    flex: 1 1 auto;
+    overflow: auto;
+    width: 94%;
+    margin: auto;
+    text-align: left;
+    white-space: pre-wrap;
+    font-size: 90%;
+    border-top: 1px solid black;
+    padding-top: 6px;
+}
+/* Which creature the encounter form is currently carrying, if any. */
+.chosenCreature {
+    font-style: italic;
+}
 .modal {
   position: fixed; /* Stay in place */
   z-index: 6; /* Sit on top */

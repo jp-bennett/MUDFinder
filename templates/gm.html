@@ -72,6 +72,12 @@
             Clear locations:<input type="checkbox" id="clearLocations">
           </div>
           <div id="addDiv">
+            <!-- Picking a monster fills the boxes below and carries the rest of
+                 its statblock -- senses, ability scores, DR -- through to the
+                 unit. Everything shown stays editable. -->
+            <button type="button" id="chooseMonsterButton" onclick="chooseMonster()">Choose Monster</button>
+            <span id="chosenCreature" class="chosenCreature"></span>
+            <button type="button" id="clearCreatureButton" onclick="clearChosenCreature()" style="display:none;">✕</button><br>
             Creature Name:<br />
             <input type="text" id="unitName"><br>
             Token:<br />

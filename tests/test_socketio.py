@@ -6,6 +6,7 @@ covered: if a dependency bump breaks the wire protocol or the handler
 signatures, these fail rather than the app merely failing to work in a browser.
 """
 
+import json
 import re
 
 import pytest
@@ -1462,3 +1463,198 @@ class TestUpdatingVision:
         self.update(gm_client, room, key, color="red")
         assert goblin.darkvision is True
         assert goblin.color == "red"
+
+
+class TestCreatureSearch:
+    """Finding a monster in a table of ten thousand.
+
+    The picker searches by name, CR and type in any combination. The columns it
+    gets back are deliberately few: the handler this replaced selected every
+    one of the hundred, which was three megabytes for CR 2 alone.
+    """
+
+    def search(self, client, **criteria):
+        return client.emit("database_creature_search", criteria, callback=True)
+
+    def test_search_by_name(self, client):
+        result = self.search(client, name="dire ape")
+        assert "Dire Ape" in [c["Name"] for c in result["creatures"]]
+
+    def test_the_name_search_is_a_substring(self, client):
+        names = [c["Name"] for c in self.search(client, name="dire ape")["creatures"]]
+        assert "Fiendish Dire Ape" in names
+
+    def test_search_by_cr(self, client):
+        result = self.search(client, cr="3")
+        assert result["creatures"]
+        assert all(c["CR"] == "3" for c in result["creatures"])
+
+    def test_search_by_type(self, client):
+        result = self.search(client, type="dragon")
+        assert result["creatures"]
+        assert all(c["TypeNorm"] == "dragon" for c in result["creatures"])
+
+    def test_a_type_filter_is_exact(self, client):
+        """TypeNorm is matched, not the free-text Type, so asking for humanoids
+        does not also hand back every monstrous humanoid."""
+        result = self.search(client, type="humanoid")
+        assert all(c["TypeNorm"] == "humanoid" for c in result["creatures"])
+
+    def test_all_three_together(self, client):
+        result = self.search(client, name="goblin", cr="1/3", type="humanoid")
+        assert result["creatures"]
+        for creature in result["creatures"]:
+            assert "goblin" in creature["Name"].lower()
+            assert creature["CR"] == "1/3"
+            assert creature["TypeNorm"] == "humanoid"
+
+    def test_an_empty_search_returns_nothing(self, client):
+        """Not a request for the whole table."""
+        assert self.search(client)["creatures"] == []
+
+    def test_an_unknown_type_returns_nothing(self, client):
+        assert self.search(client, type="sasquatch")["creatures"] == []
+
+    def test_no_match_returns_nothing(self, client):
+        assert self.search(client, name="zzzznotacreature")["creatures"] == []
+
+    def test_a_broad_search_is_capped_and_says_so(self, client):
+        result = self.search(client, type="humanoid")
+        assert len(result["creatures"]) == mudfinder.MAX_CREATURE_RESULTS
+        assert result["truncated"] is True
+
+    def test_a_narrow_search_is_not_marked_truncated(self, client):
+        assert self.search(client, name="dire ape")["truncated"] is False
+
+    @pytest.mark.parametrize("wildcard", ["%", "_", "%%", "a_e"])
+    def test_like_wildcards_are_not_wildcards(self, client, wildcard):
+        """A GM typing % was matching every creature in the table."""
+        names = [c["Name"] for c in self.search(client, name=wildcard)["creatures"]]
+        assert all(wildcard.replace("\\", "") in name.lower() or not names
+                   for name in [n.lower() for n in names])
+
+    def test_a_percent_search_does_not_return_the_table(self, client):
+        assert self.search(client, name="%")["creatures"] == []
+
+    def test_only_the_list_columns_come_back(self, client):
+        """A regression here is measured in megabytes, not fields."""
+        creature = self.search(client, name="dire ape")["creatures"][0]
+        assert set(creature) == {"id", "Name", "CR", "Type", "TypeNorm", "Size",
+                                 "HP", "Init", "Source"}
+
+    def test_the_dropped_column_is_in_no_response(self, client):
+        creature = self.search(client, name="dire ape")["creatures"][0]
+        assert "FullText" not in creature
+
+    def test_the_response_stays_small(self, client):
+        """The broadest search there is, still well under a megabyte."""
+        result = self.search(client, type="humanoid")
+        assert len(json.dumps(result)) < 200000
+
+    def test_both_datasets_are_reachable(self, client):
+        """One creature from the bundled bestiary and one from the imported
+        adventure statblocks, so a merge that dropped either would fail here."""
+        assert self.search(client, name="Dire Ape")["creatures"]
+        assert self.search(client, name="Bridge Guard")["creatures"]
+
+    def test_the_type_list_matches_the_import(self, client):
+        """The filter can only offer what the import wrote into TypeNorm."""
+        import tools.import_creatures as importer
+        assert sorted(mudfinder.CREATURE_TYPES) == sorted(importer.CREATURE_TYPES)
+
+
+class TestFetchingOneCreature:
+    def creature_id(self, client, name):
+        return client.emit("database_creature_search", {"name": name},
+                           callback=True)["creatures"][0]["id"]
+
+    def test_it_returns_the_creature_and_a_unit(self, client):
+        got = client.emit("database_creature", self.creature_id(client, "Dire Ape"),
+                          callback=True)
+        assert got["creature"]["Name"] == "Dire Ape"
+        assert got["unit"]["charName"] == "Dire Ape"
+
+    def test_it_returns_the_initiative_bonus_separately(self, client):
+        """The unit carries no initiative: what a statblock gives is a modifier
+        to roll against, and the server rolls it per copy."""
+        got = client.emit("database_creature", self.creature_id(client, "Dire Ape"),
+                          callback=True)
+        assert got["initiativeBonus"] == 2
+        assert "initiative" not in got["unit"]
+
+    def test_an_unknown_id_returns_nothing(self, client):
+        # The handler returns None; the test client reports "no callback data"
+        # as an empty list, as it does for request_images.
+        assert not client.emit("database_creature", 99999999, callback=True)
+
+    @pytest.mark.parametrize("bad", ["abc", None, "", "1; drop table creatures--"])
+    def test_a_bad_id_is_refused_rather_than_raising(self, client, bad):
+        assert not client.emit("database_creature", bad, callback=True)
+
+    def test_the_creatures_table_survives_a_hostile_id(self, client):
+        client.emit("database_creature", "1; drop table creatures--", callback=True)
+        assert client.emit("database_creature_search", {"name": "Dire Ape"},
+                           callback=True)["creatures"]
+
+
+class TestAddingMonstersFromTheDatabase:
+    """The flow the picker drives: pick a creature, say how many, and let the
+    server roll each one's initiative."""
+
+    def add(self, gm_client, room, key, unit, count, bonus, roll=True):
+        gm_client.emit("add_units", {
+            "room": room, "gmKey": key, "count": count, "addToInitiative": True,
+            "initiativeBonus": bonus, "rollInitiative": roll, "unit": unit,
+        })
+        return mudfinder.ROOMS[room]
+
+    def dire_ape(self, client):
+        creature_id = client.emit("database_creature_search", {"name": "Dire Ape"},
+                                  callback=True)["creatures"][0]["id"]
+        return client.emit("database_creature", creature_id, callback=True)
+
+    def test_seven_of_them(self, gm):
+        gm_client, room, key = gm
+        ape = self.dire_ape(gm_client)
+        session = self.add(gm_client, room, key, ape["unit"], 7, ape["initiativeBonus"])
+        assert len([u for u in session.unitList if u.charName == "Dire Ape"]) == 7
+
+    def test_each_rolls_its_own_initiative(self, gm):
+        gm_client, room, key = gm
+        ape = self.dire_ape(gm_client)
+        session = self.add(gm_client, room, key, ape["unit"], 20, ape["initiativeBonus"])
+        assert len({u.initiative for u in session.unitList}) > 1
+
+    def test_the_rolls_use_the_creatures_own_bonus(self, gm):
+        gm_client, room, key = gm
+        ape = self.dire_ape(gm_client)
+        session = self.add(gm_client, room, key, ape["unit"], 30, ape["initiativeBonus"])
+        assert all(3 <= int(u.initiative) <= 22 for u in session.unitList)
+
+    def test_the_statblock_rides_along(self, gm):
+        gm_client, room, key = gm
+        ape = self.dire_ape(gm_client)
+        session = self.add(gm_client, room, key, ape["unit"], 3, ape["initiativeBonus"])
+        goblin = session.unitList[0]
+        assert (goblin.HP, goblin.size, goblin.lowLight) == (30, "large", True)
+
+    def test_a_single_monster_still_rolls(self, gm):
+        """Its Init is a modifier, so taking it as a finished count would put a
+        Dire Ape at initiative 2 every time."""
+        gm_client, room, key = gm
+        ape = self.dire_ape(gm_client)
+        rolled = set()
+        for _ in range(20):
+            mudfinder.ROOMS[room].unitList = []
+            session = self.add(gm_client, room, key, ape["unit"], 1, ape["initiativeBonus"])
+            rolled.add(int(session.unitList[0].initiative))
+        assert len(rolled) > 1
+
+    def test_hand_typed_adds_are_unchanged(self, gm):
+        """Without the flag, one creature still means an exact count."""
+        gm_client, room, key = gm
+        gm_client.emit("add_units", {
+            "room": room, "gmKey": key, "count": 1, "addToInitiative": False,
+            "initiativeBonus": 0, "unit": {"charName": "Boss", "initiative": "17"},
+        })
+        assert mudfinder.ROOMS[room].unitList[0].initiative == "17"

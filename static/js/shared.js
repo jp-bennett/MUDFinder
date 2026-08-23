@@ -1660,6 +1660,93 @@ function drawSelected(data) {
         }
     }
 }
+// The creature types the search can filter on. Kept in step with
+// CREATURE_TYPES in mudfinder.py, which is in step with the TypeNorm column
+// that tools/import_creatures.py writes.
+var CREATURE_TYPES = ["aberration", "animal", "construct", "dragon", "elemental",
+    "fey", "humanoid", "magical beast", "monstrous humanoid", "ooze", "outsider",
+    "plant", "undead", "vermin"];
+
+// The statblock, in the order Pathfinder prints it. Built here from the
+// columns rather than stored: the database's own rendered version was a
+// re-statement of these same fields and cost thirteen megabytes to keep.
+var STATBLOCK_SECTIONS = [
+    ["", ["Alignment", "Size", "Type", "SubType"]],
+    ["", ["Init", "Senses", "Aura"]],
+    ["DEFENSE", ["AC", "AC_Mods", "HP", "HD", "HP_Mods", "Fort", "Ref", "Will",
+                 "Save_Mods", "DefensiveAbilities", "DR", "Immune", "Resist", "SR",
+                 "Weaknesses"]],
+    ["OFFENSE", ["Speed", "Melee", "Ranged", "Space", "Reach", "SpecialAttacks",
+                 "SpellLikeAbilities", "SpellsKnown", "SpellsPrepared"]],
+    ["STATISTICS", ["AbilityScores", "BaseAtk", "CMB", "CMD", "Feats", "Skills",
+                    "RacialMods", "Languages", "SQ", "Gear", "OtherGear"]],
+    ["ECOLOGY", ["Environment", "Organization", "Treasure"]],
+    ["SPECIAL ABILITIES", ["SpecialAbilities"]],
+    ["TACTICS", ["BeforeCombat", "DuringCombat", "Morale"]],
+];
+
+// Rendered without a "SpecialAbilities:" label, because the section heading
+// above it already says so and each ability is on its own line.
+var STATBLOCK_BARE_FIELDS = ["SpecialAbilities", "AbilityScores"];
+
+function statblockLabel(field) {
+    // AC_Mods -> "AC Mods", BeforeCombat -> "Before Combat".
+    return field.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+function statblockText(creature) {
+    var lines = [creature.Name + "    CR " + (creature.CR || "—")];
+    if (creature.XP) {
+        lines.push("XP " + creature.XP);
+    }
+    for (var s = 0; s < STATBLOCK_SECTIONS.length; s++) {
+        var heading = STATBLOCK_SECTIONS[s][0];
+        var fields = STATBLOCK_SECTIONS[s][1];
+        var section = [];
+        for (var f = 0; f < fields.length; f++) {
+            var value = creature[fields[f]];
+            if (value !== null && value !== undefined && String(value).trim() !== "") {
+                section.push(STATBLOCK_BARE_FIELDS.indexOf(fields[f]) !== -1
+                    ? String(value).trim()
+                    : statblockLabel(fields[f]) + ": " + String(value).trim());
+            }
+        }
+        if (section.length) {
+            lines.push("");
+            if (heading) {
+                lines.push(heading);
+            }
+            lines = lines.concat(section);
+        }
+    }
+    // Bundled creatures carry real prose. Imported ones mostly do not, which is
+    // why the sections above exist.
+    if (creature.Description && String(creature.Description).trim()) {
+        lines.push("");
+        lines.push(String(creature.Description).trim());
+    }
+    return lines.join("\n");
+}
+
+function searchCreatures(criteria) {
+    // An ack rather than a named response event. The CR browser used to listen
+    // for one, and registered a fresh listener on every search -- they piled up
+    // for the life of the page and every later response ran all of them.
+    return new Promise(function (resolve) {
+        socket.emit("database_creature_search", criteria, function (data) {
+            resolve(data || {creatures: [], truncated: false});
+        });
+    });
+}
+
+function fetchCreature(id) {
+    // The wide columns, one creature at a time, with the unit already mapped
+    // server-side.
+    return new Promise(function (resolve) {
+        socket.emit("database_creature", id, function (data) { resolve(data); });
+    });
+}
+
 async function chooseCreature() {
     var choice = await new Promise(async function(resolve) {
         var modalBackground = document.createElement("div");
@@ -1668,119 +1755,146 @@ async function chooseCreature() {
         modalBackground.onclick = function () {document.getElementById('modalBackground').remove(); resolve(undefined)};
 
         var modaldiv = document.createElement("div");
-        modaldiv.style.width = "80%";
-        modaldiv.style.height = "90%";
-        modaldiv.style.position = "absolute";
-        modaldiv.style.right = "10%";
-        modaldiv.style.top = "5%";
-        modaldiv.style.background = "white";
-        modaldiv.style.border = "black";
-        modaldiv.style.borderStyle = "solid";
-        modaldiv.style.borderRadius = "25px";
-        modaldiv.style.textAlign = "center";
+        modaldiv.id = "creaturePicker";
         modaldiv.onclick = function () {event.stopPropagation()}
         document.body.appendChild(modalBackground);
         document.getElementById("modalBackground").appendChild(modaldiv);
-        modaldiv.innerText = "CR:";
-        crSelect = document.createElement("select");
 
-        for (i=0;i<crNumbers.length;i++) {
-            crOption = document.createElement("option");
-            crOption.innerText = crNumbers[i];
-            crSelect.appendChild(crOption);
-        }
+        var controls = document.createElement("div");
+        controls.id = "creatureSearchControls";
+        modaldiv.appendChild(controls);
 
-        crSelect.onchange = function () {
-            populateCreatures(this.value);
-        }
-        modaldiv.appendChild(crSelect);
-        creatureListDiv = document.createElement("div");
-        creatureListDiv.style.height = "50%";
-        creatureListDiv.style.overflow = "auto";
-        creatureListDiv.style.width = "90%";
-        creatureListDiv.style.margin = "auto";
+        var nameInput = document.createElement("input");
+        nameInput.id = "creatureSearchName";
+        nameInput.type = "text";
+        nameInput.placeholder = "search by name";
+        controls.appendChild(nameInput);
+
+        var crSelect = document.createElement("select");
+        crSelect.id = "creatureSearchCR";
+        appendOptions(crSelect, ["any CR"].concat(crNumbers));
+        controls.appendChild(crSelect);
+
+        var typeSelect = document.createElement("select");
+        typeSelect.id = "creatureSearchType";
+        appendOptions(typeSelect, ["any type"].concat(CREATURE_TYPES));
+        controls.appendChild(typeSelect);
+
+        var countDiv = document.createElement("div");
+        countDiv.id = "creatureSearchCount";
+        modaldiv.appendChild(countDiv);
+
+        var creatureListDiv = document.createElement("div");
+        creatureListDiv.id = "creatureList";
         modaldiv.appendChild(creatureListDiv);
 
-        creatureTable = document.createElement("table");
-        creatureTable.style.minWidth = "80%";
-        creatureTable.style.margin = "auto";
+        var creatureTable = document.createElement("table");
+        creatureTable.id = "creatureTable";
         creatureListDiv.appendChild(creatureTable);
 
-        creatureDetailDiv = document.createElement("div");
-        creatureDetailDiv.style.height = "40%";
-        creatureDetailDiv.style.overflow = "auto";
-        creatureDetailDiv.style.width = "90%";
-        creatureDetailDiv.style.margin = "auto";
+        var creatureDetailDiv = document.createElement("div");
+        creatureDetailDiv.id = "creatureDetail";
         modaldiv.appendChild(creatureDetailDiv);
-        populateCreatures(crSelect.value);
 
-        async function populateCreatures(CR) {
-            removeContents(creatureTable);
-            removeContents(creatureDetailDiv);
-            msg = await new Promise((resolve, reject) =>  {
-                socket.emit("database_creatures", {"cr": CR});
-                socket.on("database_creatures_response", function (data) {resolve(data)});
-            });
-
-            for (i=0;i<msg.length;i++) {
-                var tableRow = document.createElement("tr");
-
-                var tableData = document.createElement("td");
-                tableData.innerText = msg[i].Name;
-                tableRow.appendChild(tableData);
-                var tableData = document.createElement("td");
-                tableData.innerText = msg[i].Type;
-                tableRow.appendChild(tableData);
-                var tableData = document.createElement("td");
-                tableData.innerText = msg[i].Size;
-                tableRow.appendChild(tableData);
-                var tableData = document.createElement("td");
-                var button = document.createElement("button");
-                button.innerText = "select";
-                button.onclick = (function (i) { return function () {
-                    document.getElementById('modalBackground').remove();
-                    resolve(msg[i]);
-                }})(i);
-                tableData.appendChild(button);
-                tableRow.appendChild(tableData);
-                tableRow.onclick = (function (i) { return function () {
-                    //show the details of the selected creature here
-                    removeContents(creatureDetailDiv);
-                    creatureDetailDiv.innerText = msg[i].Name;
-                    creatureDetailDiv.innerHTML += "<br>";
-                    creatureDetailDiv.innerText += msg[i].Description;
-                }})(i);
-                creatureTable.appendChild(tableRow);
+        function appendOptions(select, values) {
+            for (var v = 0; v < values.length; v++) {
+                var option = document.createElement("option");
+                option.innerText = values[v];
+                select.appendChild(option);
             }
         }
 
+        // The name box searches as it is typed, but only once typing pauses --
+        // otherwise every keystroke is a query against ten thousand rows.
+        var searchTimer;
+        nameInput.oninput = function () {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(runSearch, 250);
+        };
+        crSelect.onchange = runSearch;
+        typeSelect.onchange = runSearch;
+        nameInput.focus();
+        runSearch();
 
+        async function runSearch() {
+            var criteria = {
+                name: nameInput.value,
+                cr: crSelect.selectedIndex > 0 ? crSelect.value : "",
+                type: typeSelect.selectedIndex > 0 ? typeSelect.value : "",
+            };
+            removeContents(creatureTable);
+            removeContents(creatureDetailDiv);
+            if (!criteria.name && !criteria.cr && !criteria.type) {
+                countDiv.innerText = "Search by name, or pick a CR or a type.";
+                return;
+            }
+            countDiv.innerText = "searching…";
+            var result = await searchCreatures(criteria);
+            var creatures = result.creatures;
+            if (creatures.length === 0) {
+                countDiv.innerText = "No creatures match.";
+                return;
+            }
+            countDiv.innerText = result.truncated
+                ? creatures.length + " shown, and there are more — narrow the search"
+                : creatures.length + (creatures.length === 1 ? " creature" : " creatures");
+            for (var i = 0; i < creatures.length; i++) {
+                creatureTable.appendChild(creatureRow(creatures[i]));
+            }
+        }
+
+        function creatureRow(creature) {
+            var tableRow = document.createElement("tr");
+            tableRow.className = "creatureRow";
+            // Source is here because it is often the only thing telling two
+            // rows apart: 612 names appear more than once, and eleven of them
+            // are "Goblin Leader".
+            var fields = [creature.Name, "CR " + creature.CR, creature.TypeNorm,
+                          creature.Size, "hp " + creature.HP, creature.Source];
+            for (var f = 0; f < fields.length; f++) {
+                var tableData = document.createElement("td");
+                tableData.innerText = fields[f] === null ? "" : fields[f];
+                tableRow.appendChild(tableData);
+            }
+            var buttonCell = document.createElement("td");
+            var button = document.createElement("button");
+            button.innerText = "select";
+            button.onclick = async function (event) {
+                event.stopPropagation();
+                var full = await fetchCreature(creature.id);
+                document.getElementById('modalBackground').remove();
+                resolve(full);
+            };
+            buttonCell.appendChild(button);
+            tableRow.appendChild(buttonCell);
+            tableRow.onclick = async function () {
+                var full = await fetchCreature(creature.id);
+                removeContents(creatureDetailDiv);
+                if (full) {
+                    // innerText throughout: this is text out of the database,
+                    // and none of it is ours to trust as markup.
+                    creatureDetailDiv.innerText = statblockText(full.creature);
+                }
+            };
+            return tableRow;
+        }
     })
     return choice;
 }
 async function selectAddUnit (owner) {
-    unitToAdd = await chooseCreature();
-    if (typeof unitToAdd == "undefined") {
+    // The player's Summon button. The GM adds monsters through the encounter
+    // form instead, so that the count and the initiative rolls come for free.
+    var chosen = await chooseCreature();
+    if (!chosen) {
         return;
     }
-    var unit = {};
-    unit.charName = unitToAdd.Name;
+    // Mapped server-side now, so this and the GM's picker cannot drift apart
+    // over which columns become which fields.
+    var unit = chosen.unit;
     unit.color = "black";
-    unit.HP = unitToAdd.HP
-    unit.maxHP = unit.HP;
-    unit.movementSpeed = parseInt(unitToAdd.Speed);
-    if (isNaN(unit.movementSpeed)) {
-        unit.movementSpeed = 30;
-    }
-    if (isGM) {
-        unit.controlledBy = "gm";
-        unit.type = "Mob";
-        socket.emit('add_unit', {addToInitiative: false ,unit: unit, room: room, gmKey: gmKey});
-    } else {
-        unit.type = "Summon";
-        unit.controlledBy = charName;
-        socket.emit('add_unit', {addToInitiative: inInit ,unit: unit, room: room, charName: charName});
-    }
+    unit.type = "Summon";
+    unit.controlledBy = charName;
+    socket.emit('add_unit', {addToInitiative: inInit, unit: unit, room: room, charName: charName});
 }
 function deselectAll() {
     try {

@@ -4,8 +4,11 @@ These cover the save-file round trip, which is what protects existing games
 from a bad refactor, plus the initiative ordering rules.
 """
 
+import sqlite3
+
 import pytest
 
+import mudfinder
 from helpers import make_player, make_unit
 from player import Player
 from session import Session, BACKGROUND_ALIGNMENT_KEYS
@@ -406,3 +409,243 @@ class TestVisionFields:
         unit = Unit(saved)
         assert unit.darkvision is False
         assert unit.permanentAbilities == ""
+
+
+class TestCreatureToUnit:
+    """Turning a bestiary row into a unit.
+
+    The columns are free text written for a reader, not for a parser, so each
+    rule here exists because of rows that break the obvious version of it.
+    """
+
+    def unit(self, **columns):
+        return mudfinder.creature_to_unit(columns)
+
+    def test_the_name_carries_over(self):
+        assert self.unit(Name="Dire Ape")["charName"] == "Dire Ape"
+
+    def test_a_creature_with_no_name_still_builds(self):
+        assert self.unit()["charName"] == "Creature"
+
+    def test_hp_is_a_number(self):
+        assert self.unit(Name="x", HP="30")["HP"] == 30
+
+    def test_hp_is_never_zero(self):
+        """Four rows carry a fractional hp, and a creature that arrives already
+        dead is no use to anyone."""
+        assert self.unit(Name="Flying Fox", HP="0.5")["HP"] == 1
+
+    def test_max_hp_matches(self):
+        assert self.unit(Name="x", HP="30")["maxHP"] == 30
+
+    @pytest.mark.parametrize("init,expected", [
+        ("2", 2), ("+6", 6), ("-1", -1), ("0", 0),
+        ("+8M", 8),
+        ("+4 (+8 when climbing trees)", 4),
+        ("+1/-19, dual initiative", 1),
+        ("", 0), ("special", 0),
+    ])
+    def test_the_initiative_bonus(self, init, expected):
+        assert mudfinder.creature_initiative_bonus({"Init": init}) == expected
+
+    @pytest.mark.parametrize("size,expected", [
+        ("Fine", "small"), ("Diminutive", "small"), ("Tiny", "small"),
+        ("Small", "small"), ("Medium", "medium"), ("Large", "large"),
+        ("Huge", "large"), ("Gargantuan", "large"), ("Colossal", "large"),
+        ("", "medium"), ("nonsense", "medium"),
+    ])
+    def test_size_collapses_to_the_three_the_map_draws(self, size, expected):
+        """Huge and above share the Large footprint, which is all the app
+        models -- a known loss rather than a surprise."""
+        assert self.unit(Name="x", Size=size)["size"] == expected
+
+    def test_darkvision_and_low_light_come_from_senses(self):
+        unit = self.unit(Name="x", Senses="darkvision 60 ft., low-light vision; Perception +4")
+        assert unit["darkvision"] is True
+        assert unit["lowLight"] is True
+
+    def test_one_sense_without_the_other(self):
+        unit = self.unit(Name="x", Senses="low-light vision, scent; Perception +8")
+        assert unit["darkvision"] is False
+        assert unit["lowLight"] is True
+
+    def test_no_senses_at_all(self):
+        unit = self.unit(Name="x")
+        assert unit["darkvision"] is False
+        assert unit["lowLight"] is False
+
+    @pytest.mark.parametrize("senses,expected", [
+        ("darkvision 60 ft.; Perception +26", 26),
+        ("Perception -1", -1),
+        ("Perception +4 (+11 urban)", 4),
+    ])
+    def test_perception_comes_out_of_senses(self, senses, expected):
+        assert self.unit(Name="x", Senses=senses)["perception"] == expected
+
+    def test_no_perception_is_left_to_the_default(self):
+        assert "perception" not in self.unit(Name="x", Senses="blindsense 30 ft.")
+
+    @pytest.mark.parametrize("speed,expected", [
+        ("30 ft.", 30), ("20 ft., fly 30 ft. (poor)", 20),
+        ("10 ft., swim 60 ft.", 10), ("25 feet", 25),
+        ("", 30), ("immobile", 30),
+    ])
+    def test_movement_speed(self, speed, expected):
+        assert self.unit(Name="x", Speed=speed)["movementSpeed"] == expected
+
+    def test_ability_scores(self):
+        unit = self.unit(Name="x", AbilityScores="Str 11, Dex 15, Con 14, Int 2, Wis 11, Cha 10")
+        assert (unit["STR"], unit["DEX"], unit["CON"]) == ("11", "15", "14")
+        assert (unit["INT"], unit["WIS"], unit["CHA"]) == ("2", "11", "10")
+
+    def test_ability_scores_with_stray_spacing(self):
+        """Seventy-odd rows have a double space in there."""
+        unit = self.unit(Name="x", AbilityScores="Str 20, Dex 23, Con 21, Int 14,  Wis 18, Cha 21")
+        assert unit["WIS"] == "18"
+
+    def test_a_missing_ability_score_is_blank(self):
+        """A construct has no Constitution at all, written as a dash."""
+        assert self.unit(Name="x", AbilityScores="Str 20, Dex 13, Con -, Int -")["CON"] == ""
+
+    def test_no_ability_scores_at_all(self):
+        assert "STR" not in self.unit(Name="x")
+
+    @pytest.mark.parametrize("alignment,expected", [
+        ("CE", "CE"), ("N", "N"), ("LG", "LG"),
+        ("", "N"), ("any alignment", "N"),
+    ])
+    def test_alignment(self, alignment, expected):
+        assert self.unit(Name="x", Alignment=alignment)["alignment"] == expected
+
+    def test_the_unit_type_is_a_role_not_a_creature_type(self):
+        """Unit.type is checked against "player" across the server. A creature
+        whose type became "humanoid" would be neither one thing nor the other."""
+        assert self.unit(Name="x", Type="humanoid")["type"] == "Mob"
+
+    def test_abilities_are_gathered(self):
+        unit = self.unit(Name="x", SpecialAbilities="Rend", SpecialAttacks="Grab", SQ="amphibious")
+        assert unit["permanentAbilities"] == "Rend\n\nGrab\n\namphibious"
+
+    def test_abilities_are_capped(self):
+        """They are copied onto every creature added and go out with every
+        update, so the longest statblock in the table is not carried whole."""
+        unit = self.unit(Name="x", SpecialAbilities="a" * 9000)
+        assert len(unit["permanentAbilities"]) <= mudfinder.MAX_PERMANENT_ABILITIES + 1
+
+    def test_a_mapped_unit_survives_being_saved(self):
+        """Unit.to_json is a hand-written key list, so a field it does not name
+        is lost the moment the game is saved."""
+        mapped = self.unit(Name="Dire Ape", HP="30", Size="Large", Init="2",
+                           Senses="low-light vision; Perception +8",
+                           AbilityScores="Str 19, Dex 15, Con 16, Int 2, Wis 12, Cha 7",
+                           Alignment="N", Speed="30 ft.", SpecialAbilities="rend")
+        saved = Unit(mapped).to_json()
+        assert all(key in saved for key in mapped)
+
+
+class TestShippedCreatureDatabase:
+    """Properties of the file that ships, so a bad rebuild fails here."""
+
+    def creatures(self):
+        return sqlite3.connect("mudfinder.sql")
+
+    def test_both_datasets_are_present(self):
+        db = self.creatures()
+        count = db.execute("select count(*) from creatures").fetchone()[0]
+        assert count > 10000
+
+    def test_every_creature_has_a_normalised_type(self):
+        db = self.creatures()
+        assert db.execute(
+            "select count(*) from creatures where coalesce(TypeNorm,'') = ''").fetchone()[0] == 0
+
+    def test_the_normalised_types_are_the_known_ones(self):
+        db = self.creatures()
+        found = {row[0] for row in db.execute("select distinct TypeNorm from creatures")}
+        assert found <= set(mudfinder.CREATURE_TYPES)
+
+    def test_the_dropped_column_is_gone(self):
+        db = self.creatures()
+        columns = [row[1] for row in db.execute("PRAGMA table_info(creatures)")]
+        assert "FullText" not in columns
+
+    def test_the_bundled_bestiary_kept_its_prose(self):
+        """The merge rebuilds the table, and dropping the wrong column would
+        take every creature's description with it."""
+        db = self.creatures()
+        row = db.execute("select Description from creatures where Name = 'Dire Ape'").fetchone()
+        assert row and "gigantopithecus" in row[0]
+
+    def test_a_creature_is_not_in_there_twice(self):
+        """Keying the merge on anything but the name imported a second Goblin,
+        identical to the first, for the GM to choose between."""
+        db = self.creatures()
+        assert db.execute("select count(*) from creatures where lower(Name) = 'goblin'").fetchone()[0] == 1
+
+    def test_the_spells_survived_the_rebuild(self):
+        db = self.creatures()
+        assert db.execute("select count(*) from spells").fetchone()[0] > 2000
+
+
+class TestPuttingTheLineBreaksBack:
+    """The bestiary columns run their entries together.
+
+    Special abilities arrive as one string with a double space between them --
+    "Appraising Sight (Ex) ...free action.  Aura Sight (Su) ..." -- because the
+    structure only ever existed in the HTML statblock, which the import drops
+    for being thirteen megabytes of restating the other columns. Each entry
+    opens distinctively enough to put the breaks back.
+    """
+
+    def test_abilities_are_split(self):
+        text = ("Appraising Sight (Ex) An occult dragon can appraise items.  "
+                "Aura Sight (Su) An old dragon sees all objects.  "
+                "Change Shape (Su) A juvenile dragon can assume any form.")
+        assert mudfinder.split_abilities(text).split("\n") == [
+            "Appraising Sight (Ex) An occult dragon can appraise items.",
+            "Aura Sight (Su) An old dragon sees all objects.",
+            "Change Shape (Su) A juvenile dragon can assume any form.",
+        ]
+
+    def test_a_single_ability_is_left_alone(self):
+        assert mudfinder.split_abilities("Rend (Ex) Two claws hit.") == "Rend (Ex) Two claws hit."
+
+    def test_nothing_is_nothing(self):
+        assert mudfinder.split_abilities("") == ""
+        assert mudfinder.split_abilities(None) == ""
+
+    def test_a_double_space_mid_sentence_is_not_a_break(self):
+        """The break is the gap plus an ability name, not the gap alone."""
+        assert "\n" not in mudfinder.split_abilities("Rend (Ex) Two claws hit.  Then again.")
+
+    def test_spell_lists_split_by_level(self):
+        text = ("Psychic Spells Known (CL 7th; concentration +12)  "
+                "3rd (5/day)-gaseous form  2nd (7/day)-hideous laughter (DC 15)  "
+                "0 (at-will)-detect magic")
+        assert mudfinder.split_abilities(text, mudfinder.SPELL_LEVEL_BOUNDARY).split("\n") == [
+            "Psychic Spells Known (CL 7th; concentration +12)",
+            "3rd (5/day)-gaseous form",
+            "2nd (7/day)-hideous laughter (DC 15)",
+            "0 (at-will)-detect magic",
+        ]
+
+    def test_the_unit_gets_its_abilities_a_line_at_a_time(self):
+        unit = mudfinder.creature_to_unit({
+            "Name": "Adult Occult Dragon",
+            "SpecialAbilities": "Aura Sight (Su) Sees auras.  Item Mastery (Su) Emulates.",
+        })
+        assert unit["permanentAbilities"] == "Aura Sight (Su) Sees auras.\nItem Mastery (Su) Emulates."
+
+    def test_every_column_that_runs_together_is_covered(self):
+        assert set(mudfinder.RUN_TOGETHER_COLUMNS) == {
+            "SpecialAbilities", "SpecialAttacks", "SpellsKnown",
+            "SpellsPrepared", "SpellLikeAbilities"}
+
+    def test_the_shipped_data_actually_splits(self):
+        """Guards the patterns against a future rebuild whose columns are
+        punctuated differently."""
+        db = sqlite3.connect("mudfinder.sql")
+        row = db.execute(
+            "select SpecialAbilities from creatures where Name like 'Adult Occult Dragon%'"
+        ).fetchone()
+        assert row and mudfinder.split_abilities(row[0]).count("\n") >= 5

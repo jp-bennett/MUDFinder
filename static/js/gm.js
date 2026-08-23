@@ -776,10 +776,12 @@ function unitCount() {
 
 function refreshInitiativeLabel() {
     // The same box, but adding several creatures at once it holds the modifier
-    // they each roll against rather than a count they would all share.
-    var multiple = unitCount() > 1;
+    // they each roll against rather than a count they would all share. A
+    // creature out of the bestiary is a modifier however many are being added,
+    // because that is what its statblock gives.
+    var rolled = unitCount() > 1 || Boolean(chosenCreature);
     document.getElementById("unitInitLabel").innerText =
-        multiple ? "Initiative Bonus (d20 rolled for each):" : "Initiative Count:";
+        rolled ? "Initiative Bonus (d20 rolled for each):" : "Initiative Count:";
 }
 
 function previewUnitToken() {
@@ -812,9 +814,53 @@ function chooseUnitToken() {
     }
 }
 
+// The statblock behind whatever is in the form, when it came out of the
+// bestiary. Everything the GM can see stays editable in the form; this carries
+// the rest -- ability scores, senses, DR -- through to the unit.
+var chosenCreature;
+
+function clearChosenCreature() {
+    // Detaching is a button rather than something that happens when the name is
+    // edited: renaming a monster and keeping its statblock is a reasonable
+    // thing to want, and losing the statblock silently would not be obvious.
+    chosenCreature = undefined;
+    document.getElementById("chosenCreature").innerText = "";
+    document.getElementById("clearCreatureButton").style.display = "none";
+    refreshInitiativeLabel();
+}
+
+async function chooseMonster() {
+    try {
+        var chosen = await chooseCreature();
+        if (!chosen) {
+            return;
+        }
+        chosenCreature = chosen;
+        // Only the fields the GM might want to overrule are put in the form.
+        // The initiative box takes the creature's modifier, because a bestiary
+        // entry has one of those and never a finished count.
+        document.getElementById("unitName").value = chosen.unit.charName;
+        document.getElementById("unitHP").value = chosen.unit.HP;
+        document.getElementById("unitInit").value =
+            (chosen.initiativeBonus >= 0 ? "+" : "") + chosen.initiativeBonus;
+        document.getElementById("chosenCreature").innerText =
+            chosen.creature.Name + " — CR " + chosen.creature.CR + ", " + chosen.creature.Size
+            + " " + chosen.creature.TypeNorm;
+        document.getElementById("clearCreatureButton").style.display = "";
+        refreshInitiativeLabel();
+        document.getElementById("unitCount").focus();
+        document.getElementById("unitCount").select();
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
 function addUnit() {
     try {
-        var unit = {};
+        // A creature from the bestiary brings the fields the form has no boxes
+        // for. The form still wins wherever the two overlap, so editing the
+        // name or the HP after choosing does what it looks like it does.
+        var unit = chosenCreature ? Object.assign({}, chosenCreature.unit) : {};
         unit.charName = document.getElementById("unitName").value;
         unit.token = document.getElementById("unitToken").value;
         unit.charShortName = document.getElementById("unitShortName").value;
@@ -825,14 +871,17 @@ function addUnit() {
         unit.maxHP = unit.HP;
         var count = unitCount();
         var typedInitiative = document.getElementById("unitInit").value;
-        // One creature keeps the old meaning, an exact initiative count. More
-        // than one and the same box is the modifier the server rolls against.
-        unit.initiative = count > 1 ? 0 : typedInitiative;
+        // A creature out of the database carries a modifier, so it is rolled
+        // even for a single copy. Typed in by hand, one creature still means an
+        // exact initiative count and several mean a modifier.
+        var rollInitiative = Boolean(chosenCreature) || count > 1;
+        unit.initiative = rollInitiative ? 0 : typedInitiative;
         socket.emit('add_units', {
             addToInitiative: document.getElementById("addToInit").checked,
             unit: unit,
             count: count,
-            initiativeBonus: count > 1 ? typedInitiative : 0,
+            initiativeBonus: rollInitiative ? typedInitiative : 0,
+            rollInitiative: rollInitiative,
             room: room,
             gmKey: gmKey,
         });
@@ -842,6 +891,8 @@ function addUnit() {
         document.getElementById("unitInit").value = "";
         document.getElementById("unitToken").value = "";
         document.getElementById("unitCount").value = "1";
+        document.getElementById("unitHP").value = "";
+        clearChosenCreature();
         previewUnitToken();
         refreshInitiativeLabel();
     } catch (e) {
