@@ -16,7 +16,7 @@ from flask import Flask, abort, render_template, request, redirect
 from flask_socketio import SocketIO, join_room, emit
 from werkzeug.utils import secure_filename
 
-from session import Session, BACKGROUND_ALIGNMENT_KEYS
+from session import Session, BACKGROUND_ALIGNMENT_KEYS, BACKGROUND_ALIGNMENT_SEQ
 
 from player import Player
 from unit import Unit
@@ -421,6 +421,8 @@ def on_image_upload(room, image, title, owner):
             for key in BACKGROUND_ALIGNMENT_KEYS:
                 if key in ROOMS[room].mapData:
                     tmpMapData[key] = ROOMS[room].mapData[key]
+            if BACKGROUND_ALIGNMENT_SEQ in ROOMS[room].mapData:
+                tmpMapData[BACKGROUND_ALIGNMENT_SEQ] = ROOMS[room].mapData[BACKGROUND_ALIGNMENT_SEQ]
             tmpMapData["mapArray"] = []
             emit('gm_map_update', tmpMapData, room=ROOMS[room].gmRoom)
             emit('player_map_update', tmpMapData, room=room)
@@ -677,7 +679,7 @@ def on_clear_map(data):
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         ROOMS[room].mapData["mapArray"] = []
         ROOMS[room].mapData["mapBackground"] = "static/images/mapbackground.jpg"
-        for key in BACKGROUND_ALIGNMENT_KEYS:
+        for key in BACKGROUND_ALIGNMENT_KEYS + (BACKGROUND_ALIGNMENT_SEQ,):
             ROOMS[room].mapData.pop(key, None)
         ROOMS[room].inInit = False
         for x in reversed(ROOMS[room].unitList):  # since we're removing elements, have to walk it backwards
@@ -1207,7 +1209,7 @@ def on_map_generate(data):
         if width is None or height is None:
             return
         ROOMS[room].mapData["mapBackground"] = "static/images/mapbackground.jpg"
-        for key in BACKGROUND_ALIGNMENT_KEYS:
+        for key in BACKGROUND_ALIGNMENT_KEYS + (BACKGROUND_ALIGNMENT_SEQ,):
             ROOMS[room].mapData.pop(key, None)
         ROOMS[room].mapData["mapArray"] = build_map_grid(width, height, data["discovered"])
         emit_to_gm('gm_map', ROOMS[room].mapData, room)
@@ -1237,6 +1239,7 @@ def on_map_generate_over_background(data):
         ROOMS[room].mapData["backgroundTilesWide"] = float(width)
         ROOMS[room].mapData["backgroundOffsetX"] = 0.0
         ROOMS[room].mapData["backgroundOffsetY"] = 0.0
+        stamp_alignment(ROOMS[room])
         emit_to_gm('gm_map', ROOMS[room].mapData, room)
         emit('draw_map', ROOMS[room].player_map(), room=room)
         ROOMS[room].send_updates()
@@ -1294,6 +1297,20 @@ def clamp_alignment(value, low, high):
     return max(low, min(high, number))
 
 
+def stamp_alignment(session):
+    """Mark the alignment as newer than anything sent before it.
+
+    The counter belongs to the server because the server is the only place
+    that sees every change in one order. A client compares the stamp on an
+    incoming payload against the one it is already showing and ignores
+    anything older, which is what stops a full map -- sent in answer to a grid
+    resize, carrying the alignment as it stood when that resize was handled --
+    from undoing a drag the GM has made since.
+    """
+    session.mapData[BACKGROUND_ALIGNMENT_SEQ] = session.mapData.get(BACKGROUND_ALIGNMENT_SEQ, 0) + 1
+    return session.mapData[BACKGROUND_ALIGNMENT_SEQ]
+
+
 @socketio.on('set_background_alignment')
 def on_set_background_alignment(data):
     """Place the background image against the grid."""
@@ -1310,6 +1327,7 @@ def on_set_background_alignment(data):
         ROOMS[room].mapData["backgroundTilesWide"] = tiles_wide
         ROOMS[room].mapData["backgroundOffsetX"] = offset_x
         ROOMS[room].mapData["backgroundOffsetY"] = offset_y
+        seq = stamp_alignment(ROOMS[room])
         # Same shape image_upload uses for a background change: no tiles, so
         # nothing is redrawn, only the background is repositioned.
         tmpMapData = {"mapArray": [],
@@ -1317,7 +1335,8 @@ def on_set_background_alignment(data):
                       "mapBackground": ROOMS[room].mapData["mapBackground"],
                       "backgroundTilesWide": tiles_wide,
                       "backgroundOffsetX": offset_x,
-                      "backgroundOffsetY": offset_y}
+                      "backgroundOffsetY": offset_y,
+                      BACKGROUND_ALIGNMENT_SEQ: seq}
         emit('gm_map_update', tmpMapData, room=ROOMS[room].gmRoom)
         emit('player_map_update', tmpMapData, room=room)
 
@@ -1440,7 +1459,7 @@ def on_map_upload(data):
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         ROOMS[room].mapData["mapArray"] = []
         ROOMS[room].mapData["mapBackground"] = "static/images/mapbackground.jpg"
-        for key in BACKGROUND_ALIGNMENT_KEYS:
+        for key in BACKGROUND_ALIGNMENT_KEYS + (BACKGROUND_ALIGNMENT_SEQ,):
             ROOMS[room].mapData.pop(key, None)
         mapText = data['mapText']
         # splitlines rather than split("\n"): a map pasted from a text file or

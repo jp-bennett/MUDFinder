@@ -12,6 +12,7 @@ import pytest
 
 import mudfinder
 from helpers import GM_KEY, event, event_names
+from session import Session
 
 
 class TestConnection:
@@ -1462,3 +1463,133 @@ class TestUpdatingVision:
         self.update(gm_client, room, key, color="red")
         assert goblin.darkvision is True
         assert goblin.color == "red"
+
+
+class TestAlignmentStamping:
+    """Every alignment write is stamped so a client can order two payloads.
+
+    Without it a client can only ask "do I have a change outstanding", which
+    says nothing about a whole map sent in answer to an earlier grid resize --
+    the payload that actually undid a GM's drag.
+    """
+
+    def battlemap(self, gm_client, room, key, width=6, height=5):
+        set_background(gm_client, room)
+        gm_client.emit("map_generate_over_background", {
+            "room": room, "gmKey": key,
+            "mapWidth": width, "mapHeight": height, "discovered": False,
+        })
+        gm_client.get_received()
+        return mudfinder.ROOMS[room]
+
+    def align(self, gm_client, room, key, tiles_wide=12.0, x=0.0, y=0.0):
+        gm_client.emit("set_background_alignment", {
+            "room": room, "gmKey": key, "backgroundTilesWide": tiles_wide,
+            "backgroundOffsetX": x, "backgroundOffsetY": y,
+        })
+
+    def seq(self, session):
+        return session.mapData.get(mudfinder.BACKGROUND_ALIGNMENT_SEQ)
+
+    def test_building_over_a_background_stamps_it(self, gm):
+        gm_client, room, key = gm
+        session = self.battlemap(gm_client, room, key)
+        assert self.seq(session) == 1
+
+    def test_every_alignment_change_raises_it(self, gm):
+        gm_client, room, key = gm
+        session = self.battlemap(gm_client, room, key)
+        stamps = []
+        for tiles_wide in [10.0, 11.0, 12.0]:
+            self.align(gm_client, room, key, tiles_wide)
+            stamps.append(self.seq(session))
+        assert stamps == sorted(set(stamps)) and len(stamps) == 3
+
+    def test_the_change_is_sent_with_its_stamp(self, gm):
+        gm_client, room, key = gm
+        session = self.battlemap(gm_client, room, key)
+        self.align(gm_client, room, key, 12.4)
+        update = event(gm_client.get_received(), "gm_map_update")["args"][0]
+        assert update[mudfinder.BACKGROUND_ALIGNMENT_SEQ] == self.seq(session)
+
+    def test_the_players_are_sent_it_too(self, gm):
+        gm_client, room, key = gm
+        self.battlemap(gm_client, room, key)
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        self.align(gm_client, room, key, 12.4)
+        update = event(player.get_received(), "player_map_update")["args"][0]
+        assert mudfinder.BACKGROUND_ALIGNMENT_SEQ in update
+
+    def test_resizing_the_grid_does_not_raise_it(self, gm):
+        """The whole point. A resize says nothing about the alignment, so the
+        map it answers with must not look newer than the GM's last drag."""
+        gm_client, room, key = gm
+        session = self.battlemap(gm_client, room, key)
+        self.align(gm_client, room, key, 12.4)
+        before = self.seq(session)
+        gm_client.emit("map_resize", {"room": room, "gmKey": key, "mapWidth": 9, "mapHeight": 7})
+        assert self.seq(session) == before
+
+    def test_the_map_a_resize_answers_with_carries_the_old_stamp(self, gm):
+        gm_client, room, key = gm
+        session = self.battlemap(gm_client, room, key)
+        self.align(gm_client, room, key, 12.4)
+        before = self.seq(session)
+        gm_client.get_received()
+        gm_client.emit("map_resize", {"room": room, "gmKey": key, "mapWidth": 9, "mapHeight": 7})
+        sent = event(gm_client.get_received(), "gm_map")["args"][0]
+        assert sent[mudfinder.BACKGROUND_ALIGNMENT_SEQ] == before
+
+    def test_swapping_the_image_carries_the_stamp_along(self, gm):
+        """The alignment is unchanged, so its stamp is too -- but it has to be
+        on the payload or the client cannot judge what it is being sent."""
+        gm_client, room, key = gm
+        session = self.battlemap(gm_client, room, key)
+        self.align(gm_client, room, key, 12.4)
+        before = self.seq(session)
+        gm_client.get_received()
+        set_background(gm_client, room, "https://example.invalid/other.png")
+        assert self.seq(session) == before
+
+    @pytest.mark.parametrize("event_name,payload", [
+        ("map_generate", {"mapWidth": 4, "mapHeight": 3, "discovered": False}),
+        ("map_upload", {"mapText": "F\tF\n", "discovered": False}),
+        ("clear_map", {"clearLocations": True}),
+    ])
+    def test_a_map_with_no_alignment_carries_no_stamp(self, gm, event_name, payload):
+        gm_client, room, key = gm
+        session = self.battlemap(gm_client, room, key)
+        self.align(gm_client, room, key, 12.4)
+        payload = dict(payload, room=room, gmKey=key)
+        gm_client.emit(event_name, payload)
+        assert self.seq(session) is None
+        assert not any(k in session.mapData for k in mudfinder.BACKGROUND_ALIGNMENT_KEYS)
+
+    def test_a_rejected_change_does_not_raise_it(self, gm):
+        """A value that fails validation never lands, so nothing downstream
+        should think there is something newer to fetch."""
+        gm_client, room, key = gm
+        session = self.battlemap(gm_client, room, key)
+        before = self.seq(session)
+        self.align(gm_client, room, key, "not a number")
+        assert self.seq(session) == before
+
+    def test_wrong_key_does_not_raise_it(self, gm):
+        gm_client, room, key = gm
+        session = self.battlemap(gm_client, room, key)
+        before = self.seq(session)
+        gm_client.emit("set_background_alignment", {
+            "room": room, "gmKey": "wrong", "backgroundTilesWide": 12.4,
+            "backgroundOffsetX": 0.0, "backgroundOffsetY": 0.0,
+        })
+        assert self.seq(session) == before
+
+    def test_the_stamp_survives_a_save_and_load(self, gm):
+        gm_client, room, key = gm
+        session = self.battlemap(gm_client, room, key)
+        self.align(gm_client, room, key, 12.4)
+        restored = Session("other-room", "other-key", "restored")
+        restored.from_json(session.gen_save())
+        assert self.seq(restored) == self.seq(session)
