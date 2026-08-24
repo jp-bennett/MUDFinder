@@ -2453,3 +2453,57 @@ class TestLinkingTwoTilesAsAStaircase:
         sent = {(t["y"], t["x"]): t for t in updates[-1]["args"][0]["mapArray"]}
         assert "warp" not in sent[(2, 6)]
         assert sent[(1, 1)]["warp"] == [2, 6]
+
+
+class TestSettingAnImageTellsTheGm:
+    """The GM sets a unit's token from their own sheet, so the GM is the one
+    person who has to be told about it.
+
+    do_update is the players' event: the GM view has no handler for it and is
+    not in the room it goes to either, so the GM who had just chosen a token
+    watched nothing happen until something unrelated refreshed their page.
+    """
+
+    def add_unit(self, gm_client, room, key):
+        gm_client.emit("add_units", {
+            "room": room, "gmKey": key, "count": 1, "addToInitiative": False,
+            "initiativeBonus": 0, "unit": {"charName": "Scout", "controlledBy": "gm"}})
+        gm_client.get_received()
+
+    def test_a_unit_token_reaches_the_gm(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        self.add_unit(gm_client, room, key)
+        gm_client.emit("image_upload", room, "/static/images/profile.svg",
+                       "unitToken", "0")
+        assert "gm_update" in event_names(gm_client.get_received())
+
+    def test_and_the_token_is_in_what_it_sends(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        self.add_unit(gm_client, room, key)
+        gm_client.emit("image_upload", room, "/static/images/profile.svg",
+                       "unitToken", "0")
+        update = [m for m in gm_client.get_received()
+                  if m["name"] == "gm_update"][-1]["args"][0]
+        assert update["unitList"][0]["token"] == "/static/images/profile.svg"
+
+    def test_the_players_are_still_told(self, browser_style_game):
+        """The token is on the board, so it was never only the GM's business."""
+        gm_client, room, key = browser_style_game
+        self.add_unit(gm_client, room, key)
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        gm_client.emit("image_upload", room, "/static/images/profile.svg",
+                       "unitToken", "0")
+        assert "do_update" in event_names(player.get_received())
+
+    def test_a_players_own_token_reaches_the_gm_too(self, browser_style_game):
+        """Same emit, so the character images had the same hole in them."""
+        gm_client, room, key = browser_style_game
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        gm_client.get_received()
+        player.emit("image_upload", room, "/static/images/profile.svg",
+                    "charToken", "Aria")
+        assert "gm_update" in event_names(gm_client.get_received())
