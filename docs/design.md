@@ -312,6 +312,22 @@ Lists split with `splitSpellList`, which respects brackets: naively, `dispel
 evil (2, DC 22)` becomes two spells, one of them called `DC 22)`. The server
 splits the same way, in `split_spell_list`, for the same reason.
 
+**In a statblock** — the picker's preview and the unit sheet's entry, both built
+by `statblockElement` — the spell lines are drawn by `appendSpellList`, which
+finds the group markers with `SPELL_GROUP` and makes links of what lies between
+them. Everything else stays as text, so the line still reads the way it does in
+the book: `Spells Known (CL 7th; concentration +12)`, then `3rd (5/day)—` in
+front of its spells. A line with no group marker in it is left alone entirely —
+nothing there says which words are spells. `Domains` is excluded by name:
+`Evil, Water` are domains, and looking them up as spells would find nothing
+every time.
+
+`#spellModal` is the dialog's own id, and it removes itself by reference. The
+creature picker is a modal too and owns `#modalBackground`; while they shared
+that id, `getElementById` found the picker first, so shutting a spell opened
+from inside the picker shut the picker instead and threw away the search that
+got there. It carries a higher `z-index` than `.modal` for the same reason.
+
 ### Creature panel — `#bottomDiv` on the GM view
 
 The GM's counterpart to the player's action bar, in the same place and opened by

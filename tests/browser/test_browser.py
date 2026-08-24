@@ -4030,11 +4030,9 @@ def spell_lookup(browser, live_server):
             """() => splitSpellList("dispel evil (2, DC 22), gaseous form")""")
 
         def open_spell(text):
-            page.evaluate("""(name) => {
-                const open = document.getElementById("modalBackground");
-                if (open) { open.remove(); }
-                showSpellInfo(name);
-            }""", text)
+            # showSpellInfo clears any spell already open itself; the picker's
+            # #modalBackground is a different dialog and is left alone.
+            page.evaluate("(name) => showSpellInfo(name)", text)
             page.wait_for_selector("#spellSheet", timeout=HANDSHAKE_TIMEOUT)
             page.wait_for_function(
                 """() => {
@@ -4057,7 +4055,7 @@ def spell_lookup(browser, live_server):
             "heading": page.inner_text("#spellSheet .panelHeading"),
             "body": page.inner_text("#spellSheetBody"),
         }
-        page.click("#modalBackground", position={"x": 5, "y": 5})
+        page.click("#spellModal", position={"x": 5, "y": 5})
         page.wait_for_timeout(300)
         stages["closesAgain"] = page.query_selector("#spellSheet") is None
 
@@ -4066,7 +4064,7 @@ def spell_lookup(browser, live_server):
         stages["throughTheSourceBook"] = open_spell("mental barrier IIOA")
         stages["rankInFront"] = open_spell("greater dispel magic")
         stages["notASpell"] = open_spell("touch of evil")
-        page.click("#modalBackground", position={"x": 5, "y": 5})
+        page.click("#spellModal", position={"x": 5, "y": 5})
         page.wait_for_timeout(200)
 
         # The player view: its own spells are whole rows, opened without a
@@ -4164,3 +4162,164 @@ class TestThePlayerSideOfIt:
 class TestTheSpellLookupRaisedNothing:
     def test_nothing_raised(self, spell_lookup):
         assert spell_lookup["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def picker_spells(browser, live_server):
+    """Spells in the statblock the monster picker shows.
+
+    Choosing a monster is exactly when a GM wants to know what its spells do,
+    and the picker is where that choice is made. The same statblock builder
+    draws the unit sheet's entry, so this covers both.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "picker spells")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+
+        def preview(name):
+            page.fill("#creatureSearchName", name)
+            # Waiting for "any rows" is already true from the search before
+            # this one, so it has to be this creature's row -- otherwise the
+            # second search clicks the first search's result.
+            page.wait_for_function(
+                """(wanted) => {
+                    const first = document.querySelector("#creatureRows tr");
+                    return first && first.innerText.toLowerCase()
+                        .includes(wanted.toLowerCase());
+                }""",
+                arg=name,
+                timeout=HANDSHAKE_TIMEOUT,
+            )
+            page.click("#creatureRows tr:first-child td:first-child")
+            page.wait_for_function(
+                """(wanted) => {
+                    const sb = document.querySelector(".statblock .sbName");
+                    return sb && sb.innerText.toLowerCase()
+                        .includes(wanted.toLowerCase());
+                }""",
+                arg=name,
+                timeout=HANDSHAKE_TIMEOUT,
+            )
+            page.wait_for_timeout(300)
+
+        page.click("div.tab:text-is('Encounter')")
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+        preview("adult occult dragon")
+
+        stages = {}
+        stages["names"] = page.eval_on_selector_all(
+            ".statblock .spellLink", "els => els.map(e => e.innerText)")
+        stages["text"] = page.inner_text(".statblock")
+        # Every line that is a spell list, with what in it became a link.
+        stages["lines"] = page.evaluate("""() => {
+            return Array.from(document.querySelectorAll(".statblock .sbLine"))
+                .map(l => ({
+                    text: l.innerText.trim().slice(0, 40),
+                    links: l.querySelectorAll(".spellLink").length,
+                }))
+                .filter(l => l.text);
+        }""")
+
+        # Opening one from inside the picker. Both are modals, and they used to
+        # share an id.
+        page.click(".statblock .spellLink >> text=gaseous form")
+        page.wait_for_selector("#spellSheet", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_function(
+            "() => !document.querySelector('.spellSheetNote')", timeout=HANDSHAKE_TIMEOUT)
+        stages["opened"] = page.inner_text("#spellSheet .panelHeading")
+        stages["pickerStillOpen"] = page.query_selector("#modalBackground") is not None
+        stages["spellSitsOnTop"] = page.evaluate("""() => {
+            const spell = Number(getComputedStyle(
+                document.getElementById("spellModal")).zIndex);
+            const picker = Number(getComputedStyle(
+                document.getElementById("modalBackground")).zIndex);
+            return spell > picker;
+        }""")
+        page.click("#spellModal", position={"x": 5, "y": 5})
+        page.wait_for_timeout(300)
+        stages["spellShut"] = page.query_selector("#spellSheet") is None
+        stages["pickerSurvived"] = page.query_selector("#modalBackground") is not None
+
+        # A cleric, for the Domains line -- those are domains, not spells.
+        preview("Cultist of the Indomitable Sea")
+        stages["domainLinks"] = page.evaluate("""() => {
+            const line = Array.from(document.querySelectorAll(".statblock .sbLine"))
+                .find(l => l.innerText.startsWith("Domains"));
+            return line ? line.querySelectorAll(".spellLink").length : null;
+        }""")
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestSpellsInThePickersStatblock:
+    def test_the_spells_are_clickable(self, picker_spells):
+        names = picker_spells["names"]
+        assert "gaseous form" in names
+        assert "suggestion (DC 17)" in names
+
+    def test_the_line_still_reads_the_way_it_does_in_the_book(self, picker_spells):
+        """Only the spells become links. What says how often they can be cast
+        stays as text, in front of them."""
+        text = picker_spells["text"]
+        for group in ("3rd (5/day)", "2nd (7/day)", "1st (8/day)", "0 (at-will)"):
+            assert group in text, group
+
+    def test_at_will_cantrips_are_clickable_too(self, picker_spells):
+        """The group is written "0 (at-will)" here, with a hyphen. Against a
+        pattern expecting a space it was not a group at all, so its cantrips
+        ran on into the level above -- unlinked here, and counted as first
+        level castings in the panel."""
+        names = picker_spells["names"]
+        assert "detect magic" in names
+        assert "mage hand" in names
+
+    def test_domains_are_not_spells(self, picker_spells):
+        """"Evil, Water" are domains. Looked up as spells they would find
+        nothing every time, so that line is left as text."""
+        assert picker_spells["domainLinks"] == 0
+
+    def test_no_line_is_all_link(self, picker_spells):
+        """A sanity check that the label and the group marker stayed out of the
+        links: a spell line has more text in it than its spells."""
+        spell_lines = [l for l in picker_spells["lines"] if l["links"] > 0]
+        assert spell_lines
+        for line in spell_lines:
+            assert "-" in line["text"] or "(" in line["text"], line
+
+
+class TestASpellOpenedFromInsideThePicker:
+    def test_it_opens(self, picker_spells):
+        assert picker_spells["opened"] == "Gaseous Form"
+
+    def test_the_picker_is_still_there_behind_it(self, picker_spells):
+        assert picker_spells["pickerStillOpen"] is True
+
+    def test_it_sits_on_top_of_the_picker(self, picker_spells):
+        assert picker_spells["spellSitsOnTop"] is True
+
+    def test_shutting_it_shuts_only_it(self, picker_spells):
+        """Both are modals. Sharing #modalBackground meant getElementById found
+        the picker first, so shutting the spell shut the picker instead and
+        threw away the search that got there."""
+        assert picker_spells["spellShut"] is True
+        assert picker_spells["pickerSurvived"] is True
+
+
+class TestThePickerSpellsRaisedNothing:
+    def test_nothing_raised(self, picker_spells):
+        assert picker_spells["errors"] == []

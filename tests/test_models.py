@@ -901,6 +901,21 @@ class TestParsingCastings:
     def parse(self, text):
         return [(c["label"], c["spells"], c["uses"]) for c in mudfinder.parse_castings(text)]
 
+    def test_at_will_written_with_a_hyphen_still_opens_a_group(self):
+        """Eleven creatures write "0 (at-will)-" where 4,387 write "at will".
+        Unrecognised, the group never started, so its cantrips ran on into the
+        level above and were counted as costing one of those castings."""
+        assert self.parse(
+            "Spells Known (CL 7th)  1st (8/day)-mage armor, sleep (DC 16)"
+            "  0 (at-will)-detect magic, mage hand") == [
+            ("1st (8/day)", "mage armor, sleep (DC 16)", 8)]
+
+    def test_and_the_at_will_group_itself_is_not_a_casting(self):
+        """At-will spells do not run out, so they get no counter -- the same
+        call the spaced spelling has always got."""
+        assert self.parse("Spell-Like Abilities (CL 9th) at-will-detect magic") == []
+        assert self.parse("Spell-Like Abilities (CL 9th) at will-detect magic") == []
+
     def test_a_per_day_group_is_a_shared_pool(self):
         assert self.parse("Spell-Like Abilities (CL 16th) 3/day-dominate monster (DC 22)") == [
             ("3/day", "dominate monster (DC 22)", 3)]
