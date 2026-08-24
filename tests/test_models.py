@@ -1264,3 +1264,88 @@ class TestNothingIsFetchedFromAnywhere:
             if hits:
                 offenders[os.path.basename(path)] = hits
         assert offenders == {}
+
+
+class TestNamingASpellTheWayAStatblockDoes:
+    """A statblock writes a spell the way it reads in print; the table stores
+    it plainly. These are the differences between the two."""
+
+    def candidates(self, text):
+        return mudfinder.spell_name_candidates(text)
+
+    def test_a_plain_name_is_left_alone(self):
+        assert self.candidates("gaseous form") == ["gaseous form"]
+
+    def test_the_dc_comes_off(self):
+        assert self.candidates("hideous laughter (DC 15)") == ["hideous laughter"]
+
+    def test_and_so_does_a_count(self):
+        assert self.candidates("dispel evil (2, DC 22)") == ["dispel evil"]
+
+    def test_and_an_aside(self):
+        assert self.candidates("invisibility (self only)") == ["invisibility"]
+
+    def test_the_source_book_comes_off_the_end(self):
+        assert self.candidates("mental barrier IIOA") == ["mental barrier II"]
+
+    def test_a_numeral_is_part_of_the_name_and_stays(self):
+        """"summon monster I" is a different spell from "summon monster IX".
+        Stripping trailing capitals as though they were all source tags took
+        the numeral with them, and 375 spell mentions stopped matching."""
+        assert self.candidates("summon monster IV") == ["summon monster IV"]
+
+    def test_a_slot_marker_glued_to_the_word_comes_off(self):
+        """A superscript D marks a domain slot and arrives stuck to the name."""
+        assert self.candidates("obscuring mistD") == ["obscuring mist"]
+
+    def test_a_rank_moves_to_the_back(self):
+        """The table calls it "Dispel Magic, Greater"."""
+        assert self.candidates("greater dispel magic") == [
+            "greater dispel magic", "dispel magic, greater"]
+
+    def test_every_rank_the_table_writes_that_way(self):
+        for rank in ("greater", "lesser", "mass", "communal"):
+            assert self.candidates("%s cure light wounds" % rank)[-1] == (
+                "cure light wounds, " + rank)
+
+    def test_nothing_to_look_up_says_so(self):
+        """Told apart from a name that was looked up and not found."""
+        assert self.candidates("") == []
+        assert self.candidates("(DC 19)") == []
+        assert self.candidates(None) == []
+
+
+class TestLookingASpellUp:
+    def test_a_spell_a_creature_casts_is_found(self):
+        spell = mudfinder.look_up_spell("gaseous form")
+        assert spell is not None
+        assert spell["name"].lower() == "gaseous form"
+        assert spell["description_formated"]
+
+    def test_the_lookup_ignores_case(self):
+        """Statblocks are lowercase; the table is in title case."""
+        assert mudfinder.look_up_spell("HIDEOUS LAUGHTER")["name"].lower() == "hideous laughter"
+
+    def test_it_is_found_through_the_dc(self):
+        assert mudfinder.look_up_spell("suggestion (DC 17)")["name"].lower() == "suggestion"
+
+    def test_and_through_a_rank_written_in_front(self):
+        found = mudfinder.look_up_spell("greater dispel magic")
+        assert found is not None
+        assert "dispel magic" in found["name"].lower()
+
+    def test_a_class_feature_is_not_a_spell_and_says_so(self):
+        """A cleric's touch of evil and a wizard's force missile are listed
+        among the spell-like abilities but have no row in the spells table.
+        None is the right answer, not an empty entry."""
+        assert mudfinder.look_up_spell("touch of evil") is None
+
+    def test_nonsense_finds_nothing_rather_than_raising(self):
+        assert mudfinder.look_up_spell("not a spell at all, surely") is None
+        assert mudfinder.look_up_spell("") is None
+
+    def test_the_name_is_bound_not_interpolated(self):
+        """The class-column query has to interpolate and is whitelisted for it;
+        this one binds, so a quote is just a character."""
+        assert mudfinder.look_up_spell("'; drop table spells; --") is None
+        assert mudfinder.look_up_spell("gaseous form") is not None
