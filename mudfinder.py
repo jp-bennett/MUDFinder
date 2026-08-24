@@ -2177,6 +2177,10 @@ def on_map_edit(data_pack):
                     updatedTiles.append(ROOMS[room].mapData["mapArray"][data["yCoord"] + 1][data["xCoord"]])
 
             elif "Tile" in data["newTile"] or "door" in data["newTile"]:
+                # Painting over a staircase takes the link with it. Left
+                # behind, it would be a way through a square that no longer
+                # looks like one, and the far end would still point back here.
+                clear_warp(room, data["yCoord"], data["xCoord"], updatedTiles)
                 ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["tile"] = data["newTile"]
                 if data["newTile"] in ["doorLocked"]:
                     ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["locked"] = True
@@ -2211,6 +2215,10 @@ def on_map_edit(data_pack):
             if not y["seen"]:
                 tmpUpdatedTiles[index]["tile"] = "unseenTile"
                 tmpUpdatedTiles[index]["walkable"] = False
+                # A staircase is drawn with a mark on it, so leaving the link
+                # on an undiscovered square would put a way through in the
+                # middle of the fog and name where it comes out.
+                tmpUpdatedTiles[index].pop("warp", None)
                 # This mask edits the tile in place rather than rebuilding it
                 # the way player_map does, so anything not named here reaches
                 # the players untouched. A light level on an undiscovered
@@ -2220,9 +2228,97 @@ def on_map_edit(data_pack):
             elif y["secret"]:
                 tmpUpdatedTiles[index]["tile"] = "wallTile"
                 tmpUpdatedTiles[index]["walkable"] = False
+                # A secret door has to match the wall it is pretending to be,
+                # and a wall with a staircase mark on it is a tell.
+                tmpUpdatedTiles[index].pop("warp", None)
         if len(tmpUpdatedTiles) > 0:
             updatedMap["mapArray"] = tmpUpdatedTiles
             emit('player_map_update', updatedMap, room=room)
+
+
+def in_map(room, y, x):
+    """Whether a coordinate is on the board."""
+    grid = ROOMS[room].mapData["mapArray"]
+    return 0 <= y < len(grid) and 0 <= x < len(grid[y])
+
+
+def clear_warp(room, y, x, updatedTiles):
+    """Unlink a tile, and unlink whatever it was joined to.
+
+    Both ends carry the link, so dropping one and leaving the other would make
+    a staircase that goes somewhere and does not come back -- and the far end
+    would still be drawn as a staircase with nothing behind it.
+    """
+    grid = ROOMS[room].mapData["mapArray"]
+    linked = grid[y][x].pop("warp", None)
+    if linked is None:
+        return
+    far_y, far_x = linked[0], linked[1]
+    if in_map(room, far_y, far_x) and grid[far_y][far_x].get("warp") == [y, x]:
+        grid[far_y][far_x].pop("warp", None)
+        updatedTiles.append(grid[far_y][far_x])
+
+
+def push_map_edit(room, updatedTiles):
+    """Send changed tiles to the GM, and a masked copy to the players."""
+    if not updatedTiles:
+        return
+    updatedMap = {
+        "showBackground": ROOMS[room].mapData["showBackground"],
+        "mapBackground": ROOMS[room].mapData["mapBackground"],
+        "mapArray": updatedTiles,
+    }
+    emit_to_gm('gm_map_update', updatedMap, room)
+    masked = copy.deepcopy(updatedTiles)
+    for tile in masked:
+        if not tile["seen"]:
+            tile["tile"] = "unseenTile"
+            tile["walkable"] = False
+            tile.pop("light", None)
+            tile.pop("warp", None)
+        elif tile["secret"]:
+            tile["tile"] = "wallTile"
+            tile["walkable"] = False
+            tile.pop("warp", None)
+    emit('player_map_update', dict(updatedMap, mapArray=masked), room=room)
+
+
+@socketio.on('link_warp')
+def on_link_warp(data):
+    """Join two tiles, so that a unit stepping on one arrives at the other.
+
+    This is how a map holds more than one level: the levels are drawn as
+    separate parts of the one grid, and a staircase is a pair of tiles that
+    count as neighbours despite being nowhere near each other. The pathfinder
+    is told about the pair, so a route can run up the stairs and out the other
+    side, and it costs the one square that stepping between neighbours costs.
+
+    Sending the same tile twice unlinks it, which is also what the tool does
+    when the GM clicks a staircase that is already joined to something.
+    """
+    room = data.get('room')
+    if not check_room(room) or ROOMS[room].gmKey != data.get('gmKey'):
+        return
+    try:
+        from_y, from_x = int(data['fromY']), int(data['fromX'])
+        to_y, to_x = int(data['toY']), int(data['toX'])
+    except (KeyError, TypeError, ValueError):
+        return
+    if not in_map(room, from_y, from_x) or not in_map(room, to_y, to_x):
+        return
+
+    grid = ROOMS[room].mapData["mapArray"]
+    updatedTiles = []
+    # Whatever either end was joined to before is let go first, so a tile is
+    # never in two staircases at once.
+    clear_warp(room, from_y, from_x, updatedTiles)
+    clear_warp(room, to_y, to_x, updatedTiles)
+    if (from_y, from_x) != (to_y, to_x):
+        grid[from_y][from_x]["warp"] = [to_y, to_x]
+        grid[to_y][to_x]["warp"] = [from_y, from_x]
+        updatedTiles.append(grid[to_y][to_x])
+    updatedTiles.append(grid[from_y][from_x])
+    push_map_edit(room, updatedTiles)
 
 
 @socketio.on('map_upload')

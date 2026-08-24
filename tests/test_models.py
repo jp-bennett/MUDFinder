@@ -14,6 +14,7 @@ import pytest
 import mudfinder
 from helpers import make_player, make_unit
 from player import Player
+import session
 from session import Session, BACKGROUND_ALIGNMENT_KEYS
 from unit import Unit, default
 
@@ -1400,3 +1401,178 @@ class TestLookingASpellUp:
         this one binds, so a quote is just a character."""
         assert mudfinder.look_up_spell("'; drop table spells; --") is None
         assert mudfinder.look_up_spell("gaseous form") is not None
+
+
+def open_map(width, height):
+    """A rectangle of plain seen floor, for the pathfinder to walk over."""
+    return [[{"tile": "floorTile", "walkable": True, "seen": True,
+              "secret": False, "x": x, "y": y}
+             for x in range(width)] for y in range(height)]
+
+
+def wall_column(grid, x):
+    """Split a map in two, so the only way across is whatever we link."""
+    for y in range(len(grid)):
+        grid[y][x] = {"tile": "wallTile", "walkable": False, "seen": True,
+                      "secret": False, "x": x, "y": y}
+
+
+def link(grid, a, b):
+    grid[a[0]][a[1]]["warp"] = [b[0], b[1]]
+    grid[b[0]][b[1]]["warp"] = [a[0], a[1]]
+
+
+class TestPathfindingThroughAStaircase:
+    """Two levels of a map are drawn as separate parts of the one grid, and a
+    staircase is a pair of tiles that count as neighbours despite being
+    nowhere near each other. The pathfinder has to know that."""
+
+    def test_a_wall_with_no_staircase_cannot_be_crossed(self):
+        grid = open_map(21, 5)
+        wall_column(grid, 10)
+        assert mudfinder_astar(grid, (2, 2), (2, 18)) is None
+
+    def test_a_staircase_gets_a_unit_across(self):
+        grid = open_map(21, 5)
+        wall_column(grid, 10)
+        link(grid, (2, 8), (2, 12))
+        path = mudfinder_astar(grid, (2, 2), (2, 18))
+        assert path is not None
+        assert (2, 8) in path and (2, 12) in path
+
+    def test_the_two_ends_are_consecutive_in_the_path(self):
+        """Stepping through is one step, so nothing comes between them."""
+        grid = open_map(21, 5)
+        wall_column(grid, 10)
+        link(grid, (2, 8), (2, 12))
+        path = mudfinder_astar(grid, (2, 2), (2, 18))
+        assert path[path.index((2, 8)) + 1] == (2, 12)
+
+    def test_it_costs_one_square_not_a_diagonal(self):
+        """The two ends differ in both coordinates as often as not, which is
+        what the cost rule reads to tell a diagonal from a straight step."""
+        grid = open_map(9, 9)
+        link(grid, (1, 1), (7, 7))
+        path = session.astar(grid, (1, 1), (7, 7), -1, True)
+        assert path[0] == 1
+
+    def test_the_shortcut_is_taken_rather_than_the_long_way_round(self):
+        """Nothing is walled off here -- both routes exist. Estimating by
+        distance across the map alone, a unit at one end of the stairs was told
+        the walk round was closer, took it, and was charged for every square."""
+        grid = open_map(31, 9)
+        link(grid, (4, 3), (4, 27))
+        through = session.astar(grid, (4, 1), (4, 29), -1, True)
+        assert through[0] == 5
+        assert (4, 3) in through and (4, 27) in through
+
+    def test_an_unwalkable_far_end_is_no_way_through(self):
+        grid = open_map(9, 5)
+        wall_column(grid, 4)
+        link(grid, (2, 1), (2, 7))
+        grid[2][7]["walkable"] = False
+        assert mudfinder_astar(grid, (2, 1), (2, 6)) is None
+
+    def test_a_player_cannot_take_stairs_into_the_dark(self):
+        """The far end being undiscovered stops a player the same way an
+        undiscovered square next to them does."""
+        grid = open_map(9, 5)
+        wall_column(grid, 4)
+        link(grid, (2, 1), (2, 7))
+        grid[2][7]["seen"] = False
+        assert session.astar(grid, (2, 1), (2, 7), -1, False) is None
+
+    def test_but_the_gm_can(self):
+        grid = open_map(9, 5)
+        wall_column(grid, 4)
+        link(grid, (2, 1), (2, 7))
+        grid[2][7]["seen"] = False
+        assert session.astar(grid, (2, 1), (2, 7), -1, True) is not None
+
+    def test_a_link_pointing_off_the_map_is_ignored(self):
+        """Rather than taken as a step and read out of bounds."""
+        grid = open_map(9, 5)
+        grid[2][1]["warp"] = [99, 99]
+        assert session.astar(grid, (2, 1), (2, 3), -1, True) is not None
+
+    def test_a_map_with_no_staircases_is_unaffected(self):
+        grid = open_map(9, 5)
+        path = session.astar(grid, (2, 1), (2, 5), -1, True)
+        assert path[0] == 4
+
+
+def mudfinder_astar(grid, start, end):
+    return session.astar(grid, start, end, -1, True)
+
+
+class TestWalkingThroughAStaircase:
+    """The whole move, as calc_path runs it -- budget and all."""
+
+    def scout(self, session_obj, speed=30):
+        unit = Unit({"charName": "Scout", "movementSpeed": speed,
+                     "controlledBy": "gm"})
+        unit.location = [2, 2]
+        unit.x, unit.y, unit.distance = 2, 2, 0
+        session_obj.unitList.append(unit)
+        session_obj.number_units()
+        return unit
+
+    def walled_session(self):
+        room = Session("room", "key", "Test")
+        room.mapData["mapArray"] = open_map(20, 6)
+        wall_column(room.mapData["mapArray"], 10)
+        return room
+
+    def test_without_a_staircase_the_unit_stays_put(self):
+        room = self.walled_session()
+        unit = self.scout(room)
+        room.calc_path(unit, (2, 15), 2)
+        assert [unit.x, unit.y] == [2, 2]
+
+    def test_with_one_it_crosses_and_is_charged_for_the_walk(self):
+        room = self.walled_session()
+        unit = self.scout(room)
+        link(room.mapData["mapArray"], (2, 8), (2, 12))
+        room.calc_path(unit, (2, 15), 2)
+        assert [unit.x, unit.y] == [15, 2]
+        # Six squares to the stairs, one through them, three out the far side.
+        assert unit.distance == 10
+
+    def test_the_trail_shows_both_ends(self):
+        """The move dots are drawn per square rather than joined up, so a jump
+        in the path leaves dots on both sides and no line across the map."""
+        room = self.walled_session()
+        unit = self.scout(room)
+        link(room.mapData["mapArray"], (2, 8), (2, 12))
+        room.calc_path(unit, (2, 15), 2)
+        assert (2, 8) in unit.movePath
+        assert (2, 12) in unit.movePath
+
+    def test_a_short_move_stops_before_the_stairs(self):
+        """The budget is spent on the way there like any other squares."""
+        room = self.walled_session()
+        unit = self.scout(room, speed=15)
+        link(room.mapData["mapArray"], (2, 8), (2, 12))
+        room.calc_path(unit, (2, 15), 1)
+        assert [unit.x, unit.y] != [15, 2]
+
+
+class TestAStaircaseIsNotShownThroughTheFog:
+    def test_a_player_is_not_told_about_one_they_have_not_found(self):
+        room = Session("room", "key", "Test")
+        room.mapData["mapArray"] = open_map(6, 3)
+        link(room.mapData["mapArray"], (1, 1), (1, 4))
+        room.mapData["mapArray"][1][4]["seen"] = False
+        player_map = room.player_map()
+        assert "warp" in player_map["mapArray"][1][1]
+        assert "warp" not in player_map["mapArray"][1][4]
+
+    def test_nor_one_hidden_behind_a_secret_door(self):
+        """The square has to match the wall it is pretending to be, and a wall
+        with a staircase mark on it is a tell."""
+        room = Session("room", "key", "Test")
+        room.mapData["mapArray"] = open_map(6, 3)
+        link(room.mapData["mapArray"], (1, 1), (1, 4))
+        room.mapData["mapArray"][1][1]["secret"] = True
+        player_map = room.player_map()
+        assert "warp" not in player_map["mapArray"][1][1]

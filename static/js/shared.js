@@ -429,6 +429,14 @@ function drawSingleTile(mapData, x, y) {
             drawUndiscoveredWash(x, y);
         }
     }
+    // A staircase: joined to a square somewhere else on the map, which a unit
+    // steps to as though the two were neighbours. Marked so that both the GM
+    // and the players can see the way through is there -- the server only
+    // sends the link on squares the players have actually been to.
+    if (mapArray[y][x].warp) {
+        newMapTile.classList.add("warpTile");
+        newMapTile.title = "stairs to " + mapArray[y][x].warp[1] + "," + mapArray[y][x].warp[0];
+    }
     return newMapTile
 
 } // There is a lot of needlessly duplicated code in the functions above. Move it here.
@@ -2700,6 +2708,10 @@ function deselectAll() {
         // and have no such panel.
         if (typeof drawMobPanel === "function") {
             drawMobPanel(gmData);
+        }
+        // And a half-made staircase goes with the tool that was making it.
+        if (typeof clearWarpPending === "function") {
+            clearWarpPending();
         }
     } catch (e) {
         socket.emit("error_handle", room, e);

@@ -249,6 +249,14 @@ class Session(object):
                 # would be a tell.
                 if self.mapData["mapArray"][y][x]["seen"] and "light" in self.mapData["mapArray"][y][x]:
                     tmpMapLine[x]["light"] = self.mapData["mapArray"][y][x]["light"]
+                # Likewise after the masking. A staircase is drawn with a mark
+                # on it, and a mark on a square nobody has been to would say
+                # there is a way through where the fog says there is nothing --
+                # and name the square at the other end of it besides.
+                if (self.mapData["mapArray"][y][x]["seen"]
+                        and not self.mapData["mapArray"][y][x]["secret"]
+                        and "warp" in self.mapData["mapArray"][y][x]):
+                    tmpMapLine[x]["warp"] = self.mapData["mapArray"][y][x]["warp"]
             tmpMapData["mapArray"].append(tmpMapLine)
         return tmpMapData
 
@@ -384,6 +392,41 @@ def raytrace(x0, y0, x1, y1, maximum):  # https://playtechs.blogspot.com/2007/03
     return cells
 
 
+def warp_pairs(maze):
+    """Every linked pair of tiles, as (from, to) positions.
+
+    A staircase between two levels of a map is a pair of tiles that count as
+    adjacent even though they are nowhere near each other. Both ends carry the
+    link, so this lists each pair twice, once in each direction -- which is
+    what the pathfinder wants, since it asks "where can I go from here".
+    """
+    pairs = []
+    for y in range(len(maze)):
+        for x in range(len(maze[y])):
+            linked = maze[y][x].get("warp")
+            if linked:
+                pairs.append(((y, x), (linked[0], linked[1])))
+    return pairs
+
+
+def warp_heuristic(position, end, pairs):
+    """Squares from here to the end, allowing for a staircase on the way.
+
+    Without this the estimate is the distance across the map, which for two
+    levels drawn side by side is enormous -- so a unit at the top of the stairs
+    with its target one square past the bottom would be told the long way round
+    was closer, walk it, and be charged for every square of it.
+    """
+    best = abs(position[0] - end[0]) + abs(position[1] - end[1])
+    for entrance, exit_ in pairs:
+        through = (abs(position[0] - entrance[0]) + abs(position[1] - entrance[1])
+                   + 1
+                   + abs(exit_[0] - end[0]) + abs(exit_[1] - end[1]))
+        if through < best:
+            best = through
+    return best
+
+
 def astar(maze, start, end, maxMove, ignoreSeen):
     """Returns a list of tuples as a path from the given start to the given end in the given maze"""
 
@@ -397,9 +440,17 @@ def astar(maze, start, end, maxMove, ignoreSeen):
             self.g = 0
             self.h = 0
             self.f = 0
+            # Reached by a staircase rather than by stepping. Kept because the
+            # cost below reads the two coordinates to tell a diagonal from a
+            # straight step, and a warp differs in both without being one.
+            self.viaWarp = False
 
         def __eq__(self, other):
             return self.position == other.position
+
+    # Worked out once rather than per node: the heuristic consults every pair,
+    # and a map has a handful of staircases against thousands of squares.
+    pairs = warp_pairs(maze)
 
     # Create start and end node
     start_node = Node(None, start)
@@ -466,15 +517,33 @@ def astar(maze, start, end, maxMove, ignoreSeen):
             # Append
             children.append(new_node)
 
+        # And the far end of a staircase, if this tile is one. The eight
+        # directions above are the whole of what the pathfinder knew about
+        # adjacency, so this is the one place a link has to be taught.
+        linked = maze[current_node.position[0]][current_node.position[1]].get("warp")
+        if linked is not None:
+            far = (linked[0], linked[1])
+            if (0 <= far[0] < len(maze) and 0 <= far[1] < len(maze[far[0]])
+                    and Node(current_node, far) not in closed_list
+                    and testWarpStep(maze, far, ignoreSeen)):
+                warp_node = Node(current_node, far)
+                warp_node.viaWarp = True
+                children.append(warp_node)
+
         # Loop through children
         for child in children:
 
             # Create the f, g, and h values
-            if child.position[0] != current_node.position[0] and child.position[1] != current_node.position[1]:
+            if child.viaWarp:
+                # A staircase is a step, so it costs one square -- not the 1.5
+                # of a diagonal, which is what the test below would call it,
+                # the two ends differing in both coordinates.
+                child.g = current_node.g + 1
+            elif child.position[0] != current_node.position[0] and child.position[1] != current_node.position[1]:
                 child.g = current_node.g + 1.5
             else:
                 child.g = current_node.g + 1
-            child.h = abs(child.position[0] - end_node.position[0]) + abs(child.position[1] - end_node.position[1])
+            child.h = warp_heuristic(child.position, end_node.position, pairs)
             child.f = child.g + child.h
             for closed_child in closed_list:
                 if child == closed_child and child.f >= closed_child.f:
@@ -485,6 +554,22 @@ def astar(maze, start, end, maxMove, ignoreSeen):
                         break
                 else:
                     open_list.append(child)
+
+
+def testWarpStep(maze, node_position, ignoreSeen):
+    """Whether the far end of a staircase can be stepped onto.
+
+    Only the destination is asked about. The wall checks a normal step makes
+    are about which side of a square you are crossing, and a staircase is not
+    crossed from any side -- a wall between the two ends means nothing, since
+    they are not next to each other in the first place.
+    """
+    tile = maze[node_position[0]][node_position[1]]
+    if not tile["walkable"]:
+        return False
+    if not tile.get("seen", True) and not ignoreSeen:
+        return False
+    return True
 
 
 def testStep(maze, current_node, new_position, node_position, ignoreSeen):

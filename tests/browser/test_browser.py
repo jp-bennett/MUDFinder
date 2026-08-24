@@ -4515,3 +4515,118 @@ class TestWhoSeesASaveInTheBrowser:
 class TestTheSaveRollsRaisedNothing:
     def test_nothing_raised(self, save_rolls):
         assert save_rolls["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def warp_links(browser, live_server):
+    """The tool that joins two tiles into a staircase.
+
+    Two clicks rather than a paint, because a staircase is a pair. The first
+    click marks the square and waits; the second finishes it, or -- on the same
+    square -- takes an existing one out.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "warp links")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        page.fill("#mapWidth", "20")
+        page.fill("#mapHeight", "6")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 120",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(400)
+
+        def tile(x, y):
+            # The ids carry a comma, which is not a selector on its own.
+            return '[id="tile%d,%d"]' % (x, y)
+
+        def marked(selector):
+            return page.eval_on_selector_all(selector, "els => els.map(e => e.id).sort()")
+
+        stages = {}
+        stages["toolIsInThePalette"] = page.is_visible("#warpLink")
+
+        page.click("#warpLink")
+        page.click(tile(8, 2))
+        page.wait_for_timeout(300)
+        stages["pendingAfterFirstClick"] = marked(".warpPending")
+        stages["linkedAfterFirstClick"] = marked(".warpTile")
+
+        page.click(tile(12, 2))
+        page.wait_for_timeout(600)
+        stages["pendingAfterSecond"] = marked(".warpPending")
+        stages["linkedAfterSecond"] = marked(".warpTile")
+        stages["storedOnTheServer"] = page.evaluate(
+            """() => [mapObject.mapArray[2][8].warp, mapObject.mapArray[2][12].warp]""")
+
+        # Half a pair, then a change of tool: the pending mark must not sit
+        # there waiting to catch the next square clicked.
+        page.click(tile(4, 4))
+        page.wait_for_timeout(250)
+        stages["pendingBeforeToolChange"] = marked(".warpPending")
+        page.click("#floorTile")
+        page.wait_for_timeout(250)
+        stages["pendingAfterToolChange"] = marked(".warpPending")
+
+        # The same square twice unlinks it.
+        page.click("#warpLink")
+        page.click(tile(8, 2))
+        page.wait_for_timeout(250)
+        page.click(tile(8, 2))
+        page.wait_for_timeout(600)
+        stages["linkedAfterUnlink"] = marked(".warpTile")
+        stages["clearedOnTheServer"] = page.evaluate(
+            """() => [mapObject.mapArray[2][8].warp === undefined,
+                      mapObject.mapArray[2][12].warp === undefined]""")
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestTheStaircaseTool:
+    def test_it_is_in_the_palette(self, warp_links):
+        assert warp_links["toolIsInThePalette"] is True
+
+    def test_the_first_click_marks_a_square_and_waits(self, warp_links):
+        """Nothing is linked yet -- a staircase needs both ends."""
+        assert warp_links["pendingAfterFirstClick"] == ["tile8,2"]
+        assert warp_links["linkedAfterFirstClick"] == []
+
+    def test_the_second_click_makes_the_pair(self, warp_links):
+        assert warp_links["linkedAfterSecond"] == ["tile12,2", "tile8,2"]
+        assert warp_links["pendingAfterSecond"] == []
+
+    def test_both_ends_are_stored(self, warp_links):
+        assert warp_links["storedOnTheServer"] == [[2, 12], [2, 8]]
+
+    def test_changing_tool_abandons_a_half_made_pair(self, warp_links):
+        """Left marked, it would join itself to whatever was clicked next."""
+        assert warp_links["pendingBeforeToolChange"] == ["tile4,4"]
+        assert warp_links["pendingAfterToolChange"] == []
+
+    def test_the_same_square_twice_takes_a_staircase_out(self, warp_links):
+        assert warp_links["linkedAfterUnlink"] == []
+
+    def test_and_lets_go_of_both_ends(self, warp_links):
+        """One end left pointing at the other would be a staircase to nowhere,
+        still drawn as a staircase."""
+        assert warp_links["clearedOnTheServer"] == [True, True]
+
+
+class TestTheStaircaseToolRaisedNothing:
+    def test_nothing_raised(self, warp_links):
+        assert warp_links["errors"] == []

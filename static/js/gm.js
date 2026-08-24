@@ -746,8 +746,58 @@ function alignmentSwallowClick(e) {
         e.preventDefault();
     }
 }
+// The first half of a staircase, waiting for the square it joins to. Held
+// here rather than on the server: until the second click there is nothing to
+// tell anyone about, and a GM who changes their mind should be able to walk
+// away from it.
+var warpPending = null;
+
+function warpLinkClick(x, y) {
+    try {
+        if (warpPending === null) {
+            warpPending = {x: x, y: y};
+            markWarpPending();
+            return;
+        }
+        // The same square twice takes a staircase out, which is also what
+        // clicking one that is already joined to something does -- the server
+        // lets go of both ends either way.
+        socket.emit("link_warp", {
+            room: room,
+            gmKey: gmKey,
+            fromY: warpPending.y,
+            fromX: warpPending.x,
+            toY: y,
+            toX: x,
+        });
+        clearWarpPending();
+    } catch (error) {
+        socket.emit("error_handle", room, error);
+    }
+}
+
+function markWarpPending() {
+    var tile = warpPending
+        && document.getElementById("tile" + warpPending.x + "," + warpPending.y);
+    if (tile) {
+        tile.classList.add("warpPending");
+    }
+}
+
+function clearWarpPending() {
+    var marked = document.getElementsByClassName("warpPending");
+    while (marked.length > 0) {
+        marked[0].classList.remove("warpPending");
+    }
+    warpPending = null;
+}
+
 function mapTool(e, tileName) {
     try {
+        // Changing tool, or putting the same one down, abandons a half-made
+        // staircase rather than leaving it to pair with whatever is clicked
+        // next.
+        clearWarpPending();
         if (typeof selectedTool !== "undefined" && selectedTool == e.target) {
             //ds.setSelectables(undefined, true, false);
             if (multiSelect) {
@@ -1099,6 +1149,12 @@ function mapClick(e, x, y) {
         relative_y = e.offsetY * 16 / zoomSize;
         relative_x = e.offsetX * 16 / zoomSize;
         if (typeof selectedTool !== "undefined") {
+            // The link tool needs two squares before it has anything to say,
+            // so it is not a paint like the rest of the palette.
+            if (selectedTool.id === "warpLink") {
+                warpLinkClick(x, y);
+                return;
+            }
             tiles = [{newTile: selectedTool.id, xCoord: x, yCoord: y}]
             socket.emit('map_edit', {tiles: tiles, room: room, gmKey: gmKey, relative_x: relative_x, relative_y: relative_y});
             return;

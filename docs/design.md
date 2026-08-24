@@ -284,6 +284,52 @@ and it shrank again whenever anything else took height out of the map sheet.
 `#mapContainer` takes `calc(100% - var(--palette-height))` so the two tile
 exactly. There is a test that measures the bar against its tallest group.
 
+### Staircase — `.warpTile`, `.warpPending`, `.warpTool`
+
+**A map holds more than one level by drawing them as separate parts of the one
+grid.** There is exactly one `mapArray` per room and nothing anywhere expects
+otherwise, so a second level is a second room drawn further along the same
+board. A staircase joins a tile in one to a tile in the other: `tile["warp"] =
+[y, x]`, written on **both** ends.
+
+The pathfinder is where this has to be taught, and it is one place. `astar`
+derived neighbours from a hardcoded list of eight directions and nothing else,
+so a link is simply a ninth neighbour, added when the tile you are standing on
+has one. It costs **one square** — the cost rule reads the two coordinates to
+tell a diagonal from a straight step, and the ends of a staircase differ in both
+without being diagonal, so a warp step is flagged and charged straight.
+
+`warp_heuristic` is the part that is easy to miss. The estimate was the distance
+across the map, which for two levels side by side is enormous, so a unit at the
+top of the stairs with its target one square past the bottom was told the long
+way round was closer, walked it, and was charged for every square. The estimate
+now also considers going by way of each staircase.
+
+The far end is checked for walkable and seen, and **nothing else**. The wall
+checks a normal step makes are about which side of a square you cross, and a
+staircase is not crossed from any side — a wall between the two ends means
+nothing, since they were never next to each other.
+
+**Both ends are let go together.** Painting over a staircase, relinking one end
+somewhere else, or clicking the same square twice all clear the pair; a tile
+left pointing at a partner that no longer points back is a staircase to nowhere,
+still drawn as one.
+
+**Players are told about a staircase only where they have been.** The mark is
+stripped from unseen squares and from secret ones, in `player_map` and in the
+in-place mask `map_edit` uses — that mask edits rather than rebuilds, so
+anything not explicitly dropped reaches the players. A mark in the fog would
+show a way through where the fog says there is nothing, and name the square at
+the other end besides.
+
+The tool is **two clicks, not a paint**: a staircase is a pair. The first click
+marks its square `.warpPending` in `--danger`, dashed, because it is not a
+staircase yet; the second finishes it or, on the same square, takes an existing
+one out. Changing tool abandons a half-made pair rather than leaving it to join
+itself to whatever is clicked next. A finished pair is ringed in `--accent` —
+*chosen*, in the sense of spoken for — as an inset ring rather than a fill, so
+the stair art, the floor and any lit wash still read underneath.
+
 ### Spell link and spell sheet — `.spellLink`, `#spellSheet`
 
 A spell's name, wherever it is listed, opens its full entry. Marked the way a

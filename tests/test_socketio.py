@@ -2349,3 +2349,107 @@ class TestWhoSeesASaveRoll:
         player.emit("roll_save", {"room": room, "charName": "Dire Ape",
                                   "save": "Fort", "bonus": 7})
         assert "chat" not in event_names(player.get_received())
+
+
+class TestLinkingTwoTilesAsAStaircase:
+    """A map holds more than one level by drawing them as separate parts of the
+    one grid; a staircase joins a tile in one to a tile in the other."""
+
+    def mapped(self, room, width=8, height=4):
+        mudfinder.ROOMS[room].mapData["mapArray"] = [
+            [{"tile": "floorTile", "walkable": True, "seen": True,
+              "secret": False, "x": x, "y": y}
+             for x in range(width)] for y in range(height)]
+        return mudfinder.ROOMS[room].mapData["mapArray"]
+
+    def tile(self, room, y, x):
+        return mudfinder.ROOMS[room].mapData["mapArray"][y][x]
+
+    def link(self, client, room, key, a, b):
+        client.emit("link_warp", {"room": room, "gmKey": key,
+                                  "fromY": a[0], "fromX": a[1],
+                                  "toY": b[0], "toX": b[1]})
+
+    def test_both_ends_carry_the_link(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        self.mapped(room)
+        self.link(gm_client, room, key, (1, 1), (2, 6))
+        assert self.tile(room, 1, 1)["warp"] == [2, 6]
+        assert self.tile(room, 2, 6)["warp"] == [1, 1]
+
+    def test_the_same_tile_twice_takes_it_out(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        self.mapped(room)
+        self.link(gm_client, room, key, (1, 1), (2, 6))
+        self.link(gm_client, room, key, (1, 1), (1, 1))
+        assert "warp" not in self.tile(room, 1, 1)
+        assert "warp" not in self.tile(room, 2, 6)
+
+    def test_relinking_lets_go_of_the_old_partner(self, browser_style_game):
+        """Otherwise the tile left behind still points at a staircase that no
+        longer points back, and is drawn as one."""
+        gm_client, room, key = browser_style_game
+        self.mapped(room)
+        self.link(gm_client, room, key, (1, 1), (2, 6))
+        self.link(gm_client, room, key, (1, 1), (3, 4))
+        assert self.tile(room, 1, 1)["warp"] == [3, 4]
+        assert self.tile(room, 3, 4)["warp"] == [1, 1]
+        assert "warp" not in self.tile(room, 2, 6)
+
+    def test_painting_over_a_staircase_takes_the_link_with_it(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        self.mapped(room)
+        self.link(gm_client, room, key, (1, 1), (2, 6))
+        gm_client.emit("map_edit", {
+            "room": room, "gmKey": key, "relative_x": 8, "relative_y": 8,
+            "tiles": [{"newTile": "wallTile", "xCoord": 1, "yCoord": 1}]})
+        assert "warp" not in self.tile(room, 1, 1)
+        assert "warp" not in self.tile(room, 2, 6)
+
+    def test_the_gm_key_is_checked(self, browser_style_game):
+        gm_client, room, _ = browser_style_game
+        self.mapped(room)
+        self.link(gm_client, room, "not-the-key", (1, 1), (2, 6))
+        assert "warp" not in self.tile(room, 1, 1)
+
+    def test_a_coordinate_off_the_map_is_ignored(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        self.mapped(room)
+        self.link(gm_client, room, key, (1, 1), (99, 99))
+        assert "warp" not in self.tile(room, 1, 1)
+
+    def test_rubbish_coordinates_do_not_raise(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        self.mapped(room)
+        gm_client.emit("link_warp", {"room": room, "gmKey": key,
+                                     "fromY": "up", "fromX": None,
+                                     "toY": 2, "toX": 6})
+        assert "warp" not in self.tile(room, 2, 6)
+
+    def test_an_unknown_room_is_ignored(self, client):
+        client.emit("link_warp", {"room": "no-such-room", "gmKey": GM_KEY,
+                                  "fromY": 1, "fromX": 1, "toY": 2, "toX": 2})
+        assert client.get_received() == []
+
+    def test_the_change_reaches_the_gm(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        self.mapped(room)
+        gm_client.get_received()
+        self.link(gm_client, room, key, (1, 1), (2, 6))
+        assert "gm_map_update" in event_names(gm_client.get_received())
+
+    def test_a_player_is_not_told_about_one_in_the_dark(self, browser_style_game):
+        """The far end is somewhere they have never been, so the mark on it
+        would show a way through where the fog says there is nothing."""
+        gm_client, room, key = browser_style_game
+        grid = self.mapped(room)
+        grid[2][6]["seen"] = False
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        self.link(gm_client, room, key, (1, 1), (2, 6))
+        updates = [m for m in player.get_received() if m["name"] == "player_map_update"]
+        assert updates
+        sent = {(t["y"], t["x"]): t for t in updates[-1]["args"][0]["mapArray"]}
+        assert "warp" not in sent[(2, 6)]
+        assert sent[(1, 1)]["warp"] == [2, 6]

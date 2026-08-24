@@ -1271,6 +1271,29 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
     opacity: 0.0;
 }
 
+/* A square joined to another somewhere else on the map. Marked in the accent,
+   which everywhere else means "chosen" -- here it means this square is spoken
+   for, joined to a partner. A ring rather than a fill, so whatever the square
+   already is -- stair art, floor, a lit wash -- still reads underneath. */
+.warpTile {
+    box-shadow: inset 0 0 0 2px var(--accent);
+}
+/* The first half of a pair, waiting for its other end. Dashed, because it is
+   not a staircase yet -- one more click either finishes it or takes it back. */
+.warpPending {
+    box-shadow: inset 0 0 0 2px var(--danger);
+    outline: 2px dashed var(--danger);
+    outline-offset: -4px;
+}
+/* The palette swatch for the tool. Two squares with a line between them, which
+   is what the tool makes. */
+.warpTool {
+    background:
+        linear-gradient(to right, transparent 45%, var(--accent) 45%, var(--accent) 55%, transparent 55%),
+        radial-gradient(circle at 20% 50%, var(--accent) 0 22%, transparent 22%),
+        radial-gradient(circle at 80% 50%, var(--accent) 0 22%, transparent 22%);
+}
+
 .stairTileLeft {
     background: repeating-linear-gradient(to left, transparent calc(10%), black calc(20%));
 }
