@@ -1360,6 +1360,70 @@ def on_roll_attack(data):
         emit("chat", {"chat": message, "charName": attacker}, room=ROOMS[room].gmRoom)
 
 
+# The three saves, and what a statblock is allowed to call each of them.
+# "Fort +13, Ref +9, Will +14" is the usual shape; some entries write Reflex
+# out in full, and a few put a note after the number that is not part of it.
+SAVE_NAMES = (("Fort", "Fortitude"), ("Ref", "Reflex"), ("Will", "Will"))
+SAVE_PATTERN = re.compile(
+    r"\b(Fort(?:itude)?|Ref(?:lex)?|Will)\b\s*([+-]\s*\d+)", re.I)
+
+
+def parse_saves(text):
+    """A creature's saving throws, as {"Fort": 13, "Ref": 9, "Will": 14}.
+
+    Only what is actually written: a creature with no Will listed gets no Will
+    key rather than a zero, so the button for it can be left off instead of
+    offering a roll that means nothing.
+    """
+    saves = {}
+    for found in SAVE_PATTERN.finditer(str(text or "")):
+        word = found.group(1).lower()
+        for short, long in SAVE_NAMES:
+            if word == short.lower() or word == long.lower():
+                saves[short] = initiative_bonus(found.group(2).replace(" ", ""))
+                break
+    return saves
+
+
+@socketio.on('roll_save')
+def on_roll_save(data):
+    """Roll one saving throw, and say what it came to.
+
+    Who sees it follows who rolled, the same rule roll_attack goes by: a
+    monster's save goes to the GM's views alone, a player's to the shared chat.
+    Which matters more here than for an attack -- the party learning that the
+    lich made its save is the game, learning that it made it by eleven is not.
+    """
+    room = data.get('room')
+    if not check_room(room):
+        return
+    is_gm = ROOMS[room].gmKey == data.get('gmKey')
+    who = str(data.get('charName') or "").strip()
+    save = str(data.get('save') or "").strip()
+    if save not in dict(SAVE_NAMES):
+        # One of ours, not whatever the client felt like sending -- this ends
+        # up in everyone's chat.
+        return
+
+    if not is_gm:
+        # A player may only roll for something they control, which is the same
+        # check rolling one of their own attacks goes through.
+        unit = next((u for u in ROOMS[room].unitList
+                     if u.charName == who and u.controlledBy == who), None)
+        if unit is None:
+            return
+
+    bonus = initiative_bonus(data.get('bonus'))
+    die = randint(1, 20)
+    message = "%s — %s save: d20(%d)%+d = %d" % (
+        who or "Unit", save, die, bonus, die + bonus)
+    if is_gm:
+        emit_to_gm("chat", {"chat": message, "charName": "System"}, room)
+    else:
+        emit("chat", {"chat": message, "charName": who}, room=room)
+        emit("chat", {"chat": message, "charName": who}, room=ROOMS[room].gmRoom)
+
+
 @socketio.on('add_units')
 def on_add_units(data):
     """Add several copies of one creature at once, rolling each initiative.

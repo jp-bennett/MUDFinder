@@ -3880,12 +3880,14 @@ class TestWhatTheCreaturePanelShows:
 
     def test_hp_ac_and_initiative_are_across_the_top(self, creature_panel):
         stats = creature_panel["selected"]["stats"]
-        assert len(stats) == 3
+        # HP, AC and initiative to read, then the saves to roll.
+        assert len(stats) == 4
         assert stats[0].startswith("HP 138 / 138")
         # A unit carries AC only as the pieces it adds up from, so this one is
         # read from the bestiary record the creature came out of.
         assert stats[1].startswith("AC 28")
         assert stats[2].startswith("Init")
+        assert stats[3].startswith("Saves")
 
     def test_with_nothing_selected_it_follows_whose_turn_it_is(self, creature_panel):
         assert creature_panel["currentTurn"]["name"] == "Adult Occult Dragon"
@@ -3958,3 +3960,193 @@ class TestTheSpecialAbilitiesFold:
         state = creature_panel["handMadeUnit"]
         assert state["buttonDisabled"] is True
         assert "bestiary" in state["buttonTitle"]
+
+
+@pytest.fixture(scope="module")
+def save_rolls(browser, live_server):
+    """The buttons that roll a saving throw, on both views.
+
+    A monster's saves come off its bestiary entry; a player's come off the
+    total on their own sheet. Who sees the result follows who rolled, the same
+    rule an attack roll goes by.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "save rolls")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1)
+                    for pair in page.url.split("?", 1)[1].split("&"))["room"]
+
+        page.fill("#mapWidth", "14")
+        page.fill("#mapHeight", "10")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 140",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.click("div.tab:text-is('Encounter')")
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+        page.fill("#creatureSearchName", "adult occult dragon")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#creatureRows tr').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.click("#creatureRows tr:first-child button")
+        page.wait_for_function(
+            "() => !document.getElementById('modalBackground')", timeout=HANDSHAKE_TIMEOUT)
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Adult Occult Dragon")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        # And one made by hand, which has no bestiary entry to take saves from.
+        page.fill("#unitName", "Bandit")
+        page.fill("#unitHP", "9")
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Bandit")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(400)
+        page.click("div.tab:text-is('Units')")
+        page.click("#unitsDiv .unitListEntry")
+        page.wait_for_timeout(600)
+        page.click("div.tab:text-is('Map')")
+        page.click("#bottomPopupButton")
+        page.wait_for_timeout(900)
+
+        stages = {}
+        stages["parse"] = page.evaluate("""() => [
+            parseSaves("Fort +13, Ref +9, Will +14"),
+            parseSaves("Fortitude +3, Reflex +11, Will +5"),
+            parseSaves("Fort +6, Ref +2, Will +7; +2 vs. fear"),
+            parseSaves("Fort +5"),
+        ]""")
+        stages["buttons"] = page.eval_on_selector_all(
+            "#mobPanelStats .saveRoll", "els => els.map(e => e.innerText)")
+
+        before = page.inner_text("#chatText")
+        page.click("#mobPanelStats .saveRoll >> nth=0")
+        page.wait_for_function(
+            "(was) => document.getElementById('chatText').innerText.length > was.length",
+            arg=before, timeout=HANDSHAKE_TIMEOUT)
+        stages["gmChat"] = page.inner_text("#chatText")[len(before):].strip()
+
+        # A hand-made unit has no saves recorded, so it gets no buttons.
+        page.evaluate(
+            """() => { selectedUnits =
+                 [gmData.unitList.find(u => u.charName === "Bandit").unitNum];
+               drawMobPanel(gmData); }""")
+        page.wait_for_timeout(500)
+        stages["handMadeButtons"] = page.eval_on_selector_all(
+            "#mobPanelStats .saveRoll", "els => els.length")
+        stages["handMadeShows"] = page.eval_on_selector_all(
+            "#mobPanelStats .mobStatNone", "els => els.map(e => e.innerText)")
+
+        # The player's own save, off the total on their sheet.
+        player = context.new_page()
+        player.on("pageerror", lambda error: errors.append("player: " + str(error)))
+        player.goto("%s/player.html?room=%s&charName=Vex" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        player.wait_for_timeout(800)
+        stages["playerSawTheMonsterSave"] = (
+            "Adult Occult Dragon" in player.inner_text("#chatText"))
+
+        player.click("div.tab:text-is('Character')")
+        player.wait_for_timeout(400)
+        stages["playerButtons"] = player.eval_on_selector_all(
+            ".saveRoll", "els => els.map(e => e.id)")
+        player.evaluate(
+            "() => { document.getElementById('sheetWillTotal').value = '7'; }")
+        playerBefore = player.inner_text("#chatText")
+        gmBefore = page.inner_text("#chatText")
+        player.click("#rollWillSave")
+        player.wait_for_function(
+            "(was) => document.getElementById('chatText').innerText.length > was.length",
+            arg=playerBefore, timeout=HANDSHAKE_TIMEOUT)
+        stages["playerChat"] = player.inner_text("#chatText")[len(playerBefore):].strip()
+        page.wait_for_function(
+            "(was) => document.getElementById('chatText').innerText.length > was.length",
+            arg=gmBefore, timeout=HANDSHAKE_TIMEOUT)
+        stages["gmSawPlayerSave"] = page.inner_text("#chatText")[len(gmBefore):].strip()
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestReadingSavesInTheBrowser:
+    def test_the_usual_shape(self, save_rolls):
+        assert save_rolls["parse"][0] == {"Fort": 13, "Ref": 9, "Will": 14}
+
+    def test_written_out_in_full(self, save_rolls):
+        assert save_rolls["parse"][1] == {"Fort": 3, "Ref": 11, "Will": 5}
+
+    def test_a_note_after_the_numbers_is_not_one_of_them(self, save_rolls):
+        assert save_rolls["parse"][2] == {"Fort": 6, "Ref": 2, "Will": 7}
+
+    def test_a_save_that_is_not_written_is_absent(self, save_rolls):
+        assert save_rolls["parse"][3] == {"Fort": 5}
+
+
+class TestTheGmsSaveButtons:
+    def test_one_button_per_save_with_the_modifier_on_it(self, save_rolls):
+        """The button says what it is going to add before it is pressed, the
+        same call the attack rows make by keeping the bonus in a box."""
+        assert save_rolls["buttons"] == ["Fort +13", "Ref +9", "Will +14"]
+
+    def test_pressing_one_rolls_it_into_the_chat(self, save_rolls):
+        line = save_rolls["gmChat"]
+        assert "Adult Occult Dragon" in line
+        assert "Fort save" in line
+        assert "d20(" in line and "+13" in line
+
+    def test_a_unit_made_by_hand_gets_no_buttons(self, save_rolls):
+        """Nothing to roll against, so a dash rather than three +0 buttons --
+        which would be three rolls that mean nothing."""
+        assert save_rolls["handMadeButtons"] == 0
+        assert save_rolls["handMadeShows"] == ["—"]
+
+
+class TestThePlayersSaveButtons:
+    def test_there_is_one_beside_each_save(self, save_rolls):
+        assert save_rolls["playerButtons"] == [
+            "rollFortSave", "rollReflexSave", "rollWillSave"]
+
+    def test_it_rolls_the_total_off_the_sheet(self, save_rolls):
+        """From the total rather than the parts under it, so a player who has
+        just corrected a number gets the number they are looking at."""
+        line = save_rolls["playerChat"]
+        assert "Vex" in line
+        assert "Will save" in line
+        assert "+7" in line
+
+
+class TestWhoSeesASaveInTheBrowser:
+    def test_the_party_is_not_told_the_monsters_save(self, save_rolls):
+        """Learning that the dragon made its save is the game; learning that it
+        made it by eleven is not."""
+        assert save_rolls["playerSawTheMonsterSave"] is False
+
+    def test_but_the_gm_sees_the_players_own(self, save_rolls):
+        assert "Will save" in save_rolls["gmSawPlayerSave"]
+
+
+class TestTheSaveRollsRaisedNothing:
+    def test_nothing_raised(self, save_rolls):
+        assert save_rolls["errors"] == []

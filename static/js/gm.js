@@ -1282,6 +1282,16 @@ function drawMobStats(container, unit) {
     mobStat(container, "Init", (unit.initiative === "" || unit.initiative === null)
         ? "" : String(unit.initiative));
 
+    // The saves sit at the end of the strip as buttons rather than figures,
+    // because a save is a thing the GM does rather than a thing they read.
+    var saves = document.createElement("div");
+    saves.className = "mobStat mobSaves";
+    var savesLabel = document.createElement("span");
+    savesLabel.className = "mobStatLabel";
+    savesLabel.innerText = "Saves";
+    saves.appendChild(savesLabel);
+    container.appendChild(saves);
+
     if (unit.creatureId) {
         var wanted = String(unit.creatureId);
         container.dataset.creatureId = wanted;
@@ -1292,9 +1302,40 @@ function drawMobStats(container, unit) {
                 return;
             }
             ac.innerText = statblockValue(full.creature, ["AC", "AC_Mods"]);
+            drawSaveButtons(saves, unit.charName,
+                            statblockValue(full.creature, ["Saves", "Save_Mods"]));
         });
     } else {
         container.dataset.creatureId = "";
+        // Made by hand, so there is nothing to roll against.
+        var none = document.createElement("span");
+        none.className = "mobStatValue mobStatNone";
+        none.innerText = "—";
+        none.title = "not from the bestiary, so no saves are recorded";
+        saves.appendChild(none);
+    }
+}
+
+// One button per save the creature actually has. A save that is not written
+// down gets no button rather than a +0 one, which would be a roll that means
+// nothing.
+function drawSaveButtons(container, who, text) {
+    var saves = parseSaves(text);
+    var drawn = 0;
+    for (var s = 0; s < SAVE_ORDER.length; s++) {
+        var save = SAVE_ORDER[s];
+        if (typeof saves[save] === "undefined") {
+            continue;
+        }
+        container.appendChild(saveButton(who, save, saves[save]));
+        drawn += 1;
+    }
+    if (drawn === 0) {
+        var none = document.createElement("span");
+        none.className = "mobStatValue mobStatNone";
+        none.innerText = "—";
+        none.title = "none recorded for this creature";
+        container.appendChild(none);
     }
 }
 
