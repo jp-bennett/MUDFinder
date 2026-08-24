@@ -1670,6 +1670,57 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
 .chosenCreature {
     font-style: italic;
 }
+/* A spell's name, as something to click. Marked the way a reference in a book
+   is -- the accent colour and a dotted rule under it -- rather than as a
+   button: these sit in the middle of a line of prose and a row of buttons
+   there would read as things to press rather than as the list it is. */
+.spellLink {
+    color: var(--accent);
+    border-bottom: 1px dotted var(--accent);
+    cursor: pointer;
+}
+.spellLink:hover,
+.spellLink:focus {
+    background: var(--accent-soft);
+    border-bottom-style: solid;
+    outline: none;
+}
+
+/* The entry itself, over whatever the reader was looking at. Both views want
+   this and neither has room to keep it open. */
+#spellSheet {
+    box-sizing: border-box;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: 6%;
+    width: min(760px, 90%);
+    max-height: 88%;
+    display: flex;
+    flex-direction: column;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-panel);
+    /* Lifted rather than resting: this is floating over the page, like the
+       creature picker, not lying on the desk. */
+    box-shadow: var(--shadow-lifted);
+    overflow: hidden;
+}
+#spellSheetBody {
+    overflow: auto;
+    padding: 8px 14px 12px;
+}
+/* formatSpellObj leads with the spell's name, which the heading above already
+   says. It is kept for the picker, where there is no heading over it. */
+#spellSheetBody .spellName {
+    display: none;
+}
+/* "Looking it up", and the note for a name with no spell behind it. */
+.spellSheetNote {
+    color: var(--ink-faint);
+    padding: 10px 2px;
+}
+
 .modal {
   position: fixed; /* Stay in place */
   z-index: 6; /* Sit on top */

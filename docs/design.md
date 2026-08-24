@@ -284,6 +284,34 @@ and it shrank again whenever anything else took height out of the map sheet.
 `#mapContainer` takes `calc(100% - var(--palette-height))` so the two tile
 exactly. There is a test that measures the bar against its tallest group.
 
+### Spell link and spell sheet — `.spellLink`, `#spellSheet`
+
+A spell's name, wherever it is listed, opens its full entry. Marked the way a
+reference in a book is — the accent colour with a dotted rule under it — and
+**not as a button**: these sit in the middle of a line of prose, and a row of
+buttons there would read as things to press rather than as the list it is.
+
+The entry opens in a lifted dialog rather than a panel: both views want it and
+neither has room to keep it open. `formatSpellObj` builds the body, so the
+picker and the dialog show a spell the same way; its leading name line is
+hidden inside `#spellSheetBody` because the dialog's heading already says it.
+
+The two sides reach it differently. **The player's own spells are whole rows
+out of the spells table**, kept in `spellcasting` since they were chosen, so
+clicking one opens the entry with nothing fetched. **A creature's statblock
+gives only a name**, so the GM side looks it up — and the name has to be dug
+out of how print writes it: `greater dispel magic (DC 22)UM` is the table's
+`Dispel Magic, Greater`. `spell_name_candidates` handles the brackets, the
+source-book superscript, the slot markers glued to the word, and the rank that
+belongs at the back. About one name in fourteen still finds nothing, and most
+of those are **class features rather than spells** — a cleric's touch of evil,
+a wizard's force missile — which have no row and never will. The dialog says
+that rather than showing an empty entry.
+
+Lists split with `splitSpellList`, which respects brackets: naively, `dispel
+evil (2, DC 22)` becomes two spells, one of them called `DC 22)`. The server
+splits the same way, in `split_spell_list`, for the same reason.
+
 ### Creature panel — `#bottomDiv` on the GM view
 
 The GM's counterpart to the player's action bar, in the same place and opened by

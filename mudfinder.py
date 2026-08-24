@@ -43,12 +43,39 @@ SPELL_CLASS_COLUMNS["Arcanist"] = "wiz"
 SPELL_CLASS_COLUMNS["Wizard"] = "wiz"
 SPELL_CLASS_COLUMNS["Cleric"] = "cleric"
 
-SPELL_QUERY = (
-    "select name, school, subschool, descriptor, spell_level, casting_time,"
+SPELL_COLUMNS = (
+    "name, school, subschool, descriptor, spell_level, casting_time,"
     " components, costly_components, range, area, effect, targets, duration,"
     " dismissible, shapeable, saving_throw, spell_resistence, description,"
-    " short_description, description_formated from spells where {column}=?;"
+    " short_description, description_formated"
 )
+
+SPELL_QUERY = "select " + SPELL_COLUMNS + " from spells where {column}=?;"
+
+# One spell by name, for looking up something a creature is listed as casting.
+# The name is a bound parameter -- unlike the class column above, nothing here
+# is interpolated -- and `collate nocase` is what lets a statblock's lowercase
+# "gaseous form" find the table's "Gaseous Form".
+SPELL_BY_NAME_QUERY = (
+    "select " + SPELL_COLUMNS + " from spells where name = ? collate nocase limit 1;"
+)
+
+# Source books are printed as a superscript after the spell's name, so a
+# statblock says "mental barrier IIOA" where OA is the book and II is part of
+# the name. Stripped by this list rather than by a "trailing capitals" rule,
+# which ate the numeral off "summon monster I".
+SPELL_SOURCE_TAGS = re.compile(
+    r"(?:UM|APG|OA|UC|UI|ACG|ARG|MC|SoM|OWG|HA|UW|PoS|B\d)\b")
+
+# A lone letter after a spell marks how it was gained -- D for a domain slot, M
+# for a mythic version, F/X for components -- and is set as a superscript, so it
+# arrives glued to the word: "obscuring mistD".
+SPELL_SLOT_MARKERS = re.compile(r"(?<=[a-z])[DMFX]$")
+
+# The table names these "dispel magic, greater"; a statblock calls the same
+# spell "greater dispel magic". Worth handling: between them these four account
+# for about one in eight of the spells a creature is listed as casting.
+SPELL_RANKS = ("greater", "lesser", "mass", "communal")
 
 # What the creature picker lists. Everything else in the table is fetched one
 # row at a time, when a creature is actually chosen.
@@ -257,6 +284,55 @@ def parse_castings(text):
                 castings.append({"label": label, "spells": spell,
                                  "uses": uses, "daily": uses})
     return castings
+
+
+def spell_name_candidates(text):
+    """What a statblock calls a spell, as names the spells table might have.
+
+    A statblock writes a spell the way it reads in print: lowercase, with the
+    DC in brackets after it, the source book set as a superscript, and the rank
+    in front -- "greater dispel magic (DC 22)UM". The table has "Dispel Magic,
+    Greater". This turns the first into candidates for the second, best guess
+    first.
+
+    Returns [] for something with no name left in it, so a caller can tell
+    "nothing to look up" from "looked and found nothing".
+    """
+    name = str(text or "")
+    # Brackets hold the DC, the count, and asides like "(self only)" -- never
+    # part of the name.
+    name = re.sub(r"\([^)]*\)", " ", name)
+    name = SPELL_SOURCE_TAGS.sub(" ", name)
+    name = re.sub(r"^\s*\d+\s*[-–]\s*", "", name)
+    name = re.sub(r"\s+", " ", name).strip(" ,.*†‡")
+    name = SPELL_SLOT_MARKERS.sub("", name)
+    name = name.strip()
+    if not name:
+        return []
+    candidates = [name]
+    lowered = name.lower()
+    for rank in SPELL_RANKS:
+        if lowered.startswith(rank + " "):
+            candidates.append(name[len(rank) + 1:].strip() + ", " + rank)
+    return candidates
+
+
+def look_up_spell(text):
+    """One spell out of the table by the name a statblock gave it, or None."""
+    candidates = spell_name_candidates(text)
+    if not candidates:
+        return None
+    conn = creature_database()
+    try:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        for candidate in candidates:
+            row = cursor.execute(SPELL_BY_NAME_QUERY, (candidate,)).fetchone()
+            if row is not None:
+                return dict(row)
+    finally:
+        conn.close()
+    return None
 
 
 def creature_castings(creature):
@@ -2380,6 +2456,18 @@ def database_spells(casterClass, level):
     for i in result:
         i["level"] = level
     return result
+
+@socketio.on('database_spell')
+def database_spell(name):
+    """One spell by the name something is listed as casting, or None.
+
+    None is a real answer here rather than a failure: a good few of the things
+    in a creature's spell-like abilities are class features -- a cleric's touch
+    of evil, a wizard's force missile -- which have no row in the spells table
+    and never will. The client says so rather than showing an empty entry.
+    """
+    return look_up_spell(name)
+
 
 @socketio.on('database_creatures')
 def database_creatures(data):

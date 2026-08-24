@@ -808,13 +808,55 @@ function drawCastings(container, unit, unitNumber) {
     container.appendChild(reset);
 }
 
+// A comma-separated spell list, respecting brackets -- the same split the
+// server does in split_spell_list, and for the same reason: naively, "dispel
+// evil (2, DC 22)" becomes two spells, one of them called "DC 22)".
+function splitSpellList(text) {
+    var spells = [];
+    var depth = 0;
+    var current = "";
+    var source = String(text || "");
+    for (var i = 0; i < source.length; i++) {
+        var character = source[i];
+        if (character === "(") {
+            depth += 1;
+        } else if (character === ")") {
+            depth -= 1;
+        }
+        if (character === "," && depth <= 0) {
+            if (current.trim()) {
+                spells.push(current.trim());
+            }
+            current = "";
+        } else {
+            current += character;
+        }
+    }
+    if (current.trim()) {
+        spells.push(current.trim());
+    }
+    return spells;
+}
+
 function castingRow(casting, index, unitNumber) {
     var row = document.createElement("div");
     row.className = "castingRow";
 
+    // One clickable name per spell rather than the line as a whole: a row can
+    // hold several -- "gaseous form, mental barrier IIOA" -- and the reader
+    // wants the one they pointed at.
     var name = document.createElement("span");
     name.className = "castingSpells";
-    name.innerText = casting.spells;
+    var spells = splitSpellList(casting.spells);
+    if (spells.length === 0) {
+        name.innerText = casting.spells;
+    }
+    for (var s = 0; s < spells.length; s++) {
+        if (s > 0) {
+            name.appendChild(document.createTextNode(", "));
+        }
+        name.appendChild(spellNameElement(spells[s]));
+    }
     row.appendChild(name);
 
     var uses = document.createElement("span");
@@ -888,6 +930,120 @@ function saveButton(who, save, bonus) {
     button.title = "roll a " + save + " save";
     button.onclick = function () { rollSave(who, save, bonus); };
     return button;
+}
+
+// Spells already looked up, keyed by the name they were asked for. A miss is
+// cached as null: a good few of the things a creature is listed as casting are
+// class features with no row in the table, and asking again every time the GM
+// clicks one would be a round trip to learn the same nothing.
+var spellCache = {};
+
+function fetchSpellCached(name) {
+    var key = String(name || "");
+    if (Object.prototype.hasOwnProperty.call(spellCache, key)) {
+        return Promise.resolve(spellCache[key]);
+    }
+    return new Promise(function (resolve) {
+        socket.emit("database_spell", key, function (spell) {
+            spellCache[key] = spell || null;
+            resolve(spellCache[key]);
+        });
+    });
+}
+
+// The full entry for a spell, over whatever the reader was looking at. Both
+// views want this and neither has room to keep it open, so it is a dialog
+// rather than a panel.
+//
+// Takes either a spell row that is already to hand -- the player's own spells
+// are whole rows out of the same table -- or the name of one, which is what a
+// creature's statblock gives, and looks that up.
+function showSpellInfo(spellOrName) {
+    try {
+        var known = spellOrName && typeof spellOrName === "object";
+        var asked = known ? (spellOrName.name || "") : String(spellOrName || "");
+
+        var modalBackground = document.createElement("div");
+        modalBackground.id = "modalBackground";
+        modalBackground.className = "modal";
+        modalBackground.onclick = function () {
+            var open = document.getElementById("modalBackground");
+            if (open) {
+                open.remove();
+            }
+        };
+        var sheet = document.createElement("div");
+        sheet.id = "spellSheet";
+        sheet.onclick = function (e) { e.stopPropagation(); };
+        document.body.appendChild(modalBackground);
+        modalBackground.appendChild(sheet);
+
+        var heading = document.createElement("div");
+        heading.className = "panelHeading";
+        heading.innerText = asked;
+        sheet.appendChild(heading);
+
+        var body = document.createElement("div");
+        body.id = "spellSheetBody";
+        sheet.appendChild(body);
+
+        if (known) {
+            body.appendChild(formatSpellObj(spellOrName, false));
+            return;
+        }
+        var looking = document.createElement("div");
+        looking.className = "spellSheetNote";
+        looking.innerText = "Looking it up…";
+        body.appendChild(looking);
+        fetchSpellCached(asked).then(function (spell) {
+            // Shut again while the lookup was in flight, or another one opened
+            // over it.
+            if (!sheet.isConnected) {
+                return;
+            }
+            removeContents(body);
+            if (!spell) {
+                var none = document.createElement("div");
+                none.className = "spellSheetNote";
+                // Most of these are class features -- a cleric's touch of evil,
+                // a wizard's force missile -- listed among the spell-like
+                // abilities but never printed as spells.
+                none.innerText =
+                    "No spell by that name in the book. Creatures list class "
+                    + "features here too, and those are written up with the "
+                    + "class rather than among the spells.";
+                body.appendChild(none);
+                return;
+            }
+            heading.innerText = spell.name;
+            body.appendChild(formatSpellObj(spell, false));
+        });
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
+// A spell's name, as something to click. The text is whatever it was written
+// as -- the DC and the source book included, because that is how the GM reads
+// the line -- while the lookup gets the name out of it.
+function spellNameElement(text) {
+    var link = document.createElement("span");
+    link.className = "spellLink";
+    link.innerText = text;
+    link.title = "rules for this spell";
+    link.setAttribute("role", "button");
+    link.setAttribute("tabindex", "0");
+    link.addEventListener("click", function (e) {
+        e.stopPropagation();
+        showSpellInfo(text);
+    });
+    link.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            showSpellInfo(text);
+        }
+    });
+    return link;
 }
 
 // Bestiary rows already fetched, keyed by id. populateEditChar runs on every
