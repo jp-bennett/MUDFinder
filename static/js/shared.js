@@ -622,6 +622,18 @@ function enableTab(tabName) {
         socket.emit("error_handle", room, e);
     }
 }
+// The picture on the unit sheet. Its own function because it is wanted twice:
+// when the sheet is opened, and again whenever an update arrives while it is
+// already open -- which is exactly when a token is chosen, since the picture
+// is what the GM clicks to choose one.
+function drawUnitToken(unit) {
+    var view = document.getElementById("unitTokenView");
+    if (!view || !unit) {
+        return;
+    }
+    view.src = unit.token === "" ? "static/images/profile.svg" : unit.token;
+}
+
 function populateEditChar (Data, unitNum) {
     try {
         if (Data.unitList.length == 0) {return}
@@ -634,11 +646,7 @@ function populateEditChar (Data, unitNum) {
         document.getElementById("editCharNum").innerText = playerUnitNum;
         document.getElementById("charactername").innerText = Data.unitList[playerUnitNum].charName;
 
-        if (Data.unitList[playerUnitNum].token == "") {
-            document.getElementById("unitTokenView").src = "static/images/profile.svg";
-        } else {
-            document.getElementById("unitTokenView").src = Data.unitList[playerUnitNum].token;
-        }
+        drawUnitToken(Data.unitList[playerUnitNum]);
         if (Data.unitList[playerUnitNum].token != "" && document.getElementById("charTokenView") != null) {
             document.getElementById("charTokenView").src = Data.unitList[playerUnitNum].token;
         }

@@ -982,7 +982,12 @@ def on_image_upload(room, image, title, owner):
             tmpMapData["mapArray"] = []
             emit('gm_map_update', tmpMapData, room=ROOMS[room].gmRoom)
             emit('player_map_update', tmpMapData, room=room)
-        emit('do_update', ROOMS[room].player_json(), room=room)
+        # send_updates rather than the do_update alone. do_update is the
+        # players' event -- the GM view has no handler for it, and is not in
+        # the room it goes to either -- so the GM who just set a token was the
+        # one person not told about it, and their own page sat on the old one
+        # until something unrelated refreshed it.
+        ROOMS[room].send_updates()
 
 
 @socketio.on('lore_visible')

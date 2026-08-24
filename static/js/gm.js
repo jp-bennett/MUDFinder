@@ -186,6 +186,10 @@ window.onload = function() {
                 drawCastings(document.getElementById("unitCastings"),
                              gmData.unitList[playerUnitNum],
                              gmData.unitList[playerUnitNum].unitNum);
+                // The token is a display too, and choosing one is likewise
+                // done with the sheet open -- the picture is on the sheet and
+                // clicking it is how the dialog is opened in the first place.
+                drawUnitToken(gmData.unitList[playerUnitNum]);
             }
             for (var i = 0; i < gmData.unitList.length; i++) {
                 tmpUnit = `

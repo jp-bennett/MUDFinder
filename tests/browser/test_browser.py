@@ -4630,3 +4630,98 @@ class TestTheStaircaseTool:
 class TestTheStaircaseToolRaisedNothing:
     def test_nothing_raised(self, warp_links):
         assert warp_links["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def unit_token(browser, live_server):
+    """Choosing a token for a unit, and whether the GM's own page notices.
+
+    The GM does this from their unit sheet, so the GM is the one person who has
+    to be told -- and was the one person who was not. The token went to the
+    server and to the players, and the GM's page sat on the old one until it
+    was reloaded.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "unit token")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        page.fill("#mapWidth", "10")
+        page.fill("#mapHeight", "6")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 60",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.click("div.tab:text-is('Encounter')")
+        page.fill("#unitName", "Scout")
+        page.fill("#unitHP", "10")
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Scout")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(400)
+        # On the board, so that a token has somewhere to be drawn.
+        page.evaluate("""() => socket.emit('locate_unit', {selectedUnit: 0, moveType: 5,
+            xCoord: 3, yCoord: 3, relative_x: 8, relative_y: 8,
+            room: room, gmKey: gmKey})""")
+        page.wait_for_timeout(600)
+        page.click("div.tab:text-is('Units')")
+        page.click("#unitsDiv .unitListEntry")
+        page.wait_for_timeout(600)
+
+        def report():
+            return {
+                "token": page.evaluate("() => gmData.unitList[0].token"),
+                "sheetSrc": page.get_attribute("#unitTokenView", "src"),
+                "onTheMap": page.eval_on_selector_all(
+                    "#mapGraphic .tokenImg", "els => els.length"),
+            }
+
+        stages = {"before": report()}
+
+        # What the dialog's Select button does for an image link. The dialog
+        # itself is not the subject here; what happens after it is.
+        page.evaluate(
+            "(url) => sendChosenImage(url, 'unitToken', selectedUnits[0])",
+            "/static/images/profile.svg")
+        page.wait_for_timeout(1200)
+        stages["after"] = report()
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestChoosingAUnitToken:
+    def test_it_starts_with_none(self, unit_token):
+        assert unit_token["before"]["token"] == ""
+        assert unit_token["before"]["onTheMap"] == 0
+
+    def test_the_gm_is_told_without_reloading(self, unit_token):
+        assert unit_token["after"]["token"] == "/static/images/profile.svg"
+
+    def test_the_token_appears_on_the_board(self, unit_token):
+        assert unit_token["after"]["onTheMap"] == 1
+
+    def test_and_on_the_sheet_that_chose_it(self, unit_token):
+        """An open sheet is deliberately not repopulated, since that would wipe
+        what the GM was typing. The picture is not something they type into,
+        and it is what they clicked to open the dialog in the first place."""
+        assert unit_token["after"]["sheetSrc"] == "/static/images/profile.svg"
+
+
+class TestChoosingAUnitTokenRaisedNothing:
+    def test_nothing_raised(self, unit_token):
+        assert unit_token["errors"] == []
