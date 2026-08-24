@@ -963,15 +963,21 @@ function showSpellInfo(spellOrName) {
         var known = spellOrName && typeof spellOrName === "object";
         var asked = known ? (spellOrName.name || "") : String(spellOrName || "");
 
+        // One at a time, so following a spell from inside another does not
+        // leave a pile of them to click back through.
+        var already = document.getElementById("spellModal");
+        if (already) {
+            already.remove();
+        }
+        // Its own id, and it removes itself by reference rather than by
+        // looking the id up. The creature picker is a modal too and owns
+        // #modalBackground; sharing that id meant getElementById found the
+        // picker first, so shutting a spell opened from inside the picker shut
+        // the picker instead.
         var modalBackground = document.createElement("div");
-        modalBackground.id = "modalBackground";
+        modalBackground.id = "spellModal";
         modalBackground.className = "modal";
-        modalBackground.onclick = function () {
-            var open = document.getElementById("modalBackground");
-            if (open) {
-                open.remove();
-            }
-        };
+        modalBackground.onclick = function () { modalBackground.remove(); };
         var sheet = document.createElement("div");
         sheet.id = "spellSheet";
         sheet.onclick = function (e) { e.stopPropagation(); };
@@ -2200,6 +2206,62 @@ function statblockValue(creature, columns) {
     return parts.join(" ");
 }
 
+// Where a spell list breaks into what can be cast how often: "Constant—",
+// "3/day—", "4th (4/day)—", "8th—". The server's SPELL_GROUP, in JS. Written
+// with a leading (^|\s) group rather than a lookbehind so the match starts at
+// a word rather than mid-name.
+var SPELL_GROUP = new RegExp(
+    "(^|\\s)("
+    + "constant|at[\\s-]*will"
+    + "|\\d+\\s*/\\s*day"
+    + "|\\d+(?:st|nd|rd|th)?\\s*\\(\\s*(?:at[\\s-]*will|\\d+\\s*/\\s*day)\\s*\\)"
+    + "|\\d+(?:st|nd|rd|th)"
+    + ")\\s*[-–]\\s*", "gi");
+
+// The statblock lines that are lists of spells, as against lists of anything
+// else. Domains is deliberately not here -- "Air, Weather" are domains, and
+// looking them up as spells would find nothing every time.
+var SPELL_LINE_LABELS = {
+    "Spell-Like Abilities": true,
+    "Spells Known": true,
+    "Spells Prepared": true,
+};
+
+// A spell list as text with the spells in it clickable. Everything that is not
+// a spell -- the "(CL 15th; concentration +20)" the line opens with, and the
+// "3/day—" in front of each group -- stays as plain text, so the line still
+// reads the way it does in the book.
+function appendSpellList(parent, value) {
+    var text = String(value || "");
+    SPELL_GROUP.lastIndex = 0;
+    var groups = [];
+    var found;
+    while ((found = SPELL_GROUP.exec(text)) !== null) {
+        groups.push({start: found.index, end: SPELL_GROUP.lastIndex, lead: found[0]});
+    }
+    if (groups.length === 0) {
+        // No "3/day—" anywhere: nothing here says which words are spells, so
+        // the line is left exactly as it was.
+        parent.appendChild(document.createTextNode(text));
+        return false;
+    }
+    if (groups[0].start > 0) {
+        parent.appendChild(document.createTextNode(text.slice(0, groups[0].start)));
+    }
+    for (var g = 0; g < groups.length; g++) {
+        parent.appendChild(document.createTextNode(groups[g].lead));
+        var until = (g + 1 < groups.length) ? groups[g + 1].start : text.length;
+        var spells = splitSpellList(text.slice(groups[g].end, until));
+        for (var s = 0; s < spells.length; s++) {
+            if (s > 0) {
+                parent.appendChild(document.createTextNode(", "));
+            }
+            parent.appendChild(spellNameElement(spells[s]));
+        }
+    }
+    return true;
+}
+
 function statblockLine(parent, label, value) {
     // "AC 18, touch 16, flat-footed 14" -- the label bold and the value
     // running on from it, rather than a column of "AC: ..." pairs.
@@ -2215,13 +2277,22 @@ function statblockLine(parent, label, value) {
         line.appendChild(document.createTextNode(" "));
     }
     // A value the server has already broken into entries gets one line each.
+    var spellLine = SPELL_LINE_LABELS[label] === true;
     var entries = String(value).split("\n");
-    line.appendChild(document.createTextNode(entries[0]));
+    if (spellLine) {
+        appendSpellList(line, entries[0]);
+    } else {
+        line.appendChild(document.createTextNode(entries[0]));
+    }
     parent.appendChild(line);
     for (var e = 1; e < entries.length; e++) {
         var extra = document.createElement("div");
         extra.className = "sbLine sbContinued";
-        extra.textContent = entries[e];
+        if (spellLine) {
+            appendSpellList(extra, entries[e]);
+        } else {
+            extra.textContent = entries[e];
+        }
         parent.appendChild(extra);
     }
 }

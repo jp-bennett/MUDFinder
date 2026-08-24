@@ -1686,6 +1686,13 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
     outline: none;
 }
 
+/* Over the creature picker, which is a modal itself at z-index 6: a spell
+   followed out of a statblock while choosing a monster has to sit on top of
+   the thing it was opened from. */
+#spellModal {
+    z-index: 8;
+}
+
 /* The entry itself, over whatever the reader was looking at. Both views want
    this and neither has room to keep it open. */
 #spellSheet {

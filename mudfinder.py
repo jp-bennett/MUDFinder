@@ -198,11 +198,17 @@ ATTACK_COUNT_PREFIX = re.compile(r"^\s*(\d+)\s+")
 #
 # A group opens with how often it can be used and a dash: "At will-",
 # "Constant-", "3/day-", "4th (4/day)-", "8th-".
+#
+# The hyphen in "at-will" matters. Eleven creatures write it that way against
+# 4,387 that use a space, and with "at\s*will" the group went unrecognised: the
+# cantrips after it were swallowed into the level above, so an Adult Occult
+# Dragon's detect magic and mage hand were listed as costing one of its eight
+# first-level castings.
 SPELL_GROUP = re.compile(
     r"(?:(?<=\s)|^)("
-    r"constant|at\s*will"
+    r"constant|at[\s-]*will"
     r"|\d+\s*/\s*day"
-    r"|\d+(?:st|nd|rd|th)?\s*\(\s*(?:at\s*will|\d+\s*/\s*day)\s*\)"
+    r"|\d+(?:st|nd|rd|th)?\s*\(\s*(?:at[\s-]*will|\d+\s*/\s*day)\s*\)"
     r"|\d+(?:st|nd|rd|th)"
     r")\s*[-\u2013]\s*", re.I)
 
@@ -210,7 +216,7 @@ SPELL_GROUP = re.compile(
 # belonging to it.
 SPELL_HEADER = re.compile(r"^.*?\((?:CL[^)]*)\)\s*", re.I)
 SPELL_PER_DAY = re.compile(r"(\d+)\s*/\s*day", re.I)
-SPELL_UNLIMITED = re.compile(r"at\s*will|constant", re.I)
+SPELL_UNLIMITED = re.compile(r"at[\s-]*will|constant", re.I)
 
 # How many of a prepared spell were prepared. A bare leading integer in the
 # brackets and nothing else after it but the end or a separator: "bless (2)"
