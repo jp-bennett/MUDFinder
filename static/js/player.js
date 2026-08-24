@@ -1351,6 +1351,31 @@ function populateSpellList(results) {
     document.getElementById("selectSpellsDiv").innerHTML = "";
     document.getElementById("selectSpellsDiv").appendChild(spellTable);
 }
+// The player's own spells are whole rows out of the spells table, kept in
+// spellcasting since they were chosen, so these open the entry straight from
+// what is already in hand rather than asking the server for it again.
+function showPreparedSpellInfo(spellLevel, spellNumber) {
+    try {
+        var spell = spellcasting[0].preparedSpells[spellLevel].spells[spellNumber];
+        if (spell) {
+            showSpellInfo(spell);
+        }
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
+function showDailySpellInfo(spellLevel, spellNumber) {
+    try {
+        var spell = spellcasting[0].preparedSpellsDaily[spellLevel].spells[spellNumber];
+        if (spell) {
+            showSpellInfo(spell);
+        }
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
 function highlightSpell(spellNumber) {
     spellText = savedSpellList[spellNumber].name;
     spellText += savedSpellList[spellNumber].description_formated;
@@ -1447,7 +1472,13 @@ function populatePreparedSpells() {
                 } else if (spellcasting[0].preparedSpells[i].spells[l] == null) {
                     continue;
                 } else {
-                    spellList += "<td>" + spellcasting[0].preparedSpells[i].spells[l].name + "</td>";
+                    // The name opens the full entry. Only the two indices go
+                    // into the handler -- the spell itself is already in
+                    // spellcasting, whole, so nothing has to be looked up.
+                    spellList += `<td><span class="spellLink" role="button" tabindex="0"`
+                        + ` title="rules for this spell"`
+                        + ` onclick='showPreparedSpellInfo(${i}, ${l})'>`
+                        + spellcasting[0].preparedSpells[i].spells[l].name + "</span></td>";
                     spellList += "<td>" + spellcasting[0].preparedSpells[i].spells[l].short_description + "</td>";
                     spellList += "<td>" + spellcasting[0].preparedSpells[i].spells[l].range + "</td>";
                     spellList += "<td>" + spellcasting[0].preparedSpells[i].spells[l].saving_throw + "</td>";
@@ -1475,7 +1506,10 @@ function populatePreparedSpells() {
             for (l=0; l<spellcasting[0].preparedSpellsDaily[i].number; l++) {
                 spellList += "<tr>";
                 if (typeof spellcasting[0].preparedSpellsDaily[i].spells[l] != "undefined" && spellcasting[0].preparedSpellsDaily[i].spells[l] != null) {
-                    spellList += "<td>" + spellcasting[0].preparedSpellsDaily[i].spells[l].name + "</td>";
+                    spellList += `<td><span class="spellLink" role="button" tabindex="0"`
+                        + ` title="rules for this spell"`
+                        + ` onclick='showDailySpellInfo(${i}, ${l})'>`
+                        + spellcasting[0].preparedSpellsDaily[i].spells[l].name + "</span></td>";
                     spellList += "<td>" + spellcasting[0].preparedSpellsDaily[i].spells[l].short_description + "</td>";
                     spellList += `<td><button onclick="removeSpell(['dailyPrepared', ${i}, ${l}])">Remove</button></td>`;
                 } else {

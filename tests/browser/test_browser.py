@@ -3958,3 +3958,209 @@ class TestTheSpecialAbilitiesFold:
         state = creature_panel["handMadeUnit"]
         assert state["buttonDisabled"] is True
         assert "bestiary" in state["buttonTitle"]
+
+
+@pytest.fixture(scope="module")
+def spell_lookup(browser, live_server):
+    """Clicking a spell for its rules, on both views.
+
+    A creature's statblock names its spells and nothing more, so the GM side
+    has to find the entry from that name. The player's own spells are whole
+    rows out of the same table, already in hand, so that side opens the entry
+    without asking the server for anything.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "spell lookup")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1)
+                    for pair in page.url.split("?", 1)[1].split("&"))["room"]
+
+        page.fill("#mapWidth", "14")
+        page.fill("#mapHeight", "10")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 140",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        # A creature whose castings hold several spells to a row, with DCs and
+        # a source book on them.
+        page.click("div.tab:text-is('Encounter')")
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+        page.fill("#creatureSearchName", "adult occult dragon")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#creatureRows tr').length > 0",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.click("#creatureRows tr:first-child button")
+        page.wait_for_function(
+            "() => !document.getElementById('modalBackground')", timeout=HANDSHAKE_TIMEOUT)
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Adult Occult Dragon")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(400)
+        page.click("div.tab:text-is('Units')")
+        page.click("#unitsDiv .unitListEntry")
+        page.wait_for_timeout(600)
+        page.click("div.tab:text-is('Map')")
+        page.click("#bottomPopupButton")
+        page.wait_for_timeout(800)
+
+        stages = {}
+        stages["names"] = page.eval_on_selector_all(
+            "#mobPanelCastings .spellLink", "els => els.map(e => e.innerText)")
+
+        # The list splits on commas that are not inside brackets. Naively,
+        # "dispel evil (2, DC 22)" becomes two spells, one called "DC 22)".
+        stages["split"] = page.evaluate(
+            """() => splitSpellList("dispel evil (2, DC 22), gaseous form")""")
+
+        def open_spell(text):
+            page.evaluate("""(name) => {
+                const open = document.getElementById("modalBackground");
+                if (open) { open.remove(); }
+                showSpellInfo(name);
+            }""", text)
+            page.wait_for_selector("#spellSheet", timeout=HANDSHAKE_TIMEOUT)
+            page.wait_for_function(
+                """() => {
+                    const note = document.querySelector(".spellSheetNote");
+                    return !note || !note.innerText.includes("Looking");
+                }""", timeout=HANDSHAKE_TIMEOUT)
+            return {
+                "heading": page.inner_text("#spellSheet .panelHeading"),
+                "body": page.inner_text("#spellSheetBody"),
+                "note": (page.inner_text(".spellSheetNote")
+                         if page.query_selector(".spellSheetNote") else ""),
+            }
+
+        # Clicking the name in the panel rather than calling the function.
+        page.click("#mobPanelCastings .spellLink >> text=gaseous form")
+        page.wait_for_selector("#spellSheet", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_function(
+            "() => !document.querySelector('.spellSheetNote')", timeout=HANDSHAKE_TIMEOUT)
+        stages["clicked"] = {
+            "heading": page.inner_text("#spellSheet .panelHeading"),
+            "body": page.inner_text("#spellSheetBody"),
+        }
+        page.click("#modalBackground", position={"x": 5, "y": 5})
+        page.wait_for_timeout(300)
+        stages["closesAgain"] = page.query_selector("#spellSheet") is None
+
+        # The name is read out of the line as it is written, brackets and all.
+        stages["throughTheDC"] = open_spell("suggestion (DC 17)")
+        stages["throughTheSourceBook"] = open_spell("mental barrier IIOA")
+        stages["rankInFront"] = open_spell("greater dispel magic")
+        stages["notASpell"] = open_spell("touch of evil")
+        page.click("#modalBackground", position={"x": 5, "y": 5})
+        page.wait_for_timeout(200)
+
+        # The player view: its own spells are whole rows, opened without a
+        # lookup, and it has the same dialog.
+        player = context.new_page()
+        player.on("pageerror", lambda error: errors.append("player: " + str(error)))
+        player.goto("%s/player.html?room=%s&charName=Vex" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        player.wait_for_timeout(800)
+        player.evaluate("""async () => {
+            const rows = await new Promise(
+                resolve => socket.emit('database_spells', 'Wizard', 1, resolve));
+            showSpellInfo(rows.find(s => s.name.toLowerCase() === 'magic missile'));
+        }""")
+        player.wait_for_selector("#spellSheet", timeout=HANDSHAKE_TIMEOUT)
+        stages["playerHeading"] = player.inner_text("#spellSheet .panelHeading")
+        stages["playerBody"] = player.inner_text("#spellSheetBody")
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestSpellNamesAreClickable:
+    def test_every_spell_in_a_casting_row_is_its_own_link(self, spell_lookup):
+        """A row can hold several -- "gaseous form, mental barrier IIOA" -- and
+        the reader wants the one they pointed at, not the line."""
+        names = spell_lookup["names"]
+        assert "gaseous form" in names
+        assert "mental barrier IIOA" in names
+        assert len(names) > 5
+
+    def test_the_name_is_shown_as_it_is_written(self, spell_lookup):
+        """The DC and the source book stay on screen -- that is how the GM
+        reads the line -- and are taken off only to do the lookup."""
+        assert "hideous laughter (DC 15)" in spell_lookup["names"]
+
+    def test_the_list_splits_on_brackets_not_just_commas(self, spell_lookup):
+        assert spell_lookup["split"] == ["dispel evil (2, DC 22)", "gaseous form"]
+
+
+class TestOpeningASpell:
+    def test_clicking_one_opens_its_entry(self, spell_lookup):
+        assert spell_lookup["clicked"]["heading"] == "Gaseous Form"
+
+    def test_the_entry_has_the_rules_in_it(self, spell_lookup):
+        body = spell_lookup["clicked"]["body"]
+        for heading in ("School", "Casting Time", "Components", "Range",
+                        "Duration", "Saving Throw"):
+            assert heading in body, heading
+        assert len(body) > 400
+
+    def test_the_name_is_not_printed_twice(self, spell_lookup):
+        """The dialog's heading says it; formatSpellObj leads with it as well,
+        which is right in the picker where there is no heading over it."""
+        assert "Gaseous Form" not in spell_lookup["clicked"]["body"]
+
+    def test_it_shuts_again(self, spell_lookup):
+        assert spell_lookup["closesAgain"] is True
+
+
+class TestFindingTheSpellBehindTheName:
+    def test_through_the_dc(self, spell_lookup):
+        assert spell_lookup["throughTheDC"]["heading"] == "Suggestion"
+
+    def test_through_the_source_book_without_eating_the_numeral(self, spell_lookup):
+        """The book is a superscript after the name and the numeral is part of
+        it, so "mental barrier IIOA" is Mental Barrier II out of Occult
+        Adventures."""
+        assert spell_lookup["throughTheSourceBook"]["heading"] == "Mental Barrier II"
+
+    def test_through_a_rank_written_in_front(self, spell_lookup):
+        """The table calls it "Dispel Magic, Greater"."""
+        assert "dispel magic" in spell_lookup["rankInFront"]["heading"].lower()
+
+    def test_a_class_feature_says_it_is_not_a_spell(self, spell_lookup):
+        """A cleric's touch of evil is listed among the spell-like abilities
+        but has no row in the spells table. Saying so beats an empty entry."""
+        assert "No spell by that name" in spell_lookup["notASpell"]["note"]
+
+
+class TestThePlayerSideOfIt:
+    def test_the_player_gets_the_same_dialog(self, spell_lookup):
+        assert spell_lookup["playerHeading"] == "Magic Missile"
+
+    def test_with_the_rules_in_it(self, spell_lookup):
+        assert "School" in spell_lookup["playerBody"]
+        assert "Casting Time" in spell_lookup["playerBody"]
+
+
+class TestTheSpellLookupRaisedNothing:
+    def test_nothing_raised(self, spell_lookup):
+        assert spell_lookup["errors"] == []
