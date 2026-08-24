@@ -346,6 +346,33 @@ A unit carries AC only as the pieces it is added up from, so for a creature out
 of the bestiary the figure is read from the cached record, and for one made by
 hand it stays blank rather than showing a wrong total.
 
+### Save roll — `.saveRoll`
+
+A saving throw is a thing the GM or the player *does* rather than a figure they
+read, so the saves at the end of the stat strip are buttons rather than text —
+and each carries its modifier on its face, `Fort +13`, so the button says what
+it will add before it is pressed. That is the same call the attack rows make by
+keeping the bonus in a box beside the roll.
+
+**A save that is not written down gets no button**, rather than a `+0` one that
+would be a roll meaning nothing. A unit made by hand has no bestiary entry at
+all and shows an em dash, `.mobStatNone` — never a zero, which reads as a real
+modifier. `parseSaves` reads `Fort +13, Ref +9, Will +14` off the record, and
+the server parses the same shape in `parse_saves` — this side needs it too
+because the number goes back with the roll. 10,324 of the 10,332 creatures give
+up all three.
+
+The player's three sit beside the totals on their sheet and roll **from the
+total, not the parts under it**, so a player who has just corrected a number and
+pressed roll gets the number they are looking at.
+
+**Who sees it follows who rolled**, the rule attack rolls already go by, and it
+matters more here: the party learning that the lich made its save is the game,
+learning that it made it by eleven is not. A monster's save goes to the GM's
+views alone; a player's goes to the shared chat and to the GM. The server checks
+that a player only rolls for something they control, and that the save is one of
+the three names it knows — that string ends up in everyone's chat.
+
 **Special abilities are folded away behind a button in the heading.** They are
 the longest thing about a creature and the panel is a quarter of the window, so
 they stay shut until something actually uses one. Unfolded they are **laid over

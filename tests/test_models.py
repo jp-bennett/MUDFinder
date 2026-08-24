@@ -1281,6 +1281,42 @@ class TestNothingIsFetchedFromAnywhere:
         assert offenders == {}
 
 
+class TestReadingACreaturesSaves:
+    def saves(self, text):
+        return mudfinder.parse_saves(text)
+
+    def test_the_usual_shape(self):
+        assert self.saves("Fort +13, Ref +9, Will +14") == {
+            "Fort": 13, "Ref": 9, "Will": 14}
+
+    def test_written_out_in_full(self):
+        assert self.saves("Fortitude +3, Reflex +11, Will +5") == {
+            "Fort": 3, "Ref": 11, "Will": 5}
+
+    def test_a_note_after_the_numbers_is_not_one_of_them(self):
+        assert self.saves("Fort +6, Ref +2, Will +7; +2 vs. fear") == {
+            "Fort": 6, "Ref": 2, "Will": 7}
+
+    def test_negative_and_zero_survive(self):
+        assert self.saves("Fort -1, Ref +0, Will +2") == {
+            "Fort": -1, "Ref": 0, "Will": 2}
+
+    def test_a_save_that_is_not_written_is_absent_not_zero(self):
+        """So the button for it can be left off, rather than offering a roll
+        that means nothing."""
+        assert self.saves("Fort +5") == {"Fort": 5}
+        assert self.saves("") == {}
+        assert self.saves(None) == {}
+
+    def test_every_creature_in_the_book_has_its_saves_read(self):
+        db = sqlite3.connect("file:mudfinder.sql?mode=ro", uri=True)
+        rows = db.execute("select Saves from creatures").fetchall()
+        complete = sum(1 for (text,) in rows if len(mudfinder.parse_saves(text)) == 3)
+        # 8 of 10,332 list fewer than three; none list none.
+        assert complete > len(rows) * 0.99
+        assert all(mudfinder.parse_saves(text) for (text,) in rows)
+
+
 class TestNamingASpellTheWayAStatblockDoes:
     """A statblock writes a spell the way it reads in print; the table stores
     it plainly. These are the differences between the two."""

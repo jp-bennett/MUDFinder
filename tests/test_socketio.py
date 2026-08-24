@@ -2255,3 +2255,97 @@ class TestWhoSeesACast:
         player.get_received()
         gm_client.emit("cast_spell", {"room": room, "gmKey": key, "unitNum": 0, "casting": 0})
         assert "chat" not in event_names(player.get_received())
+
+
+class TestRollingASave:
+    def test_a_save_is_rolled_and_reported(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        gm_client.emit("roll_save", {"room": room, "gmKey": key,
+                                     "charName": "Dire Ape", "save": "Ref", "bonus": 9})
+        chats = [m for m in gm_client.get_received() if m["name"] == "chat"]
+        assert chats
+        line = chats[-1]["args"][0]["chat"]
+        assert "Dire Ape" in line
+        assert "Ref save" in line
+        assert "d20(" in line
+
+    def test_the_total_is_the_die_plus_the_bonus(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        gm_client.emit("roll_save", {"room": room, "gmKey": key,
+                                     "charName": "Dire Ape", "save": "Will", "bonus": 4})
+        line = [m for m in gm_client.get_received()
+                if m["name"] == "chat"][-1]["args"][0]["chat"]
+        die = int(re.search(r"d20\((\d+)\)", line).group(1))
+        total = int(re.search(r"=\s*(-?\d+)$", line).group(1))
+        assert total == die + 4
+
+    def test_a_blank_bonus_rolls_flat(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        gm_client.emit("roll_save", {"room": room, "gmKey": key,
+                                     "charName": "Dire Ape", "save": "Fort", "bonus": ""})
+        line = [m for m in gm_client.get_received()
+                if m["name"] == "chat"][-1]["args"][0]["chat"]
+        die = int(re.search(r"d20\((\d+)\)", line).group(1))
+        assert int(re.search(r"=\s*(-?\d+)$", line).group(1)) == die
+
+    def test_only_the_three_saves_are_rolled(self, browser_style_game):
+        """The name goes into everyone's chat, so it is one of ours or it is
+        nothing -- not whatever the client felt like sending."""
+        gm_client, room, key = browser_style_game
+        gm_client.emit("roll_save", {"room": room, "gmKey": key, "charName": "Dire Ape",
+                                     "save": "<script>alert(1)</script>", "bonus": 2})
+        assert "chat" not in event_names(gm_client.get_received())
+
+    def test_an_unknown_room_is_ignored(self, client):
+        client.emit("roll_save", {"room": "no-such-room", "gmKey": GM_KEY,
+                                  "charName": "Nobody", "save": "Will", "bonus": 1})
+        assert client.get_received() == []
+
+
+class TestWhoSeesASaveRoll:
+    """The same rule an attack roll goes by, and it matters more here: the
+    party learning that the lich made its save is the game, learning that it
+    made it by eleven is not."""
+
+    def test_a_monsters_save_does_not_reach_the_players(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        gm_client.emit("roll_save", {"room": room, "gmKey": key,
+                                     "charName": "Dire Ape", "save": "Fort", "bonus": 7})
+        assert "chat" not in event_names(player.get_received())
+
+    def test_a_player_rolling_their_own_save_is_public(self, browser_style_game):
+        gm_client, room, _ = browser_style_game
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        player.emit("roll_save", {"room": room, "charName": "Aria",
+                                  "save": "Will", "bonus": 5})
+        assert "chat" in event_names(player.get_received())
+
+    def test_and_the_gm_sees_it_too(self, browser_style_game):
+        gm_client, room, _ = browser_style_game
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        gm_client.get_received()
+        player.emit("roll_save", {"room": room, "charName": "Aria",
+                                  "save": "Will", "bonus": 5})
+        assert "chat" in event_names(gm_client.get_received())
+
+    def test_a_player_cannot_roll_a_monsters_save(self, browser_style_game):
+        """Otherwise a player could roll the saves the GM is making against
+        their own spells."""
+        gm_client, room, key = browser_style_game
+        gm_client.emit("add_units", {
+            "room": room, "gmKey": key, "count": 1, "addToInitiative": False,
+            "initiativeBonus": 0, "unit": {"charName": "Dire Ape", "controlledBy": "gm"}})
+        gm_client.get_received()
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        player.emit("roll_save", {"room": room, "charName": "Dire Ape",
+                                  "save": "Fort", "bonus": 7})
+        assert "chat" not in event_names(player.get_received())

@@ -480,6 +480,25 @@ div.selected {
     color: var(--ink);
     font-weight: 600;
 }
+/* A figure a creature does not have -- an em dash rather than a zero, which
+   would read as a real modifier. */
+.mobStatNone {
+    color: var(--ink-faint);
+    font-weight: normal;
+}
+/* The saves are the one thing in the strip that is pressed rather than read,
+   so they sit together with a little more room around them. */
+.mobSaves {
+    gap: 4px;
+}
+
+/* A save as a button with its modifier on the face of it, so it says what it
+   will add before it is pressed. */
+.saveRoll {
+    font-variant: small-caps;
+    letter-spacing: 0.03em;
+    padding: 1px 6px;
+}
 
 /* Attacks and spells side by side while there is room for it. Each column
    scrolls on its own, so a creature with a page of spells does not push its

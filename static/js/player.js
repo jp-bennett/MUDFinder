@@ -779,6 +779,31 @@ function setAC() {
         socket.emit("error_handle", room, e);
     }
 }
+// The sheet spells Reflex out; the roll goes by the short name a statblock
+// uses, so that a monster's save and a player's are the same throw as far as
+// the server is concerned.
+var OWN_SAVE_FIELDS = {
+    Fort: {total: "sheetFortTotal", save: "Fort"},
+    Reflex: {total: "sheetReflexTotal", save: "Ref"},
+    Will: {total: "sheetWillTotal", save: "Will"},
+};
+
+// Rolled from the total on the sheet rather than from the parts under it, so a
+// player who has just corrected a number and pressed roll gets the number they
+// are looking at. Same call the attack rows make.
+function rollOwnSave(which) {
+    try {
+        var field = OWN_SAVE_FIELDS[which];
+        if (!field) {
+            return;
+        }
+        var total = parseInt(document.getElementById(field.total).value, 10) || 0;
+        rollSave(charName, field.save, total);
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
 function setSaves() {
     try {
         fortSave = (parseInt(document.getElementById("sheetFortMod").value) || 0) +
