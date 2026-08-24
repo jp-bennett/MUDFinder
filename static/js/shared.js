@@ -885,6 +885,53 @@ function castingRow(casting, index, unitNumber) {
     return row;
 }
 
+// The three saves, in the order a statblock prints them.
+var SAVE_ORDER = ["Fort", "Ref", "Will"];
+var SAVE_PATTERN = /\b(Fort(?:itude)?|Ref(?:lex)?|Will)\b\s*([+-]\s*\d+)/gi;
+
+// "Fort +13, Ref +9, Will +14" as {Fort: 13, Ref: 9, Will: 14}. The server
+// parses the same shape in parse_saves; this side needs it too because the
+// number goes back with the roll.
+//
+// Only what is written: a creature with no Will listed gets no Will key rather
+// than a zero, so its button can be left off instead of offering a roll that
+// means nothing.
+function parseSaves(text) {
+    var saves = {};
+    SAVE_PATTERN.lastIndex = 0;
+    var found;
+    while ((found = SAVE_PATTERN.exec(String(text || ""))) !== null) {
+        var word = found[1].toLowerCase();
+        var key = word.indexOf("fort") === 0 ? "Fort"
+                : word.indexOf("ref") === 0 ? "Ref"
+                : "Will";
+        saves[key] = parseInt(found[2].replace(/\s+/g, ""), 10) || 0;
+    }
+    return saves;
+}
+
+function rollSave(who, save, bonus) {
+    socket.emit("roll_save", {
+        room: room,
+        gmKey: typeof gmKey === "undefined" ? "" : gmKey,
+        charName: who,
+        save: save,
+        bonus: bonus,
+    });
+}
+
+// One save as a button that rolls it. The modifier is on the face of it, so
+// the button says what it is going to add before it is pressed -- the same
+// call the attack rows make by keeping the bonus in a box beside the roll.
+function saveButton(who, save, bonus) {
+    var button = document.createElement("button");
+    button.className = "saveRoll";
+    button.innerText = save + " " + (bonus < 0 ? "" : "+") + bonus;
+    button.title = "roll a " + save + " save";
+    button.onclick = function () { rollSave(who, save, bonus); };
+    return button;
+}
+
 // Spells already looked up, keyed by the name they were asked for. A miss is
 // cached as null: a good few of the things a creature is listed as casting are
 // class features with no row in the table, and asking again every time the GM
