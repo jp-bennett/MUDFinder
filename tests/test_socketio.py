@@ -2507,3 +2507,46 @@ class TestSettingAnImageTellsTheGm:
         player.emit("image_upload", room, "/static/images/profile.svg",
                     "charToken", "Aria")
         assert "gm_update" in event_names(gm_client.get_received())
+
+
+class TestLoreReachesTheGmToo:
+    """A GM joins gmRoom and never the room itself, so a broadcast to the room
+    is everybody except the one person most likely to have just changed
+    something. Adding a page of lore left the GM's own tab showing what was
+    there before it, until they reloaded."""
+
+    def test_adding_lore_reaches_the_gm(self, browser_style_game):
+        gm_client, room, _ = browser_style_game
+        gm_client.get_received()
+        gm_client.emit("lore_url", room, "", "The Broken Seal", "A cracked disc.", "gm")
+        assert "showLore" in event_names(gm_client.get_received())
+
+    def test_and_carries_the_new_page(self, browser_style_game):
+        gm_client, room, _ = browser_style_game
+        gm_client.emit("lore_url", room, "", "The Broken Seal", "A cracked disc.", "gm")
+        sent = [m for m in gm_client.get_received()
+                if m["name"] == "showLore"][-1]["args"][0]
+        assert [page["loreName"] for page in sent["lore"]] == ["The Broken Seal"]
+
+    def test_sharing_it_reaches_the_gm(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        gm_client.emit("lore_url", room, "", "The Broken Seal", "A cracked disc.", "gm")
+        gm_client.get_received()
+        gm_client.emit("lore_visible", room, key, 0)
+        assert "showLore" in event_names(gm_client.get_received())
+
+    def test_the_players_are_still_told(self, browser_style_game):
+        gm_client, room, _ = browser_style_game
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        gm_client.emit("lore_url", room, "", "The Broken Seal", "A cracked disc.", "gm")
+        assert "showLore" in event_names(player.get_received())
+
+    def test_and_so_are_the_spectators(self, browser_style_game):
+        gm_client, room, _ = browser_style_game
+        spectator = mudfinder.socketio.test_client(mudfinder.app)
+        spectator.emit("spectator_join", {"room": room})
+        spectator.get_received()
+        gm_client.emit("lore_url", room, "", "The Broken Seal", "A cracked disc.", "gm")
+        assert "showLore" in event_names(spectator.get_received())

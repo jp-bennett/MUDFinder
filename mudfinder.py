@@ -787,6 +787,22 @@ def emit_to_gm(event, payload, room):
         emit(event, payload)
 
 
+def push_lore(event, room, lore_num=None):
+    """Send the lore to the players, and to the GM as well.
+
+    A GM joins gmRoom and never the room itself, so a broadcast to the room is
+    everybody except the one person most likely to have just changed something.
+    Adding a page of lore left the GM's own lore tab showing what was there
+    before it, until they reloaded.
+    """
+    payload = {"lore": ROOMS[room].lore, "lore_num": lore_num}
+    emit(event, payload, room=room)
+    # Skipped when the two are the same room, which they are for a GM who never
+    # opened a second view -- the emit above has already reached them.
+    if ROOMS[room].gmRoom and ROOMS[room].gmRoom != room:
+        emit(event, payload, room=ROOMS[room].gmRoom)
+
+
 def check_room(room):
     global ROOMS
     if room in ROOMS:
@@ -934,7 +950,7 @@ def on_lore_url(room, lore_url, lore_name, lore_text, lore_owner):
         ROOMS[room].lore.append(
             {"loreURL": lore_url, "loreName": lore_name, "loreText": lore_text, "loreVisible": False, "loreSize": 0,
              "loreOwner": lore_owner})
-        emit("showLore", {"lore": ROOMS[room].lore, "lore_num": None}, room=room)
+        push_lore("showLore", room)
 
 
 def store_image(room, image):
@@ -996,7 +1012,7 @@ def on_lore_visible(room, gmKey, lore_num):  # but player can choose. TODO:
         ROOMS[room].lore[lore_num]["loreVisible"] = not ROOMS[room].lore[lore_num]["loreVisible"]
         if not ROOMS[room].lore[lore_num]["loreVisible"]:
             lore_num = None
-        emit("showLore", {"lore": ROOMS[room].lore, "lore_num": lore_num}, room=room)
+        push_lore("showLore", room, lore_num)
 
 
 @socketio.on('delete_lore')
@@ -1010,7 +1026,7 @@ def on_delete_lore(room, gmKey, lore_num):
             elif x < lore_num:
                 tmp_keys[x] = ROOMS[room].loreFiles[x]
         ROOMS[room].loreFiles = tmp_keys
-        emit("reloadLore", {"lore": ROOMS[room].lore, "lore_num": None}, room=room)
+        push_lore("reloadLore", room)
 
 
 @socketio.on('get_lore')

@@ -598,7 +598,14 @@ function drawUnits(Data) { //Give every addition a classname, that can be iterat
 function enableTab(tabName) {
     try {
         //hide all of them
-        hideBottomDiv();
+        // Guarded: the bottom panel belongs to gm.js and player.js, and the
+        // spectator view loads neither -- only this file. Unguarded, this threw
+        // before a single tab had been hidden, and since everything in here is
+        // caught and posted to the server, the spectator's Lore tab did nothing
+        // at all and said nothing about why.
+        if (typeof hideBottomDiv === "function") {
+            hideBottomDiv();
+        }
         children = document.getElementById("activeTabDiv").children
         for (x = 0; x < children.length; x++) {
             if (children[x].id !== "leftPopButton")
@@ -1227,8 +1234,13 @@ function updateLore(msg, num) {
     try {
         document.getElementById("lorePage").innerHTML = "";
         document.getElementById("loreTabs").innerHTML = "";
+        // How many entries this reader is actually allowed to see, which is not
+        // the same as how many there are: a page with lore on it that is all
+        // still hidden looks exactly like a page with none.
+        var shownLore = 0;
         for (i=0; i< msg.length; i++) {
             if(isGM || msg[i].loreVisible || msg[i].loreOwner == charName) {
+                shownLore += 1;
                 tmpHTML = `<div class="loreTab" id="loreTab${i}" style="display:none;" id=loreTab${i}>`;
                 if (typeof msg[i].loreSize == "undefined" || msg[i].loreSize == 0) {
                     tmpHTML += `<img class="loreIMG" id="loreIMG${i}" src="${msg[i].loreURL}"></img>`;
@@ -1253,7 +1265,11 @@ function updateLore(msg, num) {
             }
         }
 
-        if (isGM || typeof charName !== "undefined") {
+        // A spectator has a charName, and it is the empty string -- so testing
+        // that one exists offered them a form to add lore with, which they have
+        // no business with and which the server would refuse anyway.
+        var canAddLore = isGM || (typeof charName !== "undefined" && charName !== "");
+        if (canAddLore) {
             // Rebuilt on every change, so this is the only copy of the Add
             // form there is -- the one in the template never survives.
             document.getElementById("lorePage").innerHTML += `<div id="loreTab${i}" style="display:none;">` +
@@ -1270,9 +1286,21 @@ function updateLore(msg, num) {
                 `<textarea id="loreText"></textarea><br>` +
                 `<button onclick="sendLoreURL()">Send</button></div>`;
                 document.getElementById("loreTabs").innerHTML += `<div class="tab" onClick="enableLoreTab('${i}')">Add</div>`;
-        } else {
-            //document.getElementById("lorePage").innerHTML += `<div style="display:none;"></div>`;
-            //document.getElementById("loreTabs").innerHTML += `<div class="tab" onClick="enableLoreTab('${i}')">Blank</div>`;
+        }
+        // Nothing to read and nothing to add: say so, rather than showing an
+        // empty page. A reader who has been given no lore, or none they are
+        // allowed to see yet, should be told that is what has happened and not
+        // left wondering whether the tab is broken.
+        if (shownLore === 0 && !canAddLore) {
+            var empty = document.createElement("div");
+            empty.className = "loreEmpty";
+            // Numbered the way the Add form is, and for the same reason: the
+            // call at the end of this function shows loreTab<i> and hides
+            // everything else, so a page whose only child is numbered anything
+            // else ends up hidden along with the rest.
+            empty.id = "loreTab" + i;
+            empty.innerText = "Nothing here yet. Lore the GM shares will appear on this page.";
+            document.getElementById("lorePage").appendChild(empty);
         }
         if (num == null) {
             enableLoreTab(i);
