@@ -416,7 +416,14 @@
     </div>
     <!-- The handle sits with the panel it opens, not inside the map sheet:
          that sheet clips its contents, and the tab has to overlap the join. -->
+    <!-- Shut, one tab, which opens the panel. Open, two: this one shuts it
+         again and the one beside it takes the panel full height. Full height,
+         one again, and it drops back rather than shutting -- so a tab always
+         goes one step in the direction it points. -->
     <div id="bottomPopupButton" title="Show or hide the creature panel">
+      <img src="static/images/up.svg">
+    </div>
+    <div id="bottomExpandButton" title="Fill the screen with the creature panel">
       <img src="static/images/up.svg">
     </div>
     <!-- The creature under the map: whatever the GM has selected, or failing

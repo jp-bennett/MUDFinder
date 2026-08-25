@@ -605,6 +605,20 @@ function enableTab(tabName) {
                 children[x].style.display = "none";
         }
         document.getElementById(tabName).style.display="block";
+        // The handle for the panel under the map goes with the map. It sits
+        // outside #activeTabDiv -- it has to, since .mapSheet clips its
+        // contents and the tab straddles that edge -- so the loop above never
+        // reached it, and a tab for the creature panel sat at the foot of the
+        // character sheet and the lore pages offering to open something that
+        // belongs to a view you are not looking at.
+        //
+        // #leftPopButton is deliberately not treated this way: it opens the
+        // left-hand column, which is the whole page's rather than the map's,
+        // and is worth having on every tab.
+        var mapHandle = document.getElementById("bottomPopupButton");
+        if (mapHandle) {
+            mapHandle.style.display = (tabName === "mapWrapper") ? "" : "none";
+        }
         // Say which one is open. Nothing on screen did, so the only way to tell
         // which tab you were on was to recognise what was in it.
         var tabs = document.getElementsByClassName("tab");

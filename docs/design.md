@@ -437,6 +437,55 @@ Description is deliberately not here. It is flavour rather than something a GM
 reaches for mid-round, and most imported creatures carry none, so a slot for it
 would be empty more often than not. It is on the full statblock.
 
+**The panel belongs to the map, and so does its handle.** The handle sits
+outside `#activeTabDiv` — it has to, since `.mapSheet` clips its contents and
+the tab straddles that edge — so the loop in `enableTab` that hides the other
+tabs never reached it, and a tab offering to open the creature panel sat at the
+foot of the character sheet and the lore pages. `enableTab` now shows it only
+for `mapWrapper`. The player's action-bar handle is the same element in the same
+place and gets the same treatment; `#leftPopButton` deliberately does not, since
+it opens the left-hand column, which is the whole page's rather than the map's.
+
+**The panel has three heights, and its tabs are how you move between them.**
+Shut, a quarter of the window, and the whole of it with the map behind. A
+quarter is enough to run a turn from — the attacks and the HP — and not enough
+to read a caster's spell list in, which is what the full height is for.
+
+The tabs follow from that: **shut there is one**, and it opens the panel; **open
+there are two**, one to shut it and one to take it full height, that being the
+only state with a step to take in both directions; **full height there is one
+again**, and it drops back to the open height rather than shutting. No tab ever
+skips a step. Both tabs are the same size on the same edge, so the pair reads as
+two tabs on one panel rather than as a tab and a button.
+
+Full height needs `#activeTabDiv` to get a **stacking context of its own**. The
+palette is `z-index: 5` and lives inside the map sheet, so it painted straight
+through the expanded panel — a row of terrain swatches across the middle of a
+spell list. A stacking context confines that 5 to the holder. Raising the panel
+above 5 instead would have put it over the tab that shuts it.
+
+The height **resets to the quarter when the panel shuts**, since the panel opens
+itself on the GM's turn and the map vanishing at the top of every one of those
+is not what anyone asked for.
+
+**`.castingList` must not scroll inside the panel.** It caps itself at 260px for
+the unit sheet, where it sits in a page that scrolls as a whole and would
+otherwise run for three thousand pixels. In the panel the column around it
+scrolls already, so the cap gave a caster a scrollbar inside a scrollbar with
+part of the list in each. `#mobPanelCastings .castingList` lifts it.
+
+**It opens itself when initiative reaches a creature the GM runs.** That is the
+moment its attacks are wanted, so the panel is offered rather than waited for.
+Three rules keep that from becoming a nuisance: only for `controlledBy == "gm"`,
+because a player's turn is the player's to take; only when the map is the tab on
+screen, since off it there would be no handle to shut the panel with; and **only
+once per turn**, so a GM who puts it away has it stay away while units move
+about — an update arrives every time one does.
+
+The turn is identified as `roundCount:initiativeCount`, not by the creature. With
+a short initiative order, going round brings the same creature back, and keying
+on the creature meant the panel never opened again after the first round.
+
 The effect placer borrows this panel, and its table goes in `#bottomEffectHolder`
 inside the body rather than at the panel's root. It used to write a height
 straight onto `#activeTabDiv`, which outranked the class the tab toggles and
