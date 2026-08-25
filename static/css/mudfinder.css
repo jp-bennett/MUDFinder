@@ -513,11 +513,35 @@ div.selected {
     min-width: 0;
 }
 
-/* The button in the heading that unfolds them. The heading is centred text, so
-   this is taken out of the flow rather than put in it -- in the flow it pushed
-   the creature's name off centre. */
+/* The buttons in the heading. The heading is centred text, so these are taken
+   out of the flow rather than put in it -- in the flow they pushed the
+   creature's name off centre. */
 .panelHeading {
     position: relative;
+}
+
+/* Expanded: the panel fills the space under the tab bar and the map is behind
+   it. It comes later in the document than #activeTabDiv and both are
+   positioned, so it covers the map without the map having to be hidden --
+   which matters, since hiding it is how the rest of the view decides the map
+   tab is not the one on screen. */
+.bottomDiv.mobPanelTall {
+    top: calc(40px + var(--sheet-gap));
+    height: calc(100% - 40px - var(--sheet-gap) * 2);
+    z-index: 1;
+}
+/* The palette is z-index 5 and lives inside the map sheet, so it painted
+   straight through the expanded panel -- a row of terrain swatches across the
+   middle of a spell list. Giving the holder a stacking context of its own
+   confines that 5 to the holder, and the panel's own order is then all that
+   decides it. Raising the panel above 5 instead would have put it over the
+   handle that shuts it. */
+#activeTabDiv.mobPanelTall {
+    z-index: 0;
+}
+/* The handle rides on the panel's top edge wherever that is. */
+#bottomPopupButton.panelOpen.mobPanelTall {
+    bottom: calc(100% - 40px - var(--sheet-gap));
 }
 .mobAbilitiesToggle {
     position: absolute;
@@ -934,6 +958,7 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
    at all on the side it meets -- which is what makes it read as attached
    rather than as a button that happens to be nearby. */
 #leftPopButton,
+#bottomExpandButton,
 #bottomPopupButton {
     position: absolute;
     z-index: 5;
@@ -945,12 +970,14 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
     cursor: pointer;
 }
 #leftPopButton img,
+#bottomExpandButton img,
 #bottomPopupButton img {
     max-height: 62%;
     max-width: 62%;
     opacity: 0.75;
 }
 #leftPopButton:hover,
+#bottomExpandButton:hover,
 #bottomPopupButton:hover {
     background: var(--accent-soft);
 }
@@ -980,6 +1007,18 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
 }
 #bottomPopupButton.panelOpen {
     bottom: 24%;
+}
+/* The second tab, beside the first, and only there at half height -- the one
+   state with a step to take in both directions. Same size and same edge, so
+   the pair reads as two tabs on one panel rather than as a tab and a button. */
+#bottomExpandButton {
+    width: 58px;
+    height: var(--sheet-gap);
+    left: calc(20% + var(--sheet-gap) + 26px + 64px);
+    border-bottom: none;
+    border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+    bottom: 24%;
+    display: none;
 }
 
 #mapText {
@@ -1439,8 +1478,19 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
 .castingList {
     max-height: 260px;
     overflow-y: auto;
-    border: 1px solid black;
+    border: 1px solid var(--rule);
     padding: 4px 6px;
+}
+/* In the creature panel the column around it scrolls already, so the list must
+   not: a caster with a lot of spells -- and the busiest has 122 -- otherwise
+   gets a scrollbar inside a scrollbar, each holding part of the list. The cap
+   above is for the unit sheet, where the list sits in a page that scrolls as a
+   whole and would otherwise run for three thousand pixels. */
+#mobPanelCastings .castingList {
+    max-height: none;
+    overflow-y: visible;
+    border: none;
+    padding: 0;
 }
 /* The level or frequency, printed once above the rows that share it. */
 .castingLabel {

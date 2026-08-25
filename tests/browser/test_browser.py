@@ -5031,3 +5031,183 @@ class TestThePanelOpensForTheGmsTurn:
 class TestTheAutoShowRaisedNothing:
     def test_nothing_raised(self, auto_show):
         assert auto_show["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def panel_heights(browser, live_server):
+    """The creature panel's three heights, and the tabs that move between them.
+
+    Shut there is one tab and it opens the panel. Open there are two: one shuts
+    it again, one takes it full height. Full height there is one again, and it
+    drops back to the open height rather than shutting -- so no tab skips a
+    step.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "panel heights")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        page.fill("#mapWidth", "10")
+        page.fill("#mapHeight", "6")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 60",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        # The busiest caster in the book: 122 castings, which is what makes the
+        # spell list long enough to be worth a scrollbar at all.
+        page.click("div.tab:text-is('Encounter')")
+        page.click("#chooseMonsterButton")
+        page.wait_for_selector("#creatureSearchName")
+        page.fill("#creatureSearchName", "Proscriber")
+        page.wait_for_function(
+            """() => {
+                const first = document.querySelector("#creatureRows tr");
+                return first && first.innerText.includes("Proscriber");
+            }""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.click("#creatureRows tr:first-child button")
+        page.wait_for_function(
+            "() => !document.getElementById('modalBackground')", timeout=HANDSHAKE_TIMEOUT)
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Proscriber")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(500)
+        page.click("div.tab:text-is('Units')")
+        page.click("#unitsDiv .unitListEntry")
+        page.wait_for_timeout(700)
+        page.click("div.tab:text-is('Map')")
+        page.wait_for_timeout(300)
+
+        REPORT = """() => {
+            const panel = document.getElementById("bottomDiv");
+            const box = panel.getBoundingClientRect();
+            const map = document.getElementById("mapWrapper").getBoundingClientRect();
+            const shut = document.getElementById("bottomPopupButton");
+            const grow = document.getElementById("bottomExpandButton");
+            const shown = e => getComputedStyle(e).display !== "none";
+            const open = shown(panel);
+            const column = document.querySelector("#mobPanelCastings")
+                .closest(".mobPanelColumn");
+            const list = document.querySelector("#mobPanelCastings .castingList");
+            return {
+                open: open,
+                height: Math.round(box.height),
+                tabs: [shut, grow].filter(shown).length,
+                growShown: shown(grow),
+                arrow: shut.children[0].getAttribute("src").split("/").pop(),
+                coversMap: open && Math.round(box.top) <= Math.round(map.top) + 1,
+                columnHeight: column ? Math.round(
+                    column.getBoundingClientRect().height) : null,
+                columnScrolls: column
+                    ? column.scrollHeight > column.clientHeight + 1 : null,
+                listScrolls: list
+                    ? list.scrollHeight > list.clientHeight + 1 : null,
+            };
+        }"""
+
+        stages = {"shut": page.evaluate(REPORT)}
+        page.click("#bottomPopupButton")
+        page.wait_for_timeout(600)
+        stages["half"] = page.evaluate(REPORT)
+        page.click("#bottomExpandButton")
+        page.wait_for_timeout(600)
+        stages["full"] = page.evaluate(REPORT)
+        page.click("#bottomPopupButton")
+        page.wait_for_timeout(600)
+        stages["droppedBack"] = page.evaluate(REPORT)
+        page.click("#bottomPopupButton")
+        page.wait_for_timeout(500)
+        stages["shutAgain"] = page.evaluate(REPORT)
+
+        # Full height, then away to another tab: nothing of it is left behind.
+        page.click("#bottomPopupButton")
+        page.wait_for_timeout(400)
+        page.click("#bottomExpandButton")
+        page.wait_for_timeout(400)
+        page.click("div.tab:text-is('Units')")
+        page.wait_for_timeout(300)
+        stages["awayFromTheMap"] = page.evaluate(REPORT)
+        page.click("div.tab:text-is('Map')")
+        page.wait_for_timeout(300)
+        page.click("#bottomPopupButton")
+        page.wait_for_timeout(600)
+        stages["reopened"] = page.evaluate(REPORT)
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestTheSpellListHasOneScrollbar:
+    def test_the_column_is_what_scrolls(self, panel_heights):
+        assert panel_heights["half"]["columnScrolls"] is True
+
+    def test_and_the_list_inside_it_does_not(self, panel_heights):
+        """The list caps itself at 260px for the unit sheet, where it sits in a
+        page that scrolls as a whole. In the panel the column scrolls already,
+        so the cap put a scrollbar inside a scrollbar with part of the list in
+        each."""
+        assert panel_heights["half"]["listScrolls"] is False
+        assert panel_heights["full"]["listScrolls"] is False
+
+
+class TestThePanelsThreeHeights:
+    def test_shut_has_one_tab_pointing_up(self, panel_heights):
+        assert panel_heights["shut"]["open"] is False
+        assert panel_heights["shut"]["tabs"] == 1
+        assert panel_heights["shut"]["arrow"] == "up.svg"
+
+    def test_open_has_two(self, panel_heights):
+        """The only state with a step to take in both directions."""
+        assert panel_heights["half"]["open"] is True
+        assert panel_heights["half"]["tabs"] == 2
+        assert panel_heights["half"]["growShown"] is True
+
+    def test_full_height_has_one_again(self, panel_heights):
+        assert panel_heights["full"]["tabs"] == 1
+        assert panel_heights["full"]["growShown"] is False
+
+    def test_full_height_covers_the_map(self, panel_heights):
+        assert panel_heights["full"]["coversMap"] is True
+        assert panel_heights["half"]["coversMap"] is False
+
+    def test_and_gives_the_lists_the_room(self, panel_heights):
+        assert panel_heights["full"]["columnHeight"] > (
+            panel_heights["half"]["columnHeight"] * 4)
+
+    def test_its_tab_drops_back_rather_than_shutting(self, panel_heights):
+        """One step at a time: from full height the panel goes to the open
+        height, and only from there does it shut."""
+        assert panel_heights["droppedBack"]["open"] is True
+        assert panel_heights["droppedBack"]["tabs"] == 2
+        assert panel_heights["droppedBack"]["height"] == panel_heights["half"]["height"]
+        assert panel_heights["shutAgain"]["open"] is False
+
+    def test_leaving_the_map_puts_it_all_away(self, panel_heights):
+        assert panel_heights["awayFromTheMap"]["open"] is False
+
+    def test_and_it_comes_back_at_the_open_height(self, panel_heights):
+        """Expanding is done to read something. The panel opens itself when
+        initiative reaches one of the GM's creatures, and the map disappearing
+        at the top of every one of its turns is not what anybody asked for."""
+        assert panel_heights["reopened"]["height"] == panel_heights["half"]["height"]
+        assert panel_heights["reopened"]["coversMap"] is False
+
+
+class TestThePanelHeightsRaisedNothing:
+    def test_nothing_raised(self, panel_heights):
+        assert panel_heights["errors"] == []

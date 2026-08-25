@@ -1472,6 +1472,70 @@ function toggleMobAbilities() {
     }
 }
 
+// The panel has three heights, and the tabs on its edge are how you move
+// between them: shut, a quarter of the window, and the whole of it with the map
+// behind. A quarter is enough to run a turn from -- the attacks and the HP --
+// and not enough to read a caster's spell list in, which is what the full
+// height is for.
+//
+// Shut there is one tab and it opens the panel. Open there are two: one shuts
+// it, one takes it full height. Full height there is one again, and it drops
+// back to the quarter rather than shutting, so no tab ever skips a step.
+function setMobPanelHeight(state) {
+    var panel = document.getElementById("bottomDiv");
+    var holder = document.getElementById("activeTabDiv");
+    var shutTab = document.getElementById("bottomPopupButton");
+    var growTab = document.getElementById("bottomExpandButton");
+    if (!panel || !shutTab) {
+        return;
+    }
+    var open = state !== "shut";
+    var tall = state === "full";
+
+    panel.style.display = open ? "block" : "none";
+    panel.classList.toggle("mobPanelTall", tall);
+    // The holder gives up its bottom quarter at half height. At full height the
+    // panel covers it instead, and the class also puts the holder in a stacking
+    // context of its own so the palette inside it stops painting through.
+    holder.classList.toggle("mobPanelOpen", state === "half");
+    holder.classList.toggle("mobPanelTall", tall);
+
+    // The tabs ride on the panel's top edge, wherever that is.
+    shutTab.classList.toggle("panelOpen", open);
+    shutTab.classList.toggle("mobPanelTall", tall);
+    growTab.classList.toggle("panelOpen", open);
+
+    // Only at half height are there two, since that is the only state with a
+    // step in both directions. Spelled out rather than cleared to "": the
+    // stylesheet starts this tab hidden, so an empty value would fall back to
+    // that and the tab would never appear.
+    growTab.style.display = (state === "half") ? "flex" : "none";
+    growTab.onclick = function () { expandBottomDiv(); };
+
+    if (state === "shut") {
+        shutTab.children[0].src = "static/images/up.svg";
+        shutTab.onclick = function () { showBottomDiv(); };
+        shutTab.title = "Show the creature panel";
+    } else if (state === "half") {
+        shutTab.children[0].src = "static/images/down.svg";
+        shutTab.onclick = function () { hideBottomDiv(); };
+        shutTab.title = "Hide the creature panel";
+    } else {
+        shutTab.children[0].src = "static/images/down.svg";
+        shutTab.onclick = function () { showBottomDiv(); };
+        shutTab.title = "Give the map back its room";
+    }
+}
+
+function expandBottomDiv() {
+    try {
+        setMobPanelHeight("full");
+        drawMobPanel(gmData);
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
+}
+
 function hideMobAbilities() {
     document.getElementById("mobPanelAbilities").style.display = "none";
     document.getElementById("mobPanelAbilitiesButton").classList.remove("mobAbilitiesShowing");
@@ -1720,11 +1784,11 @@ function multiSelectToggle(element) {
 // have to agree both live in the stylesheet.
 function hideBottomDiv() {
     try {
-        document.getElementById("activeTabDiv").classList.remove("mobPanelOpen");
-        document.getElementById("bottomPopupButton").classList.remove("panelOpen");
-        document.getElementById("bottomPopupButton").onclick = function() {showBottomDiv();};
-        document.getElementById("bottomPopupButton").children[0].src = "static/images/up.svg";
-        document.getElementById("bottomDiv").style.display = "none";
+        // Shut is shut from any height. Expanding is done to read something;
+        // the panel opens itself when initiative reaches one of the GM's
+        // creatures, and having the map disappear at the top of every one of
+        // its turns is not what anybody asked for.
+        setMobPanelHeight("shut");
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
@@ -1732,11 +1796,7 @@ function hideBottomDiv() {
 
 function showBottomDiv() {
     try {
-        document.getElementById("activeTabDiv").classList.add("mobPanelOpen");
-        document.getElementById("bottomPopupButton").classList.add("panelOpen");
-        document.getElementById("bottomPopupButton").onclick = function() {hideBottomDiv();};
-        document.getElementById("bottomPopupButton").children[0].src = "static/images/down.svg";
-        document.getElementById("bottomDiv").style.display = "block";
+        setMobPanelHeight("half");
         // Opened by hand is exactly when the GM wants to see it filled, and an
         // update may not arrive for a while.
         drawMobPanel(gmData);
