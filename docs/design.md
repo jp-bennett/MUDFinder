@@ -437,6 +437,27 @@ Description is deliberately not here. It is flavour rather than something a GM
 reaches for mid-round, and most imported creatures carry none, so a slot for it
 would be empty more often than not. It is on the full statblock.
 
+**The panel belongs to the map, and so does its handle.** The handle sits
+outside `#activeTabDiv` — it has to, since `.mapSheet` clips its contents and
+the tab straddles that edge — so the loop in `enableTab` that hides the other
+tabs never reached it, and a tab offering to open the creature panel sat at the
+foot of the character sheet and the lore pages. `enableTab` now shows it only
+for `mapWrapper`. The player's action-bar handle is the same element in the same
+place and gets the same treatment; `#leftPopButton` deliberately does not, since
+it opens the left-hand column, which is the whole page's rather than the map's.
+
+**It opens itself when initiative reaches a creature the GM runs.** That is the
+moment its attacks are wanted, so the panel is offered rather than waited for.
+Three rules keep that from becoming a nuisance: only for `controlledBy == "gm"`,
+because a player's turn is the player's to take; only when the map is the tab on
+screen, since off it there would be no handle to shut the panel with; and **only
+once per turn**, so a GM who puts it away has it stay away while units move
+about — an update arrives every time one does.
+
+The turn is identified as `roundCount:initiativeCount`, not by the creature. With
+a short initiative order, going round brings the same creature back, and keying
+on the creature meant the panel never opened again after the first round.
+
 The effect placer borrows this panel, and its table goes in `#bottomEffectHolder`
 inside the body rather than at the panel's root. It used to write a height
 straight onto `#activeTabDiv`, which outranked the class the tab toggles and

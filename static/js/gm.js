@@ -321,6 +321,10 @@ window.onload = function() {
             // Last, so it redraws against the list this update just brought in
             // -- the HP in it is the whole point of having it on screen.
             drawMobPanel(gmData);
+            // And after that: opening the panel draws it again, against the
+            // same data, so the order only matters for it being drawn once
+            // when nothing opened.
+            autoShowForGmTurn(gmData);
         } catch (e) {
             socket.emit("error_handle", room, e);
         }
@@ -1471,6 +1475,58 @@ function toggleMobAbilities() {
 function hideMobAbilities() {
     document.getElementById("mobPanelAbilities").style.display = "none";
     document.getElementById("mobPanelAbilitiesButton").classList.remove("mobAbilitiesShowing");
+}
+
+// Whether the map is the tab on screen. enableTab writes display on each tab,
+// and the map's is the only one the creature panel belongs to.
+function mapTabIsUp() {
+    var map = document.getElementById("mapWrapper");
+    return !!map && map.style.display !== "none";
+}
+
+// Whose turn the panel last opened itself for. Kept so that it opens once when
+// initiative reaches a creature rather than on every update -- a GM who shuts
+// it mid-turn should have it stay shut while units move around, and an update
+// arrives every time one does.
+var lastAutoShownTurn = null;
+
+// Initiative reaching something the GM is running is exactly when they need
+// its attacks, so the panel opens itself rather than waiting to be asked.
+// Only for the GM's own creatures: a player's turn is the player's to run, and
+// a panel opening on it would be in the way rather than useful.
+function autoShowForGmTurn(Data) {
+    try {
+        if (!Data || !Data.inInit || !Data.initiativeList
+                || Data.initiativeList.length === 0) {
+            lastAutoShownTurn = null;
+            return;
+        }
+        var current = Data.initiativeList[Data.initiativeCount];
+        if (!current) {
+            return;
+        }
+        // Which turn it is, rather than whose: with one creature in the order,
+        // advancing wraps straight back to it, and going by the creature alone
+        // meant the panel never opened again after the first round.
+        var turn = Data.roundCount + ":" + Data.initiativeCount;
+        if (turn === lastAutoShownTurn) {
+            // Same turn as last time, so whatever the GM has done with the
+            // panel since stands.
+            return;
+        }
+        lastAutoShownTurn = turn;
+        if (current.controlledBy !== "gm") {
+            return;
+        }
+        // The handle is hidden off the map, so opening the panel there would
+        // put a creature over the character sheet with no way to shut it.
+        if (!mapTabIsUp()) {
+            return;
+        }
+        showBottomDiv();
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
 }
 
 // Redrawn on every update from the server, so this has to be cheap and must not

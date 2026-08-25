@@ -4725,3 +4725,309 @@ class TestChoosingAUnitToken:
 class TestChoosingAUnitTokenRaisedNothing:
     def test_nothing_raised(self, unit_token):
         assert unit_token["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def map_handle(browser, live_server):
+    """The handle for the panel under the map belongs to the map.
+
+    It sits outside #activeTabDiv -- it has to, since .mapSheet clips its
+    contents and the tab straddles that edge -- so the loop in enableTab that
+    hides the other tabs never reached it, and a tab offering to open the
+    creature panel sat at the foot of the character sheet and the lore pages.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "map handle")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1)
+                    for pair in page.url.split("?", 1)[1].split("&"))["room"]
+        page.fill("#mapWidth", "10")
+        page.fill("#mapHeight", "6")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 60",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(300)
+
+        stages = {}
+        stages["onLoad"] = page.is_visible("#bottomPopupButton")
+
+        gm_tabs = ["Encounter", "Save", "Players", "Units", "Lore", "Rules", "Options"]
+        stages["awayFromTheMap"] = {}
+        for tab in gm_tabs:
+            page.click("div.tab:text-is('%s')" % tab)
+            page.wait_for_timeout(150)
+            stages["awayFromTheMap"][tab] = page.is_visible("#bottomPopupButton")
+
+        page.click("div.tab:text-is('Map')")
+        page.wait_for_timeout(200)
+        stages["backOnTheMap"] = page.is_visible("#bottomPopupButton")
+
+        # Open it, leave the map, come back: the handle is there again and the
+        # panel is shut, which is what enableTab already did to the panel.
+        page.click("#bottomPopupButton")
+        page.wait_for_timeout(400)
+        stages["opens"] = page.is_visible("#bottomDiv")
+        page.click("div.tab:text-is('Units')")
+        page.wait_for_timeout(200)
+        stages["panelGoesWithIt"] = page.is_visible("#bottomDiv")
+        stages["handleGoesWithIt"] = page.is_visible("#bottomPopupButton")
+        page.click("div.tab:text-is('Map')")
+        page.wait_for_timeout(200)
+        stages["handleComesBack"] = page.is_visible("#bottomPopupButton")
+        page.click("#bottomPopupButton")
+        page.wait_for_timeout(400)
+        stages["opensAgain"] = page.is_visible("#bottomDiv")
+
+        # The player's action bar is the same handle in the same place.
+        player = context.new_page()
+        player.on("pageerror", lambda error: errors.append("player: " + str(error)))
+        player.goto("%s/player.html?room=%s&charName=Vex" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        player.wait_for_timeout(700)
+        stages["playerOnTheMap"] = player.is_visible("#bottomPopupButton")
+        stages["playerAway"] = {}
+        stages["playerLeftHandle"] = {}
+        for tab in ("Character", "Inventory", "Lore"):
+            player.click("div.tab:text-is('%s')" % tab)
+            player.wait_for_timeout(150)
+            stages["playerAway"][tab] = player.is_visible("#bottomPopupButton")
+            stages["playerLeftHandle"][tab] = player.is_visible("#leftPopButton")
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestTheMapPanelHandleFollowsTheMap:
+    def test_it_is_there_on_the_map(self, map_handle):
+        assert map_handle["onLoad"] is True
+
+    def test_and_on_no_other_tab(self, map_handle):
+        assert map_handle["awayFromTheMap"] == {
+            "Encounter": False, "Save": False, "Players": False,
+            "Units": False, "Lore": False, "Rules": False, "Options": False}
+
+    def test_it_comes_back_with_the_map(self, map_handle):
+        assert map_handle["backOnTheMap"] is True
+
+    def test_leaving_the_map_takes_the_open_panel_with_it(self, map_handle):
+        assert map_handle["opens"] is True
+        assert map_handle["panelGoesWithIt"] is False
+        assert map_handle["handleGoesWithIt"] is False
+
+    def test_and_it_still_works_on_the_way_back(self, map_handle):
+        """The handle is restored to what the stylesheet gives it rather than
+        to a written-in value, so it comes back as the tab it was."""
+        assert map_handle["handleComesBack"] is True
+        assert map_handle["opensAgain"] is True
+
+
+class TestThePlayersActionBarHandleToo:
+    def test_it_is_there_on_the_map(self, map_handle):
+        assert map_handle["playerOnTheMap"] is True
+
+    def test_and_not_on_the_character_sheet(self, map_handle):
+        assert map_handle["playerAway"] == {
+            "Character": False, "Inventory": False, "Lore": False}
+
+    def test_but_the_left_handle_stays(self, map_handle):
+        """That one opens the left-hand column, which is the whole page's
+        rather than the map's, and is worth having on every tab."""
+        assert map_handle["playerLeftHandle"] == {
+            "Character": True, "Inventory": True, "Lore": True}
+
+
+class TestTheMapHandleRaisedNothing:
+    def test_nothing_raised(self, map_handle):
+        assert map_handle["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def auto_show(browser, live_server):
+    """The creature panel opening itself when initiative reaches the GM.
+
+    That is the moment the GM needs a creature's attacks, so the panel is
+    offered rather than waited for. Only for creatures the GM runs -- a
+    player's turn is the player's to take -- and only once per turn, so a GM
+    who shuts it has it stay shut while units move about.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "auto show")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1)
+                    for pair in page.url.split("?", 1)[1].split("&"))["room"]
+        page.fill("#mapWidth", "10")
+        page.fill("#mapHeight", "6")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 60",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        # A player, so there is someone other than the GM to hand a turn to.
+        player = context.new_page()
+        player.goto("%s/player.html?room=%s&charName=Vex" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_function(
+            """() => Array.from(document.getElementById("unitControlledBy").options)
+                 .some(o => o.value === "Vex")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        page.click("div.tab:text-is('Encounter')")
+        page.check("#addToInit")
+        page.fill("#unitName", "Goblin")
+        page.fill("#unitHP", "6")
+        page.fill("#unitInit", "20")
+        page.select_option("#unitControlledBy", "gm")
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Goblin")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#unitName", "Hireling")
+        page.fill("#unitHP", "8")
+        page.fill("#unitInit", "5")
+        page.select_option("#unitControlledBy", "Vex")
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Hireling")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_timeout(500)
+        page.click("div.tab:text-is('Map')")
+        page.wait_for_timeout(300)
+
+        stages = {}
+        stages["beforeInitiative"] = page.is_visible("#bottomDiv")
+
+        page.click("#beginInit")
+        page.wait_for_function(
+            """() => getComputedStyle(
+                 document.getElementById("movementDiv")).display !== "none" """,
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_timeout(700)
+
+        def whose_turn():
+            return page.evaluate(
+                """() => { const u = gmData.initiativeList[gmData.initiativeCount];
+                           return u ? u.charName + ":" + u.controlledBy : null; }""")
+
+        stages["order"] = page.evaluate(
+            "() => gmData.initiativeList.map(u => u.charName + ':' + u.controlledBy)")
+        stages["firstTurn"] = whose_turn()
+        stages["openedOnGmTurn"] = page.is_visible("#bottomDiv")
+        stages["showing"] = page.inner_text("#mobPanelName")
+
+        # Shut by hand, then something else happens: it stays shut.
+        page.click("#bottomPopupButton")
+        page.wait_for_timeout(400)
+        page.evaluate(
+            """() => socket.emit('locate_unit', {selectedInit: gmData.initiativeCount,
+                 moveType: 5, xCoord: 4, yCoord: 4, relative_x: 8, relative_y: 8,
+                 room: room, gmKey: gmKey})""")
+        page.wait_for_timeout(800)
+        stages["staysShutMidTurn"] = page.is_visible("#bottomDiv")
+
+        # The player's turn: not the GM's to run, so nothing opens.
+        page.click("#advanceInit")
+        page.wait_for_timeout(900)
+        stages["secondTurn"] = whose_turn()
+        stages["openedOnPlayerTurn"] = page.is_visible("#bottomDiv")
+
+        # Round two, back to the goblin: a new turn, so it opens again.
+        page.click("#advanceInit")
+        page.wait_for_timeout(900)
+        stages["thirdTurn"] = whose_turn()
+        stages["openedNextRound"] = page.is_visible("#bottomDiv")
+
+        # And not while the GM is on another tab, where the panel has no
+        # handle to shut it with.
+        page.click("#bottomPopupButton")
+        page.wait_for_timeout(300)
+        page.click("div.tab:text-is('Units')")
+        page.wait_for_timeout(300)
+        page.click("#advanceInit")
+        page.wait_for_timeout(500)
+        page.click("#advanceInit")
+        page.wait_for_timeout(900)
+        stages["turnWhileAway"] = whose_turn()
+        stages["openedWhileAway"] = page.is_visible("#bottomDiv")
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestThePanelOpensForTheGmsTurn:
+    def test_the_order_holds_both_sides(self, auto_show):
+        assert auto_show["order"] == ["Goblin:gm", "Hireling:Vex"]
+
+    def test_it_is_shut_before_initiative(self, auto_show):
+        assert auto_show["beforeInitiative"] is False
+
+    def test_it_opens_when_the_turn_is_the_gms(self, auto_show):
+        assert auto_show["firstTurn"] == "Goblin:gm"
+        assert auto_show["openedOnGmTurn"] is True
+
+    def test_on_the_creature_whose_turn_it_is(self, auto_show):
+        assert auto_show["showing"] == "Goblin"
+
+    def test_shutting_it_keeps_it_shut_for_that_turn(self, auto_show):
+        """An update arrives every time anything moves, and reopening on each
+        one would make the panel impossible to put away."""
+        assert auto_show["staysShutMidTurn"] is False
+
+    def test_it_stays_shut_on_a_players_turn(self, auto_show):
+        assert auto_show["secondTurn"] == "Hireling:Vex"
+        assert auto_show["openedOnPlayerTurn"] is False
+
+    def test_it_opens_again_the_next_round(self, auto_show):
+        """Keyed on which turn it is rather than on whose: with a short order,
+        going round brings the same creature back, and going by the creature
+        alone meant it never opened after the first round."""
+        assert auto_show["thirdTurn"] == "Goblin:gm"
+        assert auto_show["openedNextRound"] is True
+
+    def test_but_not_while_the_gm_is_on_another_tab(self, auto_show):
+        """The handle is hidden off the map, so a panel opening there would be
+        a creature over the unit sheet with no way to shut it."""
+        assert auto_show["turnWhileAway"] == "Goblin:gm"
+        assert auto_show["openedWhileAway"] is False
+
+
+class TestTheAutoShowRaisedNothing:
+    def test_nothing_raised(self, auto_show):
+        assert auto_show["errors"] == []
