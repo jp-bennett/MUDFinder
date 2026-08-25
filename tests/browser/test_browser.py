@@ -5211,3 +5211,132 @@ class TestThePanelsThreeHeights:
 class TestThePanelHeightsRaisedNothing:
     def test_nothing_raised(self, panel_heights):
         assert panel_heights["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def spectator_lore(browser, live_server):
+    """The spectator's Lore tab.
+
+    The spectator view loads shared.js and neither gm.js nor player.js, and
+    enableTab opened by calling into the bottom panel, which belongs to those
+    two. It threw before a single tab had been hidden -- and everything in
+    enableTab is caught and posted to the server, so the tab did nothing at all
+    and said nothing about why.
+    """
+    context = browser.new_context(viewport={"width": 1400, "height": 900})
+    try:
+        gm = context.new_page()
+        errors = []
+        gm.on("pageerror", lambda error: errors.append("gm: " + str(error)))
+        gm.goto(live_server + "/")
+        gm.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        gm.fill("#gameName", "spectator lore")
+        gm.click("text=Create Game")
+        gm.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        gm.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1)
+                    for pair in gm.url.split("?", 1)[1].split("&"))["room"]
+        gm.fill("#mapWidth", "8")
+        gm.fill("#mapHeight", "5")
+        gm.click("text=Generate Map")
+        gm.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 40",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        spectator = context.new_page()
+        spectator.on("pageerror",
+                     lambda error: errors.append("spectator: " + str(error)))
+        spectator.goto("%s/spectator.html?room=%s" % (live_server, room))
+        spectator.wait_for_timeout(1500)
+
+        def report(page):
+            return {
+                "loreShown": page.is_visible("#lore"),
+                "mapShown": page.is_visible("#mapWrapper"),
+                "activeTabs": page.eval_on_selector_all(
+                    ".tab.tabActive", "els => els.map(t => t.innerText)"),
+                "loreText": page.inner_text("#lorePage").strip(),
+                "hasAddForm": page.query_selector("#loreName") is not None,
+            }
+
+        stages = {"beforeClicking": report(spectator)}
+        spectator.click("div.tab:text-is('Lore')")
+        spectator.wait_for_timeout(500)
+        stages["afterClicking"] = report(spectator)
+
+        # The GM writes some lore. Theirs is a page with an Add form on it.
+        gm.click("div.tab:text-is('Lore')")
+        gm.wait_for_timeout(400)
+        stages["gmHasTheAddForm"] = gm.query_selector("#loreName") is not None
+        gm.fill("#loreName", "The Broken Seal")
+        gm.fill("#loreText", "A cracked disc of black glass, still warm.")
+        gm.click("text=Send")
+        gm.wait_for_function(
+            """() => document.querySelectorAll("#loreTabs .tab").length > 1""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        gm.wait_for_timeout(500)
+        spectator.wait_for_timeout(700)
+        stages["hiddenFromTheSpectator"] = report(spectator)
+
+        # And then shares it.
+        gm.evaluate("() => changeLoreVisibility(0)")
+        spectator.wait_for_function(
+            """() => document.getElementById("lorePage")
+                 .innerText.includes("cracked disc")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        spectator.wait_for_timeout(400)
+        stages["sharedWithTheSpectator"] = report(spectator)
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestTheSpectatorsLoreTab:
+    def test_it_starts_on_the_map(self, spectator_lore):
+        assert spectator_lore["beforeClicking"]["mapShown"] is True
+        assert spectator_lore["beforeClicking"]["loreShown"] is False
+        assert spectator_lore["beforeClicking"]["activeTabs"] == ["Map"]
+
+    def test_clicking_it_actually_opens_it(self, spectator_lore):
+        """It did nothing at all before: enableTab threw on its first line and
+        swallowed it, so neither tab moved and nothing was logged where anyone
+        would see it."""
+        assert spectator_lore["afterClicking"]["loreShown"] is True
+        assert spectator_lore["afterClicking"]["mapShown"] is False
+        assert spectator_lore["afterClicking"]["activeTabs"] == ["Lore"]
+
+    def test_an_empty_page_says_it_is_empty(self, spectator_lore):
+        """Rather than a blank sheet, which reads as something broken."""
+        assert "Nothing here yet" in spectator_lore["afterClicking"]["loreText"]
+
+    def test_a_spectator_is_not_offered_a_form_to_add_lore(self, spectator_lore):
+        """A spectator has a charName and it is the empty string, so a test
+        that one exists handed them the GM's form."""
+        assert spectator_lore["afterClicking"]["hasAddForm"] is False
+
+    def test_the_gm_still_gets_that_form(self, spectator_lore):
+        assert spectator_lore["gmHasTheAddForm"] is True
+
+    def test_lore_the_gm_has_not_shared_stays_hidden(self, spectator_lore):
+        state = spectator_lore["hiddenFromTheSpectator"]
+        assert "cracked disc" not in state["loreText"]
+        # A page whose lore is all still hidden looks exactly like an empty one,
+        # and should read as one.
+        assert "Nothing here yet" in state["loreText"]
+
+    def test_and_shows_once_it_is(self, spectator_lore):
+        assert "cracked disc" in spectator_lore["sharedWithTheSpectator"]["loreText"]
+        assert "Nothing here yet" not in spectator_lore["sharedWithTheSpectator"]["loreText"]
+
+
+class TestTheSpectatorLoreRaisedNothing:
+    def test_nothing_raised(self, spectator_lore):
+        assert spectator_lore["errors"] == []

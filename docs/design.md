@@ -578,3 +578,18 @@ sheet repeated the second one before it was moved beside the fields.
 
 Assert on **where things land**, not only on whether they exist. A bounding box
 inside the viewport is a real test; `display !== "none"` is not.
+
+**`shared.js` cannot assume `gm.js` or `player.js` is loaded.** The spectator
+view loads shared.js and neither of the others, so anything in there that calls
+into one of them has to check it exists first — `typeof f === "function"`, the
+way `hideBottomDiv`, `drawMobPanel` and `clearWarpPending` are all called.
+`enableTab` called into the bottom panel unguarded, and since every function in
+that file catches what it throws and posts it to the server, the spectator's
+Lore tab did nothing at all and said nothing about why. **A `try` that swallows
+is worse than no `try`**: it turns a stack trace in the console into a tab that
+silently refuses to open.
+
+**An empty page should say it is empty.** Nothing to read looks exactly like
+something broken, and a reader cannot tell the difference. `.loreEmpty` is the
+note for that, said quietly in `--ink-faint` the way a field label is. Lore that
+exists but has not been shared counts as empty for whoever cannot see it.

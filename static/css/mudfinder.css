@@ -280,6 +280,12 @@ input:focus, select:focus, textarea:focus {
 .loreTab {
     height:100%;
 }
+/* Said quietly, the way a field label is: it is a note about the page rather
+   than something written on it. */
+.loreEmpty {
+    color: var(--ink-faint);
+    padding: 12px 4px;
+}
 #loreTabs {
     height:10%
 }
