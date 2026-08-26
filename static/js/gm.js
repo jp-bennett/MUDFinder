@@ -98,9 +98,9 @@ window.onload = function() {
                 gmKey=window.location.search.split("&")[0].split("=")[1];
                 room=window.location.search.split("&")[1].split("=")[1];
                 socket.emit('join_gm', {room: room, gmKey: gmKey});
-                document.getElementById("linkDiv").innerHTML = 'New session created!' +
-                ` Players can use <a href="player.html?room=${room}">this link!</a><br>` +
-                ` Spectators can use <a href="spectator.html?room=${room}">this link!</a>`;
+                // Built rather than written: the room comes off the query
+                // string, so it is whatever was in the address bar.
+                drawSessionLinks(document.getElementById("linkDiv"), room);
                 socket.emit("get_lore", room);
                 //hideBottomDiv();
             }
@@ -191,61 +191,18 @@ window.onload = function() {
                 // clicking it is how the dialog is opened in the first place.
                 drawUnitToken(gmData.unitList[playerUnitNum]);
             }
+            // Both lists are built as elements. A creature's name is whatever
+            // it was called -- a player types its own, and a GM types a
+            // monster's -- so through innerHTML a name is markup, and a name
+            // carrying a quote breaks out of the handler it was pasted into.
             for (var i = 0; i < gmData.unitList.length; i++) {
-                tmpUnit = `
-                  <div style="display:flex;">
-                     <div onclick="selectUnit(event, ${i})" `;
-                     tmpUnit += 'class="unitListEntry"'
-                       if (selectedUnits.includes(i)) {
-                           tmpUnit += 'class=" selected"'
-                       }
-                       tmpUnit += `style="width:100%;">
-                      <div style="float:left; padding:7px;">  ${gmData.unitList[i].charName}
-                      </div>
-                        <div style="float:right;">`;
-                          if (gmData.unitList[i].type !== "player" && !gmData.unitList[i].inInit) {
-                            tmpUnit +=`<button onclick="removeUnit(event, ${i})">
-                              Remove
-                            </button>`;
-                          }
-                          tmpUnit += `<button onclick="showUnitInfoEvent(event, ${gmData.unitList[i].unitNum})">
-                            Info
-                          </button>`;
-                        tmpUnit +=`</div>
-                      </div>
-                  </div>`;
-                document.getElementById("unitsDiv").innerHTML += tmpUnit
+                document.getElementById("unitsDiv").appendChild(
+                    gmUnitRow(gmData.unitList[i], i));
             }
             document.getElementById("initiativeDiv").innerHTML = "";
             for (var i = 0; i < gmData.initiativeList.length; i++) {
-                tmpHTML = `
-                  <div style="display:flex;">
-                     <div onclick="selectInitiative(${i})"`;
-                     tmpHTML += 'class="InitEntry">';
-                      tmpHTML += `<div style="text-align:center; padding:7px;">  ${gmData.initiativeList[i].charName}
-                      </div>
-                      <div style="float:left; padding:7px;">  ${(gmData.initiativeList[i].HP != null) ? gmData.initiativeList[i].HP + "/" + gmData.initiativeList[i].maxHP : "" }
-                      </div>
-                      <div style="float:left; padding:6px;">
-                        <form action="javascript:changeHP(${i})">
-                          <input onclick="event.stopPropagation();" type="text" id="hpChange${i}" style="width:25px;"></input>
-                        </form>
-                      </div>
-                        <div style="float:right; width:120px;">  ${gmData.initiativeList[i].initiative}
-                          <button onclick="removeInit(event, ${i})">
-                            Rem
-                          </button>`;
-                          if (gmData.initiativeList[i].type !== "player") {
-                            tmpHTML += `<button onclick="delInit(event, ${i})">
-                                          Del
-                                        </button>`;
-                          }
-                          tmpHTML += `<button onclick="showUnitInfoEvent(event, ${gmData.initiativeList[i].unitNum})">Info</button>`;
-                        tmpHTML += `</div>
-                        <div style="float:right;"> <span style="cursor: default;" onclick="earlierInit(event, ${i})">&#9650;</span> <br> <span style="cursor: default;" onclick="laterInit(event, ${i})">&#9660;</span></div>
-                      </div>
-                  </div>`;
-                document.getElementById("initiativeDiv").innerHTML += tmpHTML;
+                document.getElementById("initiativeDiv").appendChild(
+                    gmInitiativeRow(gmData.initiativeList[i], i));
             }
             // Initiative controls
             if (gmData.inInit) {
@@ -275,8 +232,8 @@ window.onload = function() {
             //populate saved encounters
             document.getElementById("encountersDiv").innerHTML = "";
             for (var i = 0; i < gmData.savedEncounters.length; i++) {
-                document.getElementById("encountersDiv").innerHTML += `<div onclick="clickEncounter(this)" id="${gmData.savedEncounters[i]}">` +
-                gmData.savedEncounters[i] + `<button onclick="removeEncounter('${gmData.savedEncounters[i]}')">X</button></div>`;
+                document.getElementById("encountersDiv").appendChild(
+                    savedEncounterRow(gmData.savedEncounters[i]));
             }
             // populate player list
             // This replaces the whole panel, so the heading is built here --
@@ -800,6 +757,160 @@ function clearWarpPending() {
     warpPending = null;
 }
 
+// One saved encounter, with the button that deletes it.
+//
+// The name is kept in a data attribute rather than as the element's id. A GM
+// types it, so it can be anything -- as an id it broke the attribute it was
+// written into, and ids cannot hold a space or a quote in the first place.
+function savedEncounterRow(name) {
+    var row = document.createElement("div");
+    row.dataset.encounter = name;
+    row.appendChild(document.createTextNode(name));
+    row.addEventListener("click", function () { clickEncounter(row); });
+    row.appendChild(rowButton("X", function (e) {
+        e.stopPropagation();
+        removeEncounter(name);
+    }));
+    return row;
+}
+
+// A small button with a handler bound to it rather than written into an
+// attribute. The name in these rows is untrusted, and an attribute is a string
+// -- so a name with a quote in it closes the handler and the rest of the name
+// runs. Bound, there is no string for it to close.
+function rowButton(label, handler) {
+    var button = document.createElement("button");
+    button.innerText = label;
+    button.addEventListener("click", handler);
+    return button;
+}
+
+// One creature in the GM's list of everything on the board.
+function gmUnitRow(unit, index) {
+    var row = document.createElement("div");
+    row.style.display = "flex";
+
+    var entry = document.createElement("div");
+    entry.className = "unitListEntry";
+    if (selectedUnits.includes(index)) {
+        entry.classList.add("selected");
+    }
+    entry.style.width = "100%";
+    entry.addEventListener("click", function (e) { selectUnit(e, index); });
+
+    var name = document.createElement("div");
+    name.style.cssFloat = "left";
+    name.style.padding = "7px";
+    name.innerText = unit.charName;
+    entry.appendChild(name);
+
+    var buttons = document.createElement("div");
+    buttons.style.cssFloat = "right";
+    if (unit.type !== "player" && !unit.inInit) {
+        buttons.appendChild(rowButton("Remove", function (e) { removeUnit(e, index); }));
+    }
+    buttons.appendChild(rowButton("Info", function (e) {
+        showUnitInfoEvent(e, unit.unitNum);
+    }));
+    entry.appendChild(buttons);
+
+    row.appendChild(entry);
+    return row;
+}
+
+// One creature in the initiative order, with its HP, the box for changing it,
+// and the buttons that move it about.
+function gmInitiativeRow(unit, index) {
+    var row = document.createElement("div");
+    row.style.display = "flex";
+
+    var entry = document.createElement("div");
+    entry.className = "InitEntry";
+    entry.addEventListener("click", function () { selectInitiative(index); });
+
+    var name = document.createElement("div");
+    name.style.textAlign = "center";
+    name.style.padding = "7px";
+    name.innerText = unit.charName;
+    entry.appendChild(name);
+
+    var hp = document.createElement("div");
+    hp.style.cssFloat = "left";
+    hp.style.padding = "7px";
+    hp.innerText = (unit.HP != null) ? unit.HP + "/" + unit.maxHP : "";
+    entry.appendChild(hp);
+
+    var changeCell = document.createElement("div");
+    changeCell.style.cssFloat = "left";
+    changeCell.style.padding = "6px";
+    var form = document.createElement("form");
+    form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        changeHP(index);
+    });
+    var change = document.createElement("input");
+    change.type = "text";
+    change.id = "hpChange" + index;
+    change.style.width = "25px";
+    change.addEventListener("click", function (e) { e.stopPropagation(); });
+    form.appendChild(change);
+    changeCell.appendChild(form);
+    entry.appendChild(changeCell);
+
+    var right = document.createElement("div");
+    right.style.cssFloat = "right";
+    right.style.width = "120px";
+    right.appendChild(document.createTextNode("  " + unit.initiative + " "));
+    right.appendChild(rowButton("Rem", function (e) { removeInit(e, index); }));
+    if (unit.type !== "player") {
+        right.appendChild(rowButton("Del", function (e) { delInit(e, index); }));
+    }
+    right.appendChild(rowButton("Info", function (e) {
+        showUnitInfoEvent(e, unit.unitNum);
+    }));
+    entry.appendChild(right);
+
+    var nudge = document.createElement("div");
+    nudge.style.cssFloat = "right";
+    var up = document.createElement("span");
+    up.style.cursor = "default";
+    up.innerText = "▲";
+    up.addEventListener("click", function (e) { earlierInit(e, index); });
+    var down = document.createElement("span");
+    down.style.cursor = "default";
+    down.innerText = "▼";
+    down.addEventListener("click", function (e) { laterInit(e, index); });
+    nudge.appendChild(up);
+    nudge.appendChild(document.createElement("br"));
+    nudge.appendChild(down);
+    entry.appendChild(nudge);
+
+    row.appendChild(entry);
+    return row;
+}
+
+// The two links a GM hands out. The room is read off this page's own query
+// string, so it is whatever was in the address bar -- built as elements, and
+// with the room encoded into the URL rather than pasted into it.
+function drawSessionLinks(container, roomName) {
+    removeContents(container);
+    container.appendChild(document.createTextNode("New session created! "));
+    var lines = [
+        ["Players can use ", "player.html"],
+        ["Spectators can use ", "spectator.html"],
+    ];
+    for (var l = 0; l < lines.length; l++) {
+        if (l > 0) {
+            container.appendChild(document.createElement("br"));
+        }
+        container.appendChild(document.createTextNode(lines[l][0]));
+        var link = document.createElement("a");
+        link.href = lines[l][1] + "?room=" + encodeURIComponent(roomName);
+        link.innerText = "this link!";
+        container.appendChild(link);
+    }
+}
+
 function mapTool(e, tileName) {
     try {
         // Changing tool, or putting the same one down, abandons a half-made
@@ -1099,7 +1210,9 @@ function saveEncounter() {
     socket.emit('save_encounter', {encounterName: document.getElementById("encounterName").value, room: room, gmKey: gmKey});
 }
 function loadEncounter() {
-    socket.emit('load_encounter', {clearLocations: document.getElementById("clearLocations").checked, encounterName: document.getElementsByClassName("selectedEncounter")[0].id, room: room, gmKey: gmKey});
+    // The name is on the row as data rather than as its id: a GM types it, and
+    // an id cannot hold a space or a quote.
+    socket.emit('load_encounter', {clearLocations: document.getElementById("clearLocations").checked, encounterName: document.getElementsByClassName("selectedEncounter")[0].dataset.encounter, room: room, gmKey: gmKey});
 }
 function clearMap() {
     socket.emit('clear_map', {clearLocations: document.getElementById("clearLocations").checked, room: room, gmKey: gmKey});

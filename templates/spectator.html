@@ -91,9 +91,20 @@
       document.getElementById("initiativeDiv").innerHTML = "";
       if (playerData.inInit) {
         document.getElementById("initiativeDivContainer").style.display = "block";
+        // Built as elements. A spectator is the one person here who cannot
+        // have typed any of these names, so every one of them is untrusted.
         for (var i = 0; i < playerData.initiativeList.length; i++) {
-          document.getElementById("initiativeDiv").innerHTML += `<div class="nonSelectedInit">` +
-            '<div style="float:left;">' + playerData.initiativeList[i].charName + '</div><div style="float:right;">' + playerData.initiativeList[i].initiative;
+          var row = document.createElement("div");
+          row.className = "nonSelectedInit";
+          var who = document.createElement("div");
+          who.style.cssFloat = "left";
+          who.innerText = playerData.initiativeList[i].charName;
+          row.appendChild(who);
+          var score = document.createElement("div");
+          score.style.cssFloat = "right";
+          score.innerText = playerData.initiativeList[i].initiative;
+          row.appendChild(score);
+          document.getElementById("initiativeDiv").appendChild(row);
         }
         selectInitiative(playerData.initiativeCount - 1) //this value counts from 1
       } else {
@@ -104,8 +115,9 @@
       for (var i = 0; i < Object.keys(playerData.playerList).length; i++) {
       tmpPlayerName = Object.keys(playerData.playerList)[i];
         if (playerData.playerList[tmpPlayerName].connected) {
-
-          document.getElementById("connectedPlayers").innerHTML += tmpPlayerName + "<br >";
+          var connected = document.getElementById("connectedPlayers");
+          connected.appendChild(document.createTextNode(tmpPlayerName));
+          connected.appendChild(document.createElement("br"));
         }
       }
     });

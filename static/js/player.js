@@ -143,13 +143,12 @@ window.onload = function() {
               }
               document.getElementById("initiativeDivContainer").style.display = "block";
               document.getElementById("unitDivContainer").style.display = "none";
+              // Built as elements: these names come from the other people at
+              // the table, so a name is untrusted text here in a way that
+              // nothing else on this page is.
               for (var i = 0; i < playerData.initiativeList.length; i++) {
-                  tmpHTML = `<div style="display:flex; height:40px;" onclick="selectInitiative(${i})">`
-                  tmpHTML += `<div class="InitEntry">`;
-                  tmpHTML += '<div style="float:left; padding:7px;">' + playerData.initiativeList[i].charName + '</div><div style="float:right;">' + playerData.initiativeList[i].initiative +
-                  '</div></div><div id="activeInit"><-</div></div>';
-                  document.getElementById("initiativeDiv").innerHTML += tmpHTML;
-
+                  document.getElementById("initiativeDiv").appendChild(
+                      playerListRow(playerData.initiativeList[i], i, true));
               }
               activeInitiative(playerData.initiativeCount)
               activeCharName = playerData.initiativeList[playerData.initiativeCount].charName;
@@ -166,10 +165,8 @@ window.onload = function() {
               document.getElementById("initiativeDivContainer").style.display = "none";
               document.getElementById("unitDivContainer").style.display = "block";
               for (var i = 0; i < playerData.unitList.length; i++) {
-                  tmpHTML = `<div style="display:flex; height:40px;" onclick="selectUnit(this, ${i})"`
-                  tmpHTML += `class="unitListEntry"><div>`;
-                  tmpHTML += '<div style="float:left; padding:7px;">' + playerData.unitList[i].charName + '</div></div></div>';
-                  document.getElementById("unitsDiv").innerHTML += tmpHTML;
+                  document.getElementById("unitsDiv").appendChild(
+                      playerListRow(playerData.unitList[i], i, false));
               }
             }
 
@@ -177,18 +174,34 @@ window.onload = function() {
             if (playerData.playerList[charName].requestInit && document.getElementById("promptDiv").innerHTML == "") {
                 document.getElementById("activeTabDiv").style.height = "calc(70% - 40px)";
                 document.getElementById("bottomDiv").style.display = "block";
-                tmpHTML = '<form action="javascript:sendInit()">';
+                var prompt = document.getElementById("promptDiv");
+                removeContents(prompt);
+                var initForm = document.createElement("form");
+                initForm.addEventListener("submit", function (e) {
+                    e.preventDefault();
+                    sendInit();
+                });
                 for (i=0; i< playerData.unitList.length;i++) {
                     if (playerData.unitList[i].controlledBy == charName && !playerData.unitList[i].inInit) {
-                        tmpHTML += '<div style="display: inline-block; padding:4px;">';
-                        tmpHTML += playerData.unitList[i].charName + ': <br>';
-                        tmpHTML += `<input type="text" id="init${i}">`;
-                        tmpHTML += '</div>';
+                        var field = document.createElement("div");
+                        field.style.display = "inline-block";
+                        field.style.padding = "4px";
+                        // A creature this player controls, but the GM named it.
+                        field.appendChild(
+                            document.createTextNode(playerData.unitList[i].charName + ": "));
+                        field.appendChild(document.createElement("br"));
+                        var box = document.createElement("input");
+                        box.type = "text";
+                        box.id = "init" + i;
+                        field.appendChild(box);
+                        initForm.appendChild(field);
                     }
                 }
-                tmpHTML += '</form>';
-                tmpHTML += '<button onclick="sendInit()">Send Initiative</button>';
-                document.getElementById("promptDiv").innerHTML = tmpHTML;
+                prompt.appendChild(initForm);
+                var send = document.createElement("button");
+                send.innerText = "Send Initiative";
+                send.addEventListener("click", function () { sendInit(); });
+                prompt.appendChild(send);
                 document.getElementById("promptDiv").style.display = "block";
             }
         requestedUpdate = false;
@@ -526,6 +539,87 @@ function changeInventory(newInventory) {
         socket.emit("error_handle", room, e);
     }
 }
+// A box in the inventory table. Whatever is in it was typed into a box like
+// this one and stored as it was given, so it is set as a value rather than
+// written into markup.
+function inventoryBox(type, value) {
+    var box = document.createElement("input");
+    box.type = type;
+    if (type === "checkbox") {
+        box.checked = !!value;
+    } else {
+        box.style.width = "40px";
+        box.value = (value === null || typeof value === "undefined") ? "" : value;
+    }
+    return box;
+}
+
+// updateInv wants the button itself so it can find the row it is in; deleteItem
+// wants only the row number.
+function inventoryButton(label, handler, index, passesElement) {
+    var button = document.createElement("button");
+    button.innerText = label;
+    button.addEventListener("click", function () {
+        if (passesElement) {
+            handler(button, index);
+        } else {
+            handler(index);
+        }
+    });
+    return button;
+}
+
+// One bag's tab. The name is typed by whoever made it.
+function inventoryTab(name) {
+    var tab = document.createElement("div");
+    tab.className = "tab";
+    tab.innerText = name;
+    tab.addEventListener("click", changeInventory.bind(null, name));
+    return tab;
+}
+
+// One creature in the player's initiative order, or in their list of what is
+// on the board. The two differ only in what is beside the name and what a
+// click does, so they are one builder.
+//
+// Names come from the other people at the table, which makes them the one
+// untrusted thing on this page.
+function playerListRow(unit, index, inInitiative) {
+    var row = document.createElement("div");
+    row.style.display = "flex";
+    row.style.height = "40px";
+
+    var entry = document.createElement("div");
+    if (inInitiative) {
+        entry.className = "InitEntry";
+        row.addEventListener("click", function () { selectInitiative(index); });
+    } else {
+        row.className = "unitListEntry";
+        row.addEventListener("click", function () { selectUnit(row, index); });
+    }
+
+    var name = document.createElement("div");
+    name.style.cssFloat = "left";
+    name.style.padding = "7px";
+    name.innerText = unit.charName;
+    entry.appendChild(name);
+
+    if (inInitiative) {
+        var score = document.createElement("div");
+        score.style.cssFloat = "right";
+        score.innerText = unit.initiative;
+        entry.appendChild(score);
+    }
+    row.appendChild(entry);
+    if (inInitiative) {
+        var marker = document.createElement("div");
+        marker.id = "activeInit";
+        marker.innerText = "<-";
+        row.appendChild(marker);
+    }
+    return row;
+}
+
 function populateInventory(inventories) { //Eventually change this to building the tbody objects, and just adding them to the tables.
     try {
         document.getElementById("addInv").style.display="none";
@@ -533,7 +627,14 @@ function populateInventory(inventories) { //Eventually change this to building t
         document.getElementById("items").style.display="block";
         document.getElementById("inventoryTitle").innerText = selectedInventory;
         if (selectedInventory !== Object.keys(inventories)[0]) {
-            document.getElementById("inventoryTitle").innerHTML += `<br><button onclick="deleteInventory('${selectedInventory}')">delete</button>`
+            // The name is typed by whoever made the bag, so it goes to the
+            // handler as a bound argument rather than into an attribute.
+            var title = document.getElementById("inventoryTitle");
+            title.appendChild(document.createElement("br"));
+            var drop = document.createElement("button");
+            drop.innerText = "delete";
+            drop.addEventListener("click", deleteInventory.bind(null, selectedInventory));
+            title.appendChild(drop);
         }
         savedInventories = inventories;
         tmpInventory = inventories[selectedInventory].gp;
@@ -563,24 +664,29 @@ function populateInventory(inventories) { //Eventually change this to building t
             var row = table.insertRow(x+1);
             row.insertCell(0).innerText = tmpInventory[x].item;
             row.insertCell(1).innerText = tmpInventory[x].itemSlot;
-            row.insertCell(2).innerHTML = `<input type="checkbox" ${(tmpInventory[x].isWorn) ? "checked" : ""}>`;
-            row.insertCell(3).innerHTML = '<input type="text" style="width:40px;" value="' + tmpInventory[x].itemWeight + '"></input>';
-            row.insertCell(4).innerHTML = '<input type="text" style="width:40px;" value="' + tmpInventory[x].itemValue + '"></input>';
-            row.insertCell(5).innerHTML = '<input type="text" style="width:40px;" value="' + tmpInventory[x].itemCount + '"></input>';
-            row.insertCell(6).innerHTML = `<button onclick="updateInv(this, ${x})">Update</button><button onclick="deleteItem( ${x})">Delete</button>`;
+            // The three figures are set as values rather than written into the
+            // markup: they are typed into these very boxes and stored as they
+            // are, so a quote in one used to close the attribute and let the
+            // rest add attributes of its own.
+            row.insertCell(2).appendChild(inventoryBox("checkbox", tmpInventory[x].isWorn));
+            row.insertCell(3).appendChild(inventoryBox("text", tmpInventory[x].itemWeight));
+            row.insertCell(4).appendChild(inventoryBox("text", tmpInventory[x].itemValue));
+            row.insertCell(5).appendChild(inventoryBox("text", tmpInventory[x].itemCount));
+            var buttons = row.insertCell(6);
+            buttons.appendChild(inventoryButton("Update", updateInv, x, true));
+            buttons.appendChild(inventoryButton("Delete", deleteItem, x, false));
             if (!isNaN(tmpInventory[x].itemWeight) && !isNaN(tmpInventory[x].itemCount)) {
                 tmpWeight += Number(tmpInventory[x].itemWeight) * Number(tmpInventory[x].itemCount);
             }
         }
         document.getElementById("itemBody").scrollTop = document.getElementById("itemBody").scrollHeight
-        document.getElementById("totalWeight").innerHTML = "Total Weight: " + tmpWeight;
-        tmpHTML = '';
+        document.getElementById("totalWeight").innerText = "Total Weight: " + tmpWeight;
+        var tabs = document.getElementById("inventoryTabs");
+        removeContents(tabs);
         for (x=0;x<Object.keys(inventories).length; x++) {
-            tmpName = Object.keys(inventories)[x];
-            tmpHTML += `<div class="tab" onClick="changeInventory('${tmpName}')">${tmpName}</div>`;
+            tabs.appendChild(inventoryTab(Object.keys(inventories)[x]));
         }
-        tmpHTML += `<div class="tab" onClick="changeInventory('add')">add</div>`;
-        document.getElementById("inventoryTabs").innerHTML = tmpHTML;
+        tabs.appendChild(inventoryTab("add"));
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
@@ -1037,14 +1143,16 @@ function populateSheet (data) {
         }
         spellcasting = data.spellcasting;
         if (data.spellcasting.length > 0) {
-            document.getElementById("selectCaster").innerHTML = `Hey, you're an ${data.spellcasting[0].class}`;
+            // innerText: the class is stored as the client sent it.
+            document.getElementById("selectCaster").innerText =
+                "Hey, you're an " + data.spellcasting[0].class;
             if (data.spellcasting[0].hasSpellbook) {
                 document.getElementById("spellbookButton").style.display = "inline-block";
                 populateSpellbook(0)
             }
             if (data.spellcasting[0].hasPoints) {
                 document.getElementById("spellPoints").style = "block";
-                document.getElementById("currentPoints").innerHTML = data.spellcasting[0].currentPoints;
+                document.getElementById("currentPoints").innerText = data.spellcasting[0].currentPoints;
                 document.getElementById("dailyPoints").value = data.spellcasting[0].dailyPoints;
             }
             if (data.spellcasting[0].hasSpellSlots) {
@@ -1290,7 +1398,7 @@ function addSpell(selectionSource, destination) {
     div.onclick = function () {event.stopPropagation()}
     if (selectionSource == "class") {
         div.innerHTML = `
-        Spell Level: <select id="spellLevelSelect" onchange="socket.emit('database_spells', '${spellcasting[0].class}', this.selectedIndex, populateSpellList);">
+        Spell Level: <select id="spellLevelSelect">
         <option>0</option>
         <option>1</option>
         <option>2</option>
@@ -1308,6 +1416,13 @@ function addSpell(selectionSource, destination) {
         document.body.appendChild(modalBackground);
         document.getElementById("modalBackground").appendChild(div);
         document.getElementById("spellLevelSelect").selectedIndex = destination[1]
+        // Bound rather than written into onchange: the class went into that
+        // attribute inside a quoted argument, so a class with a quote in it
+        // closed the string and the rest of it ran.
+        document.getElementById("spellLevelSelect").addEventListener("change", function () {
+            socket.emit("database_spells", spellcasting[0].class,
+                        this.selectedIndex, populateSpellList);
+        });
         socket.emit("database_spells", spellcasting[0].class, destination[1], populateSpellList);
     } else if (selectionSource == "spellbook") {
         div.innerHTML = `

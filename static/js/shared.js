@@ -1241,20 +1241,50 @@ function updateLore(msg, num) {
         for (i=0; i< msg.length; i++) {
             if(isGM || msg[i].loreVisible || msg[i].loreOwner == charName) {
                 shownLore += 1;
-                tmpHTML = `<div class="loreTab" id="loreTab${i}" style="display:none;" id=loreTab${i}>`;
+                // Built as elements. Everything on a lore page is typed by
+                // somebody -- the name, the prose, the image address -- and
+                // lore is the widest way into this app there is: written by
+                // whoever can write it, and read by everyone in the room.
+                var page = document.createElement("div");
+                page.className = "loreTab";
+                page.id = "loreTab" + i;
+                page.style.display = "none";
+                var picture = document.createElement("img");
+                picture.className = "loreIMG";
+                picture.id = "loreIMG" + i;
                 if (typeof msg[i].loreSize == "undefined" || msg[i].loreSize == 0) {
-                    tmpHTML += `<img class="loreIMG" id="loreIMG${i}" src="${msg[i].loreURL}"></img>`;
-                } else {
-                    tmpHTML += `<img class="loreIMG" id="loreIMG${i}"></img>`;
+                    // Set as a property rather than written into the markup, so
+                    // an address with a quote in it cannot add attributes of
+                    // its own beside src.
+                    picture.src = msg[i].loreURL;
                 }
-                tmpHTML += `<br><span>${msg[i].loreText}</span><br>`;
+                page.appendChild(picture);
+                page.appendChild(document.createElement("br"));
+                var prose = document.createElement("span");
+                prose.innerText = msg[i].loreText;
+                page.appendChild(prose);
+                page.appendChild(document.createElement("br"));
                 if (isGM || msg[i].loreOwner == charName) {
-                    tmpHTML += `Visible: <input onclick="changeLoreVisibility(${i})" type="checkbox" ${(msg[i].loreVisible) ? "checked" : ""}><br>`;
-                    tmpHTML += `<button onclick="deleteLore(${i})">Delete</button><br>`;
+                    page.appendChild(document.createTextNode("Visible: "));
+                    var visible = document.createElement("input");
+                    visible.type = "checkbox";
+                    visible.checked = !!msg[i].loreVisible;
+                    visible.addEventListener("click", changeLoreVisibility.bind(null, i));
+                    page.appendChild(visible);
+                    page.appendChild(document.createElement("br"));
+                    var remove = document.createElement("button");
+                    remove.innerText = "Delete";
+                    remove.addEventListener("click", deleteLore.bind(null, i));
+                    page.appendChild(remove);
+                    page.appendChild(document.createElement("br"));
                 }
-                tmpHTML += "</div>";
-                document.getElementById("lorePage").innerHTML += tmpHTML
-                document.getElementById("loreTabs").innerHTML += `<div class="tab" onClick="enableLoreTab('${i}')">${msg[i].loreName}</div>`;
+                document.getElementById("lorePage").appendChild(page);
+
+                var pageTab = document.createElement("div");
+                pageTab.className = "tab";
+                pageTab.innerText = msg[i].loreName;
+                pageTab.addEventListener("click", enableLoreTab.bind(null, i));
+                document.getElementById("loreTabs").appendChild(pageTab);
                 if (typeof msg[i].loreSize !== "undefined" && msg[i].loreSize !== 0) {
                     if (typeof loreImages[i] == "undefined") {
                         downloadLoreImage(i)
@@ -1272,7 +1302,17 @@ function updateLore(msg, num) {
         if (canAddLore) {
             // Rebuilt on every change, so this is the only copy of the Add
             // form there is -- the one in the template never survives.
-            document.getElementById("lorePage").innerHTML += `<div id="loreTab${i}" style="display:none;">` +
+            //
+            // Appended as an element rather than with innerHTML +=, which
+            // reads the page back, adds to the text and reparses the lot: the
+            // pages above would come back as fresh elements with none of the
+            // handlers bound to them.
+            var addPage = document.createElement("div");
+            addPage.id = "loreTab" + i;
+            addPage.style.display = "none";
+            // No interpolation in here beyond the loop counter, so this one is
+            // markup rather than a page of createElement calls.
+            addPage.innerHTML =
                 `<div class="sectionHeading">Add Lore</div>` +
                 `<img id="loreFilePreview"></img><br>` +
                 `<label class="fieldLabelInline" for="loreURL">Image link</label>` +
@@ -1284,8 +1324,14 @@ function updateLore(msg, num) {
                 `<input type="text" id="loreName"><br>` +
                 `<label class="fieldLabel" for="loreText">Text</label>` +
                 `<textarea id="loreText"></textarea><br>` +
-                `<button onclick="sendLoreURL()">Send</button></div>`;
-                document.getElementById("loreTabs").innerHTML += `<div class="tab" onClick="enableLoreTab('${i}')">Add</div>`;
+                `<button onclick="sendLoreURL()">Send</button>`;
+            document.getElementById("lorePage").appendChild(addPage);
+
+            var addTab = document.createElement("div");
+            addTab.className = "tab";
+            addTab.innerText = "Add";
+            addTab.addEventListener("click", enableLoreTab.bind(null, i));
+            document.getElementById("loreTabs").appendChild(addTab);
         }
         // Nothing to read and nothing to add: say so, rather than showing an
         // empty page. A reader who has been given no lore, or none they are
@@ -1574,6 +1620,10 @@ function formatSpellObj(spell, showPrepare) {
         spellText += "<br><b>Saving Throw:</b> "+ spell.saving_throw;
         spellText += " <b>Spell Resistance:</b> "+ spell.spell_resistence;
         spellText += spell.description_formated;
+        // Markup on purpose, and the one place in here that is: this is the
+        // bundled spells table's own description_formated, which ships as HTML
+        // with its italics and paragraphs in it. It is our asset, not anything
+        // anybody typed.
         spellTextObj.innerHTML = spellText;
         spellObj.appendChild(spellTextObj);
 
