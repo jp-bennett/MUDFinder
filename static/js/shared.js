@@ -532,6 +532,11 @@ function drawUnits(Data) { //Give every addition a classname, that can be iterat
                             tokenDiv2.src = Data.unitList[i].token;
                         }
                     }
+                    // Which way up the picture is. Set every time rather than
+                    // only when it changes, since the token is reused across
+                    // updates and would otherwise keep the last one's angle.
+                    tokenDiv2.style.transform =
+                        "rotate(" + (Number(Data.unitList[i].rotation) || 0) + "deg)";
                     //position the tokens
 
                     position_top = Data.unitList[i].y*zoomSize + 4;
@@ -594,6 +599,10 @@ function drawUnits(Data) { //Give every addition a classname, that can be iterat
             }
             document.getElementById("movement").innerText = Math.floor(Data.initiativeList[Data.initiativeCount].distance) * 5
         }
+        // Last: the handles sit beside a token, so they have to be placed after
+        // the tokens have been. A unit that has just moved would otherwise
+        // leave them behind on the square it came from.
+        drawRotateHandles(Data);
 }
 function enableTab(tabName) {
     try {
@@ -2222,11 +2231,99 @@ function removeContents(el) {
         el.firstChild.remove();
     }
 }
+// Whether this view may turn a given unit's token. The GM may turn anything;
+// a player may turn what they control. The server checks this again -- what is
+// decided here is only whether to offer the handles.
+function mayRotate(unit) {
+    if (typeof isGM !== "undefined" && isGM) {
+        return true;
+    }
+    return typeof charName !== "undefined" && charName !== ""
+        && unit.controlledBy === charName;
+}
+
+// The handles for every selected unit, cleared and drawn again.
+//
+// Called from both the redraw and the selection, because each changes where
+// they belong: the redraw moves tokens about and rescales them, and selecting
+// changes which of them have handles at all.
+function drawRotateHandles(data) {
+    var stale = document.getElementsByClassName("rotateHandle");
+    while (stale.length > 0) {
+        stale[0].remove();
+    }
+    // selectedUnits belongs to gm.js and player.js. The spectator loads
+    // neither -- it watches and never selects anything -- so there is nothing
+    // to draw handles for and asking would throw. Same rule as the rest of
+    // this file's calls into those two.
+    if (!data || !data.unitList || typeof selectedUnits === "undefined") {
+        return;
+    }
+    for (var s = 0; s < selectedUnits.length; s++) {
+        drawUnitRotateHandles(data.unitList[selectedUnits[s]]);
+    }
+}
+
+// The two handles for turning one token, on the map beside the token itself.
+//
+// Drawn only for a unit that has a picture to turn: a unit with no token is a
+// coloured name on the square, and turning writing on its side helps nobody.
+function drawUnitRotateHandles(unit) {
+    if (!unit || unit.x === -1 || !unit.token || !mayRotate(unit)) {
+        return;
+    }
+    var span = (unit.size === "large") ? 2 : 1;
+    var top = unit.y * zoomSize;
+    if (unit.size === "large") {
+        top -= zoomSize;
+    }
+    var handles = [
+        {label: "↺", clockwise: false, title: "Turn the token left"},
+        {label: "↻", clockwise: true, title: "Turn the token right"},
+    ];
+    for (var h = 0; h < handles.length; h++) {
+        var handle = document.createElement("div");
+        handle.className = "rotateHandle";
+        handle.innerText = handles[h].label;
+        handle.title = handles[h].title;
+        handle.style.position = "absolute";
+        handle.style.top = top + "px";
+        // Sat on the token's top edge, one at each end of it.
+        handle.style.left = (unit.x * zoomSize
+            + (h === 0 ? 0 : span * zoomSize - ROTATE_HANDLE_SIZE)) + "px";
+        // The token itself has pointer events off so a click reaches the
+        // square underneath and moves the unit. These need them on, and need
+        // to keep the click to themselves for the same reason.
+        handle.style.pointerEvents = "auto";
+        handle.addEventListener("click", rotateClick.bind(null, unit.unitNum,
+                                                          handles[h].clockwise));
+        document.getElementById("mapGraphic").appendChild(handle);
+    }
+}
+
+var ROTATE_HANDLE_SIZE = 18;
+
+function rotateClick(unitNum, clockwise, e) {
+    try {
+        e.stopPropagation();
+        socket.emit("rotate_unit", {
+            room: room,
+            gmKey: typeof gmKey === "undefined" ? "" : gmKey,
+            requestingPlayer: typeof charName === "undefined" ? "" : charName,
+            unitNum: unitNum,
+            clockwise: clockwise,
+        });
+    } catch (error) {
+        socket.emit("error_handle", room, error);
+    }
+}
+
 function drawSelected(data) {
     nodes = document.getElementsByClassName("selected");
     while (nodes.length > 0) {
         nodes[0].classList.remove("selected");
     }
+    drawRotateHandles(data);
     for (i=0; i<selectedUnits.length;i++){
         if (typeof document.getElementById("unitsDiv").children[selectedUnits[i]] !== "undefined")
             document.getElementById("unitsDiv").children[selectedUnits[i]].classList.add("selected");

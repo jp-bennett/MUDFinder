@@ -5506,3 +5506,186 @@ class TestAHostileNameRunsNowhere:
         for who in ("bystanderAfterLore", "spectatorAfterLore"):
             assert hostile_name[who]["ranScript"] is False, who
             assert hostile_name[who]["injectedImages"] == 0, who
+
+
+@pytest.fixture(scope="module")
+def token_rotation(browser, live_server):
+    """Turning a token's picture on the map.
+
+    Purely how it looks -- Pathfinder has no facing -- so this is for a token
+    drawn walking left that is standing at the top of the board. The handles
+    appear beside a selected token their viewer is allowed to turn: the GM may
+    turn anything, a player only what they control.
+    """
+    context = browser.new_context(viewport={"width": 1400, "height": 900})
+    try:
+        gm = context.new_page()
+        errors = []
+        gm.on("pageerror", lambda error: errors.append("gm: " + str(error)))
+        gm.goto(live_server + "/")
+        gm.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        gm.fill("#gameName", "token rotation")
+        gm.click("text=Create Game")
+        gm.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        gm.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1)
+                    for pair in gm.url.split("?", 1)[1].split("&"))["room"]
+        gm.fill("#mapWidth", "8")
+        gm.fill("#mapHeight", "5")
+        gm.click("text=Generate Map")
+        gm.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 40",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        # A player, so there is a unit the GM does not control.
+        player = context.new_page()
+        player.on("pageerror", lambda e: errors.append("player: " + str(e)))
+        player.goto("%s/player.html?room=%s&charName=Vex" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        gm.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Vex")""",
+            timeout=HANDSHAKE_TIMEOUT)
+
+        # A monster of the GM's, and a token and a square for each of them.
+        gm.click("div.tab:text-is('Encounter')")
+        gm.fill("#unitName", "Goblin")
+        gm.fill("#unitHP", "6")
+        gm.click("text=Add Unit")
+        gm.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Goblin")""",
+            timeout=HANDSHAKE_TIMEOUT)
+        gm.wait_for_timeout(400)
+        gm.evaluate("""() => {
+            gmData.unitList.forEach((u, i) => {
+                sendChosenImage('/static/images/profile.svg', 'unitToken', i);
+            });
+        }""")
+        gm.wait_for_timeout(900)
+        gm.evaluate("""() => {
+            gmData.unitList.forEach((u, i) => {
+                socket.emit('locate_unit', {selectedUnit: i, moveType: 5,
+                    xCoord: 2 + i * 2, yCoord: 3, relative_x: 8, relative_y: 8,
+                    room: room, gmKey: gmKey});
+            });
+        }""")
+        gm.wait_for_timeout(900)
+        gm.click("div.tab:text-is('Map')")
+        gm.wait_for_timeout(400)
+
+        def unit_index(page, name):
+            return page.evaluate(
+                """(n) => (typeof gmData !== "undefined" ? gmData : playerData)
+                     .unitList.findIndex(u => u.charName === n)""", name)
+
+        def report(page, name):
+            return page.evaluate("""(n) => {
+                const data = (typeof gmData !== "undefined") ? gmData : playerData;
+                const unit = data.unitList.find(u => u.charName === n);
+                const token = Array.from(
+                    document.querySelectorAll("#mapGraphic .tokenImg"))
+                    .find(t => t.attributes.uuid === unit.uuid);
+                return {
+                    rotation: unit.rotation,
+                    transform: token ? token.style.transform : null,
+                    handles: document.querySelectorAll(
+                        "#mapGraphic .rotateHandle").length,
+                };
+            }""", name)
+
+        goblin = unit_index(gm, "Goblin")
+        stages = {"gmBeforeSelecting": report(gm, "Goblin")}
+
+        gm.evaluate("(i) => { selectedUnits = [i]; drawSelected(gmData); }", goblin)
+        gm.wait_for_timeout(400)
+        stages["gmSelected"] = report(gm, "Goblin")
+
+        gm.click("#mapGraphic .rotateHandle >> nth=1")
+        gm.wait_for_timeout(700)
+        stages["gmTurnedOnce"] = report(gm, "Goblin")
+        gm.click("#mapGraphic .rotateHandle >> nth=0")
+        gm.wait_for_timeout(700)
+        gm.click("#mapGraphic .rotateHandle >> nth=0")
+        gm.wait_for_timeout(700)
+        stages["gmTurnedBackPastSquare"] = report(gm, "Goblin")
+
+        # The GM may turn a player's token as well.
+        vex = unit_index(gm, "Vex")
+        gm.evaluate("(i) => { selectedUnits = [i]; drawSelected(gmData); }", vex)
+        gm.wait_for_timeout(400)
+        stages["gmOnAPlayersUnit"] = report(gm, "Vex")
+
+        # The player sees it, and may turn their own.
+        player.wait_for_timeout(600)
+        stages["playerSeesTheGoblin"] = report(player, "Goblin")
+        playersVex = unit_index(player, "Vex")
+        player.evaluate("(i) => { selectedUnits = [i]; drawSelected(playerData); }",
+                        playersVex)
+        player.wait_for_timeout(400)
+        stages["playerOnTheirOwn"] = report(player, "Vex")
+        if stages["playerOnTheirOwn"]["handles"] > 0:
+            player.click("#mapGraphic .rotateHandle >> nth=1")
+            player.wait_for_timeout(700)
+        stages["playerTurnedTheirOwn"] = report(player, "Vex")
+
+        # But gets no handles on the GM's monster.
+        playersGoblin = unit_index(player, "Goblin")
+        player.evaluate("(i) => { selectedUnits = [i]; drawSelected(playerData); }",
+                        playersGoblin)
+        player.wait_for_timeout(400)
+        stages["playerOnTheGmsUnit"] = report(player, "Goblin")
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestTurningATokenOnTheMap:
+    def test_a_token_starts_square(self, token_rotation):
+        assert token_rotation["gmBeforeSelecting"]["rotation"] == 0
+        assert token_rotation["gmBeforeSelecting"]["transform"] == "rotate(0deg)"
+
+    def test_the_handles_are_only_there_for_a_selected_token(self, token_rotation):
+        assert token_rotation["gmBeforeSelecting"]["handles"] == 0
+        assert token_rotation["gmSelected"]["handles"] == 2
+
+    def test_one_click_is_a_quarter_turn(self, token_rotation):
+        assert token_rotation["gmTurnedOnce"]["rotation"] == 90
+        assert token_rotation["gmTurnedOnce"]["transform"] == "rotate(90deg)"
+
+    def test_the_other_handle_turns_it_back(self, token_rotation):
+        """And past square, rather than stopping there: 90 - 90 - 90 is 270."""
+        assert token_rotation["gmTurnedBackPastSquare"]["rotation"] == 270
+        assert token_rotation["gmTurnedBackPastSquare"]["transform"] == "rotate(270deg)"
+
+
+class TestWhoMayTurnAToken:
+    def test_the_gm_may_turn_a_players_token(self, token_rotation):
+        assert token_rotation["gmOnAPlayersUnit"]["handles"] == 2
+
+    def test_a_player_may_turn_their_own(self, token_rotation):
+        assert token_rotation["playerOnTheirOwn"]["handles"] == 2
+        assert token_rotation["playerTurnedTheirOwn"]["rotation"] == 90
+
+    def test_but_gets_no_handles_on_the_gms(self, token_rotation):
+        """The server refuses it too -- this is only whether to offer it."""
+        assert token_rotation["playerOnTheGmsUnit"]["handles"] == 0
+
+
+class TestATurnedTokenReachesEveryone:
+    def test_the_player_sees_what_the_gm_turned(self, token_rotation):
+        """It is on the board, so it is not the turner's business alone."""
+        assert token_rotation["playerSeesTheGoblin"]["rotation"] == 270
+        assert token_rotation["playerSeesTheGoblin"]["transform"] == "rotate(270deg)"
+
+
+class TestTheRotationRaisedNothing:
+    def test_nothing_raised(self, token_rotation):
+        assert token_rotation["errors"] == []

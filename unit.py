@@ -41,6 +41,10 @@ class Unit(object):
         self.climbSpeed = default(unitdict, "climbSpeed", "")
         self.burrowSpeed = default(unitdict, "burrowSpeed", "")
         self.token = default(unitdict, "token", "")
+        # How far the token picture is turned on the map, in degrees.
+        # Purely how it looks: Pathfinder has no facing, so nothing
+        # reads this but the renderer.
+        self.rotation = default(unitdict, "rotation", 0)
         self.hasted = default(unitdict, "hasted", False)
         self.distance = default(unitdict, "distance", 0)  # distance traveled already
         self.movePath = default(unitdict, "movePath", [])
@@ -124,6 +128,7 @@ class Unit(object):
             "climbSpeed": self.climbSpeed,
             "burrowSpeed": self.burrowSpeed,
             "token": self.token,
+            "rotation": self.rotation,
             "hasted": self.hasted,
             "distance": self.distance,
             "movePath": self.movePath,

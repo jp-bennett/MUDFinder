@@ -1488,6 +1488,41 @@ def parse_saves(text):
     return saves
 
 
+ROTATION_STEP = 90
+
+
+@socketio.on('rotate_unit')
+def on_rotate_unit(data):
+    """Turn a unit's token picture a quarter turn.
+
+    Purely how it looks. Pathfinder has no facing, so nothing reads this but
+    the renderer -- it is for a token drawn walking left that is standing at
+    the top of the map.
+
+    A player may turn what they control and nothing else; the GM may turn
+    anything. Same rule their own attacks and saves go by.
+    """
+    room = data.get('room')
+    if not check_room(room):
+        return
+    unit = unit_at(room, data.get('unitNum'))
+    if unit is None:
+        return
+    if ROOMS[room].gmKey != data.get('gmKey') \
+            and unit.controlledBy != data.get('requestingPlayer'):
+        return
+    step = ROTATION_STEP if data.get('clockwise') else -ROTATION_STEP
+    try:
+        current = int(unit.rotation)
+    except (TypeError, ValueError):
+        # A save from before tokens could turn, or one edited by hand.
+        current = 0
+    # Kept in 0-359 so it never counts away from zero for the length of a
+    # campaign, and so a save reads as a facing rather than as a tally.
+    unit.rotation = (current + step) % 360
+    ROOMS[room].send_updates()
+
+
 @socketio.on('roll_save')
 def on_roll_save(data):
     """Roll one saving throw, and say what it came to.
