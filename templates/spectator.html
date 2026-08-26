@@ -50,6 +50,11 @@
     </div>
   </div>
 
+  <!-- Where this instance is served from, so the Socket.IO client can
+       find the websocket. Empty at the root; "/beta" behind a proxy
+       serving it under that. Every other URL on the page is relative
+       and follows the page by itself. -->
+  <script>var SOCKETIO_PATH = "{{ socketio_path }}";</script>
   <script type="text/javascript" src="static/js/socket.io.js"></script>
   <script type="text/javascript" charset="utf-8">
     url_ob = new URL(window.location.href);
@@ -60,7 +65,8 @@
     var isGM = false;
     var charName = "";
     window.onload = function() {
-      socket = io({transports: ['websocket'], upgrade: false});
+      socket = io({path: (typeof SOCKETIO_PATH === "undefined" ? "/socket.io" : SOCKETIO_PATH),
+                       transports: ['websocket'], upgrade: false});
     
     // verify our websocket connection is established
     socket.on('connect', function() {

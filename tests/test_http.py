@@ -116,3 +116,77 @@ class TestMissingResources:
     def test_image_with_an_unknown_id_is_a_404(self, http, make_session):
         make_session(room="img-room")
         assert http.get("/get_image.html?room=img-room&id=nope").status_code == 404
+
+
+class TestTheBasePath:
+    """Where the instance is served from, for the Socket.IO client's benefit.
+
+    Everything else on these pages is linked relatively and follows the page
+    wherever it is served. The Socket.IO client is the exception: it builds its
+    own URL from the origin and a path, absolute from the root, so behind a
+    proxy at /beta it asks for /socket.io/ while the app is at /beta/socket.io/
+    and simply never connects.
+    """
+
+    def test_nothing_set_means_the_root(self):
+        assert mudfinder.normalise_base_path(None) == ""
+        assert mudfinder.normalise_base_path("") == ""
+        assert mudfinder.normalise_base_path("/") == ""
+
+    def test_a_leading_slash_is_added_if_it_is_missing(self):
+        assert mudfinder.normalise_base_path("beta") == "/beta"
+
+    def test_a_trailing_slash_is_dropped(self):
+        """So the path is joined to "/socket.io" without doubling the slash."""
+        assert mudfinder.normalise_base_path("/beta/") == "/beta"
+
+    def test_whitespace_and_quotes_from_a_shell_are_dropped(self):
+        assert mudfinder.normalise_base_path('  "/beta/"  ') == "/beta"
+
+    def test_a_deeper_path_survives(self):
+        assert mudfinder.normalise_base_path("/games/beta/") == "/games/beta"
+
+    def test_every_page_is_told_where_it_is(self, http):
+        """All four connect a socket, so all four need it."""
+        for page in ("/", "/gm.html", "/player.html", "/spectator.html"):
+            body = http.get(page).get_data(as_text=True)
+            assert 'var SOCKETIO_PATH = "%s"' % mudfinder.SOCKETIO_PATH in body, page
+
+    def test_the_default_is_what_it_always_was(self, http):
+        """An instance at the root is configured with nothing at all, and asks
+        for the same URL it asked for before any of this existed."""
+        assert mudfinder.SOCKETIO_PATH == "/socket.io"
+        body = http.get("/").get_data(as_text=True)
+        assert 'var SOCKETIO_PATH = "/socket.io"' in body
+
+    def test_the_client_is_given_the_path_whole(self):
+        """Not a prefix it appends "/socket.io" to itself -- that produced
+        /beta/socket.io/socket.io, which reaches nothing."""
+        body = open("templates/index.html", encoding="utf-8").read()
+        assert "SOCKETIO_PATH) + \"/socket.io\"" not in body
+        assert 'path: (typeof SOCKETIO_PATH === "undefined" ? "/socket.io" : SOCKETIO_PATH)' in body
+
+
+class TestTheLandingPageSurvivesNoConnection:
+    def test_the_gm_key_does_not_wait_for_the_socket(self):
+        """It is a random string and owes the connection nothing. Assigned in
+        the connect handler, a websocket that never arrived left it undeclared,
+        so Create Game threw "gmKey is not defined" from a button -- three
+        steps from the connection that was the actual problem."""
+        body = open("templates/index.html", encoding="utf-8").read()
+        assert "var gmKey = Math.random()" in body
+
+    def test_a_failed_connection_says_so(self):
+        """There is no polling fallback -- upgrade is off -- so a proxy that
+        does not pass the handshake fails outright, and used to do it in
+        silence while every page still rendered."""
+        body = open("templates/index.html", encoding="utf-8").read()
+        assert "connect_error" in body
+        assert "connectionState" in body
+
+    def test_the_message_has_its_own_element(self):
+        """Not the card: the card holds the form, and writing the message into
+        it took the form with it."""
+        body = open("templates/index.html", encoding="utf-8").read()
+        assert '<div id="connectionState"' in body
+        assert 'document.getElementById("connectionState").innerText' in body

@@ -71,7 +71,8 @@ window.onload = function() {
         alert ("Page initialization failed: " + error);
     }
     try {
-        socket = io({transports: ['websocket'], upgrade: false});
+        socket = io({path: (typeof SOCKETIO_PATH === "undefined" ? "/socket.io" : SOCKETIO_PATH),
+                       transports: ['websocket'], upgrade: false});
     } catch (error) {
         alert("Could not connect to websocket: " + error);
     }

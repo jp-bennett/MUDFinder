@@ -1316,6 +1316,17 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
     opacity: 0.0;
 }
 
+/* Said on the landing page when the websocket cannot be reached. In the alarm
+   colour, because the page looks perfectly well otherwise and nothing else
+   would tell you it is not working. */
+.connectionState:not(:empty) {
+    color: var(--danger);
+    border-top: 1px solid var(--rule);
+    margin-top: 10px;
+    padding-top: 8px;
+    text-align: left;
+}
+
 /* The handles for turning a token, sat on its top corners. Above the token
    (z-index 3) so they can be clicked, and small enough not to hide the picture
    they belong to -- a token is one square, and these take a corner each. */

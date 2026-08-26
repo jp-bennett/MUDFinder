@@ -57,9 +57,60 @@ gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker \
 ```
 
 Use a **single worker**. Sessions live in the process, so a second worker would
-serve a different set of games. If you put nginx in front, it has to pass the
-websocket upgrade headers through, or Socket.IO will fail to connect while the
-pages still load normally.
+serve a different set of games.
+
+Python 3.9 or newer, which is what Flask 3 needs. On EL8 that means installing
+one alongside the system 3.6 (`dnf install python3.11`, or `dnf module install
+python39` on older minors) and building the venv with it — a venv does not
+contain a Python, only a pointer to one. Don't replace `/usr/bin/python3`;
+`dnf` is written against it.
+
+### Behind a reverse proxy
+
+nginx has to pass the websocket upgrade through, or Socket.IO will fail to
+connect while the pages still load normally:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:5000/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade    $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host       $host;
+    proxy_read_timeout 86400;
+}
+```
+
+`proxy_read_timeout` matters: without it nginx closes a socket that has been
+quiet for a minute, in the middle of a game.
+
+### Serving it under a subpath
+
+Every link on these pages is relative and follows the page wherever it is
+served — except the websocket, which the Socket.IO client builds from the
+origin and a path, absolute from the root. Tell it where it is:
+
+```
+MUDFINDER_BASE_PATH=/beta .venv/bin/python mudfinder.py
+```
+
+and give nginx a location that **strips the prefix** — that is what the
+trailing slash on `proxy_pass` does:
+
+```nginx
+location /beta/ {
+    proxy_pass http://127.0.0.1:5000/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade    $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host       $host;
+    proxy_read_timeout 86400;
+}
+```
+
+Two instances on one domain is then two locations, two ports, and a different
+`MUDFINDER_BASE_PATH` for each. Get the two out of step and the landing page
+says so rather than failing silently.
 
 ## Running the tests
 

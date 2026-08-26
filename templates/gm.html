@@ -462,6 +462,11 @@
     </div>
   </div>
 <!--  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js" integrity="sha256-yr4fRk/GU1ehYJPAs8P4JlTgu0Hdsp4ZKrx8bDEDC3I=" crossorigin="anonymous"></script>-->
+  <!-- Where this instance is served from, so the Socket.IO client can
+       find the websocket. Empty at the root; "/beta" behind a proxy
+       serving it under that. Every other URL on the page is relative
+       and follows the page by itself. -->
+  <script>var SOCKETIO_PATH = "{{ socketio_path }}";</script>
   <script type="text/javascript" src="static/js/socket.io.js"></script>
   <script type="text/javascript" src="static/js/ds.min.js"></script>
   <script type="text/javascript" src="static/js/gm.js?time={{ current_time }}"></script>

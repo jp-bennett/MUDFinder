@@ -7,6 +7,7 @@ import re
 import sqlite3
 import uuid
 import atexit
+from os import environ
 from os import path
 from os import mkdir
 from threading import Lock
@@ -695,6 +696,43 @@ MAX_UPLOAD_BYTES = 16 * 1024 * 1024
 
 socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*",
                     max_http_buffer_size=MAX_UPLOAD_BYTES)
+
+
+def normalise_base_path(value):
+    """The public path this instance is served under, as "" or "/beta".
+
+    Everything else on these pages is linked relatively -- static/js/gm.js,
+    gm.html?room=... -- so it follows the page wherever it is served from. The
+    Socket.IO client is the exception: it builds its own URL from the origin
+    and a path, absolute from the root, so behind a reverse proxy at a subpath
+    it asks for /socket.io/ when the app is at /beta/socket.io/ and simply
+    never connects.
+
+    Empty means the root, which is what running mudfinder.py directly does,
+    and is the value everything had before this existed.
+    """
+    path = (value or "").strip().strip('"').strip("'")
+    if not path or path == "/":
+        return ""
+    if not path.startswith("/"):
+        path = "/" + path
+    return path.rstrip("/")
+
+
+# Set this when serving under a subpath, so the browser knows where to find
+# the websocket:
+#   MUDFINDER_BASE_PATH=/beta
+# The reverse proxy is expected to strip the prefix before passing the request
+# on -- nginx does that when proxy_pass carries a trailing slash -- so the app
+# itself never sees it and needs no other change.
+BASE_PATH = normalise_base_path(environ.get("MUDFINDER_BASE_PATH"))
+SOCKETIO_PATH = BASE_PATH + "/socket.io"
+
+
+@app.context_processor
+def page_paths():
+    """Given to every template, so no route has to remember to pass it."""
+    return {"socketio_path": SOCKETIO_PATH}
 ROOMS = {}  # dict to track active rooms
 thread = None
 thread_lock = Lock()
