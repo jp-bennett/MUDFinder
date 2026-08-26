@@ -148,10 +148,11 @@ class TestThePlayerLinksPanel:
     def test_a_name_full_of_markup_stays_text(self, live_server, new_client, gm_client):
         """The name lands in the row as a word, not as the tag it spells.
 
-        Scoped to the panel on purpose. Other lists on this page still build
-        their rows out of markup and do run the tag -- #unitsDiv is one -- so
-        an assertion about the whole document would be reporting those, not
-        this.
+        This was scoped to the panel when it was written, because the other
+        lists on the page did run the tag and an assertion about the document
+        would have been reporting them. They do not any more --
+        TestAHostileNameRunsNowhere is the whole-document version, across every
+        view -- so this one is free to stay narrow and be about its own panel.
         """
         gm, room, _ = gm_client
         new_client(
@@ -5340,3 +5341,168 @@ class TestTheSpectatorsLoreTab:
 class TestTheSpectatorLoreRaisedNothing:
     def test_nothing_raised(self, spectator_lore):
         assert spectator_lore["errors"] == []
+
+
+# A name that is a quote, a tag, and a handler all at once. The quote breaks
+# out of a value interpolated into an onclick; the tag breaks out of element
+# content; the onerror fires the moment the img fails to load, which it will.
+HOSTILE = "Ari'a\"<img src=xss-probe onerror=\"window.pwned=1\">"
+
+
+def hostile_report(page):
+    """What a hostile name managed to do to a page."""
+    return page.evaluate("""() => ({
+        ranScript: window.pwned === 1,
+        injectedImages: document.querySelectorAll("img[src='xss-probe']").length,
+    })""")
+
+
+@pytest.fixture(scope="module")
+def hostile_name(browser, live_server):
+    """A player names itself, and the server stores the name as it is given, so
+    it reaches every view as untrusted text. None of them may run it.
+
+    Every view gets its own page here because a name has to travel: the GM sees
+    it in the unit list and the initiative order, the other players see it in
+    theirs, and the spectator sees it in the initiative order and the connected
+    list.
+    """
+    context = browser.new_context(viewport={"width": 1400, "height": 900})
+    try:
+        gm = context.new_page()
+        errors = []
+        gm.on("pageerror", lambda error: errors.append("gm: " + str(error)))
+        gm.goto(live_server + "/")
+        gm.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        gm.fill("#gameName", "hostile")
+        gm.click("text=Create Game")
+        gm.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        gm.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1)
+                    for pair in gm.url.split("?", 1)[1].split("&"))["room"]
+        gm.fill("#mapWidth", "8")
+        gm.fill("#mapHeight", "5")
+        gm.click("text=Generate Map")
+        gm.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 40",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        # The hostile player, and an ordinary one to watch from.
+        attacker = context.new_page()
+        attacker.on("pageerror", lambda e: errors.append("attacker: " + str(e)))
+        attacker.goto("%s/player.html?room=%s&charName=%s"
+                      % (live_server, room, quote(HOSTILE, safe="")))
+        attacker.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        bystander = context.new_page()
+        bystander.on("pageerror", lambda e: errors.append("bystander: " + str(e)))
+        bystander.goto("%s/player.html?room=%s&charName=Vex" % (live_server, room))
+        bystander.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        spectator = context.new_page()
+        spectator.on("pageerror", lambda e: errors.append("spectator: " + str(e)))
+        spectator.goto("%s/spectator.html?room=%s" % (live_server, room))
+        gm.wait_for_function(
+            """(name) => gmData && gmData.unitList.some(u => u.charName === name)""",
+            arg=HOSTILE, timeout=HANDSHAKE_TIMEOUT)
+        gm.wait_for_timeout(700)
+
+        # A monster with the same name, into initiative -- which is a second
+        # list on every one of these pages, built separately from the first.
+        # A monster rather than the player, because a unit only joins the order
+        # once it has an initiative to sort by, and the encounter form is where
+        # one gets typed.
+        gm.click("div.tab:text-is('Encounter')")
+        gm.check("#addToInit")
+        gm.fill("#unitName", HOSTILE)
+        gm.fill("#unitHP", "6")
+        gm.fill("#unitInit", "12")
+        gm.click("text=Add Unit")
+        gm.wait_for_function(
+            """(name) => gmData && gmData.initiativeList.some(u => u.charName === name)""",
+            arg=HOSTILE, timeout=HANDSHAKE_TIMEOUT)
+        gm.click("div.tab:text-is('Map')")
+        gm.click("#beginInit")
+        gm.wait_for_timeout(900)
+        spectator.wait_for_timeout(700)
+        bystander.wait_for_timeout(400)
+
+        stages = {
+            "gm": hostile_report(gm),
+            "attacker": hostile_report(attacker),
+            "bystander": hostile_report(bystander),
+            "spectator": hostile_report(spectator),
+        }
+
+        # The GM's other lists: saved encounter names, and the lore pages.
+        gm.evaluate("""(name) => socket.emit('save_encounter',
+            {room: room, gmKey: gmKey, encounterName: name})""", HOSTILE)
+        gm.wait_for_timeout(800)
+        stages["gmAfterEncounter"] = hostile_report(gm)
+
+        gm.click("div.tab:text-is('Lore')")
+        gm.wait_for_timeout(400)
+        gm.fill("#loreName", HOSTILE)
+        gm.fill("#loreText", HOSTILE)
+        gm.fill("#loreURL", "a-picture.png")
+        gm.click("text=Send")
+        gm.wait_for_timeout(900)
+        stages["gmAfterLore"] = hostile_report(gm)
+        # And once the GM shares it, on everybody else's.
+        gm.evaluate("() => changeLoreVisibility(0)")
+        gm.wait_for_timeout(400)
+        bystander.wait_for_timeout(600)
+        spectator.wait_for_timeout(600)
+        stages["bystanderAfterLore"] = hostile_report(bystander)
+        stages["spectatorAfterLore"] = hostile_report(spectator)
+
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestAHostileNameRunsNowhere:
+    """The name is a quote, a tag and a handler at once. Anywhere it reaches a
+    page through innerHTML, it stops being a name and becomes markup."""
+
+    def test_not_on_the_gms_page(self, hostile_name):
+        assert hostile_name["gm"]["ranScript"] is False
+        assert hostile_name["gm"]["injectedImages"] == 0
+
+    def test_not_on_the_page_that_chose_it(self, hostile_name):
+        assert hostile_name["attacker"]["ranScript"] is False
+        assert hostile_name["attacker"]["injectedImages"] == 0
+
+    def test_not_on_another_players_page(self, hostile_name):
+        """The one that matters most: a player naming itself must not reach
+        into somebody else's browser."""
+        assert hostile_name["bystander"]["ranScript"] is False
+        assert hostile_name["bystander"]["injectedImages"] == 0
+
+    def test_not_on_the_spectators(self, hostile_name):
+        assert hostile_name["spectator"]["ranScript"] is False
+        assert hostile_name["spectator"]["injectedImages"] == 0
+
+    def test_not_through_a_saved_encounters_name(self, hostile_name):
+        assert hostile_name["gmAfterEncounter"]["ranScript"] is False
+        assert hostile_name["gmAfterEncounter"]["injectedImages"] == 0
+
+    def test_not_through_lore(self, hostile_name):
+        assert hostile_name["gmAfterLore"]["ranScript"] is False
+        assert hostile_name["gmAfterLore"]["injectedImages"] == 0
+
+    def test_nor_through_lore_once_it_is_shared(self, hostile_name):
+        """Lore is written by whoever can write it and read by everyone, which
+        makes it the widest way in of the lot."""
+        for who in ("bystanderAfterLore", "spectatorAfterLore"):
+            assert hostile_name[who]["ranScript"] is False, who
+            assert hostile_name[who]["injectedImages"] == 0, who
