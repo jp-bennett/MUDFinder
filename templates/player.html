@@ -1228,6 +1228,11 @@
       </div>
     </div>
   </div>
+  <!-- Where this instance is served from, so the Socket.IO client can
+       find the websocket. Empty at the root; "/beta" behind a proxy
+       serving it under that. Every other URL on the page is relative
+       and follows the page by itself. -->
+  <script>var SOCKETIO_PATH = "{{ socketio_path }}";</script>
   <script type="text/javascript" src="static/js/socket.io.js"></script>
   <script type="text/javascript" src="static/js/player.js?time={{ current_time }}"></script>
   <script type="text/javascript" src="static/js/shared.js?time={{ current_time }}"></script>

@@ -21,16 +21,41 @@
       <input type="file" name="file">
       <input type="submit" value="Load">
     </form>
+    <!-- Its own element rather than the card: the card holds the form, and
+         writing the message into that took the form with it. -->
+    <div id="connectionState" class="connectionState"></div>
   </div>
+  <!-- Where this instance is served from, so the Socket.IO client can
+       find the websocket. Empty at the root; "/beta" behind a proxy
+       serving it under that. Every other URL on the page is relative
+       and follows the page by itself. -->
+  <script>var SOCKETIO_PATH = "{{ socketio_path }}";</script>
   <script src="static/js/socket.io.js"></script>
   <script type="text/javascript" charset="utf-8">
   var socket;
+  // Made here rather than when the socket connects. It is just a random
+  // string and owes the connection nothing, and being assigned in the connect
+  // handler meant that a websocket which never arrived left it undeclared --
+  // so pressing Create Game threw "gmKey is not defined" from a button, three
+  // steps away from the connection that was the actual problem.
+  var gmKey = Math.random().toString(36).substr(2);
   window.onload = function() {
-    socket = io({transports: ['websocket'], upgrade: false});
+    socket = io({path: (typeof SOCKETIO_PATH === "undefined" ? "/socket.io" : SOCKETIO_PATH),
+                       transports: ['websocket'], upgrade: false});
     // verify our websocket connection is established
     socket.on('connect', function() {
         console.log('Websocket connected!');
-        gmKey = Math.random().toString(36).substr(2);
+        document.getElementById("connectionState").innerText = "";
+    });
+    // There is no polling fallback -- upgrade is off -- so a proxy that does
+    // not pass the websocket handshake through fails outright, and used to do
+    // it in silence while every page still rendered.
+    socket.on('connect_error', function(error) {
+        document.getElementById("connectionState").innerText =
+            "Cannot reach the server. If this is behind a reverse proxy, check "
+            + "that it passes the websocket upgrade through, and that "
+            + "MUDFINDER_BASE_PATH matches the path it is served under. "
+            + "Tried " + socket.io.opts.path + " — " + error;
     });
     socket.on('create_room', function(msg) {
         console.log(msg.room);
