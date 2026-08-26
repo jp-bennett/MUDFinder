@@ -2550,3 +2550,123 @@ class TestLoreReachesTheGmToo:
         spectator.get_received()
         gm_client.emit("lore_url", room, "", "The Broken Seal", "A cracked disc.", "gm")
         assert "showLore" in event_names(spectator.get_received())
+
+
+class TestTurningAToken:
+    """Purely how it looks: Pathfinder has no facing, so nothing reads the
+    angle but the renderer. A player may turn what they control; the GM may
+    turn anything."""
+
+    def add_unit(self, gm_client, room, key, name="Goblin", controlled="gm"):
+        gm_client.emit("add_units", {
+            "room": room, "gmKey": key, "count": 1, "addToInitiative": False,
+            "initiativeBonus": 0,
+            "unit": {"charName": name, "controlledBy": controlled}})
+        gm_client.get_received()
+
+    def rotation(self, room, index=0):
+        return mudfinder.ROOMS[room].unitList[index].rotation
+
+    def test_a_token_starts_square(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        self.add_unit(gm_client, room, key)
+        assert self.rotation(room) == 0
+
+    def test_the_gm_turns_it_a_quarter(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        self.add_unit(gm_client, room, key)
+        gm_client.emit("rotate_unit", {"room": room, "gmKey": key,
+                                       "unitNum": 0, "clockwise": True})
+        assert self.rotation(room) == 90
+
+    def test_and_the_other_way(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        self.add_unit(gm_client, room, key)
+        gm_client.emit("rotate_unit", {"room": room, "gmKey": key,
+                                       "unitNum": 0, "clockwise": False})
+        assert self.rotation(room) == 270
+
+    def test_it_comes_back_round(self, browser_style_game):
+        """Kept in 0-359, so a save reads as a facing rather than as a tally of
+        every time anybody turned it."""
+        gm_client, room, key = browser_style_game
+        self.add_unit(gm_client, room, key)
+        for _ in range(4):
+            gm_client.emit("rotate_unit", {"room": room, "gmKey": key,
+                                           "unitNum": 0, "clockwise": True})
+        assert self.rotation(room) == 0
+
+    def test_the_change_reaches_everyone(self, browser_style_game):
+        """It is on the board, so it is not the turner's business alone."""
+        gm_client, room, key = browser_style_game
+        self.add_unit(gm_client, room, key)
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        gm_client.get_received()
+        gm_client.emit("rotate_unit", {"room": room, "gmKey": key,
+                                       "unitNum": 0, "clockwise": True})
+        assert "gm_update" in event_names(gm_client.get_received())
+        assert "do_update" in event_names(player.get_received())
+
+    def test_a_player_turns_what_they_control(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        theirs = next(i for i, u in enumerate(mudfinder.ROOMS[room].unitList)
+                      if u.controlledBy == "Aria")
+        player.emit("rotate_unit", {"room": room, "unitNum": theirs,
+                                    "requestingPlayer": "Aria", "clockwise": True})
+        assert self.rotation(room, theirs) == 90
+
+    def test_but_not_somebody_elses(self, browser_style_game):
+        """Otherwise a player could spin the monsters, or another character."""
+        gm_client, room, key = browser_style_game
+        self.add_unit(gm_client, room, key)
+        player = mudfinder.socketio.test_client(mudfinder.app)
+        player.emit("player_join", {"room": room, "charName": "Aria"})
+        player.get_received()
+        player.emit("rotate_unit", {"room": room, "unitNum": 0,
+                                    "requestingPlayer": "Aria", "clockwise": True})
+        assert self.rotation(room) == 0
+
+    def test_nor_by_claiming_to_be_someone_else(self, browser_style_game):
+        """The name is checked against what the unit says controls it, not
+        against what the sender says they are called."""
+        gm_client, room, key = browser_style_game
+        self.add_unit(gm_client, room, key, controlled="Aria")
+        stranger = mudfinder.socketio.test_client(mudfinder.app)
+        stranger.emit("player_join", {"room": room, "charName": "Mal"})
+        stranger.get_received()
+        stranger.emit("rotate_unit", {"room": room, "unitNum": 0,
+                                      "requestingPlayer": "Mal", "clockwise": True})
+        assert self.rotation(room) == 0
+
+    def test_a_wrong_gm_key_turns_nothing(self, browser_style_game):
+        gm_client, room, _ = browser_style_game
+        self.add_unit(gm_client, room, GM_KEY)
+        gm_client.emit("rotate_unit", {"room": room, "gmKey": "not-the-key",
+                                       "unitNum": 0, "clockwise": True})
+        assert self.rotation(room) == 0
+
+    def test_a_unit_that_is_not_there_is_ignored(self, browser_style_game):
+        gm_client, room, key = browser_style_game
+        self.add_unit(gm_client, room, key)
+        gm_client.emit("rotate_unit", {"room": room, "gmKey": key,
+                                       "unitNum": 99, "clockwise": True})
+        assert self.rotation(room) == 0
+
+    def test_an_unknown_room_is_ignored(self, client):
+        client.emit("rotate_unit", {"room": "no-such-room", "gmKey": GM_KEY,
+                                    "unitNum": 0, "clockwise": True})
+        assert client.get_received() == []
+
+    def test_an_angle_saved_as_rubbish_is_treated_as_square(self, browser_style_game):
+        """A save from before tokens could turn, or one edited by hand."""
+        gm_client, room, key = browser_style_game
+        self.add_unit(gm_client, room, key)
+        mudfinder.ROOMS[room].unitList[0].rotation = "sideways"
+        gm_client.emit("rotate_unit", {"room": room, "gmKey": key,
+                                       "unitNum": 0, "clockwise": True})
+        assert self.rotation(room) == 90

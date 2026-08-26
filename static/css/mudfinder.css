@@ -1316,6 +1316,30 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
     opacity: 0.0;
 }
 
+/* The handles for turning a token, sat on its top corners. Above the token
+   (z-index 3) so they can be clicked, and small enough not to hide the picture
+   they belong to -- a token is one square, and these take a corner each. */
+.rotateHandle {
+    width: 18px;
+    height: 18px;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    line-height: 1;
+    color: var(--ink);
+    background: var(--paper-warm);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-resting);
+    cursor: pointer;
+    user-select: none;
+}
+.rotateHandle:hover {
+    background: var(--accent-soft);
+}
+
 /* A square joined to another somewhere else on the map. Marked in the accent,
    which everywhere else means "chosen" -- here it means this square is spoken
    for, joined to a partner. A ring rather than a fill, so whatever the square

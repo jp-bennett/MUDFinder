@@ -284,6 +284,35 @@ and it shrank again whenever anything else took height out of the map sheet.
 `#mapContainer` takes `calc(100% - var(--palette-height))` so the two tile
 exactly. There is a test that measures the bar against its tallest group.
 
+### Rotate handle — `.rotateHandle`
+
+Two small tabs on a selected token's top corners, turning its picture a quarter
+turn each way. **Purely how it looks**: Pathfinder has no facing, so nothing
+reads `unit.rotation` but the renderer. It is for a token drawn walking left
+that is standing at the top of the board.
+
+Handles rather than a gesture because the map's gestures are all spoken for —
+click selects and moves, drag pans, the wheel zooms, a double-click opens the
+statblock. There was no room for another without taking one away.
+
+**They are drawn from `drawUnits` as well as from `drawSelected`.** Selecting
+changes which tokens have handles; redrawing moves the tokens about and
+rescales them, and handles placed only on selection would be left behind on the
+square a unit came from.
+
+Only for a unit **with a picture**: a unit with no token is a coloured name on
+the square, and turning writing on its side helps nobody. And only for one the
+viewer may turn — the GM anything, a player what they control. That decides
+whether to *offer* the handles; the server checks again before it turns
+anything, since a client can send whatever it likes.
+
+The token itself has `pointer-events: none`, so a click on it reaches the square
+underneath and moves the unit. The handles have to turn that back on and keep
+the click to themselves, or turning a token would walk it.
+
+The angle is kept in 0–359, so a save reads as a facing rather than as a tally
+of every time anybody turned it.
+
 ### Staircase — `.warpTile`, `.warpPending`, `.warpTool`
 
 **A map holds more than one level by drawing them as separate parts of the one
