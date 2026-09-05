@@ -5034,6 +5034,215 @@ class TestTheAutoShowRaisedNothing:
         assert auto_show["errors"] == []
 
 
+# Every row of an initiative list, with the class it carries and the colour it
+# is actually painted. The class being on the element is not the same as the
+# row being coloured -- a wash behind the tile passed every class assertion in
+# the light-level work and was still invisible.
+INIT_ROWS_JS = """() => {
+  const rows = Array.from(document.getElementById("initiativeDiv").children);
+  return {
+    rows: rows.map(r => ({
+      text: r.innerText.replace(/\\s+/g, " ").trim(),
+      active: r.classList.contains("activeUnit"),
+      classes: r.className,
+      background: getComputedStyle(r).backgroundColor,
+      children: r.children.length,
+      contrast: (() => {
+        const lum = (rgb) => { const [x, y, z] = rgb.map(v => { const c = v / 255;
+          return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); });
+          return 0.2126 * x + 0.7152 * y + 0.0722 * z; };
+        const parse = (s) => s.match(/rgba?\\(([^)]+)\\)/)[1]
+            .split(",").map(parseFloat).slice(0, 3);
+        const name = r.querySelector("div div");
+        if (!name) return null;
+        const a = lum(parse(getComputedStyle(name).color));
+        const b = lum(parse(getComputedStyle(r).backgroundColor));
+        return Math.round(((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)) * 100) / 100;
+      })(),
+    })),
+    // id="activeInit" was emitted once per row, so a five-way fight had five
+    // elements sharing the one id.
+    markers: document.querySelectorAll("#initiativeDiv [id='activeInit']").length,
+    arrows: document.getElementById("initiativeDiv").innerText.includes("<-"),
+  };
+}"""
+
+
+@pytest.fixture(scope="module")
+def initiative_highlight(browser, live_server):
+    """Whose turn it is, as the player sees it and as the GM sees it.
+
+    The player's list used to mark the turn with an arrow revealed on the end
+    of the row; the GM's colours the row. Both views are driven here through
+    the same round so the two can be compared turn by turn.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "highlight")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1)
+                    for pair in page.url.split("?", 1)[1].split("&"))["room"]
+
+        player_errors = []
+        player = context.new_page()
+        player.on("pageerror", lambda error: player_errors.append(str(error)))
+        player.goto("%s/player.html?room=%s&charName=Vex" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_function(
+            """() => Array.from(document.getElementById("unitControlledBy").options)
+                 .some(o => o.value === "Vex")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        # Three in the order, so there is a row on either side of the marked
+        # one and the highlight has somewhere wrong to land.
+        page.click("div.tab:text-is('Encounter')")
+        page.check("#addToInit")
+        for name, hp, init, who in [("Goblin", "6", "20", "gm"),
+                                    ("Hireling", "8", "12", "Vex"),
+                                    ("Rat", "3", "4", "gm")]:
+            page.fill("#unitName", name)
+            page.fill("#unitHP", hp)
+            page.fill("#unitInit", init)
+            page.select_option("#unitControlledBy", who)
+            page.click("text=Add Unit")
+            page.wait_for_function(
+                """(who) => gmData && gmData.unitList.some(u => u.charName === who)""",
+                arg=name, timeout=HANDSHAKE_TIMEOUT)
+        page.click("div.tab:text-is('Map')")
+        page.wait_for_timeout(300)
+
+        page.click("#beginInit")
+        player.wait_for_function(
+            """() => playerData && playerData.inInit""",
+            timeout=HANDSHAKE_TIMEOUT)
+        player.wait_for_function(
+            """() => document.getElementById("initiativeDiv").children.length > 0""",
+            timeout=HANDSHAKE_TIMEOUT)
+
+        def snapshot():
+            page.wait_for_timeout(700)
+            return {
+                "turn": page.evaluate("() => gmData.initiativeCount"),
+                "player": player.evaluate(INIT_ROWS_JS),
+                "gm": page.evaluate(INIT_ROWS_JS),
+            }
+
+        turns = [snapshot()]
+        for _ in range(2):
+            page.click("#advanceInit")
+            page.wait_for_timeout(300)
+            turns.append(snapshot())
+
+        # Selecting a unit paints its row too, in the accent colour, and
+        # div.selected carries !important -- so it takes the row off the
+        # highlight. That is the GM's behaviour already; the player inherits it
+        # by using the same class.
+        player.click("#initiativeDiv > div:nth-child(2)")
+        player.wait_for_timeout(600)
+        selection = player.evaluate(INIT_ROWS_JS)
+
+        return {"turns": turns, "selection": selection,
+                "errors": errors, "playerErrors": player_errors}
+    finally:
+        context.close()
+
+
+class TestThePlayerSeesWhoseTurnItIs:
+    def test_the_active_row_is_marked(self, initiative_highlight):
+        for stage in initiative_highlight["turns"]:
+            marked = [i for i, r in enumerate(stage["player"]["rows"]) if r["active"]]
+            assert marked == [stage["turn"]], stage["turn"]
+
+    def test_and_it_is_actually_painted(self, initiative_highlight):
+        """Carrying the class is not the same as being coloured: the row is a
+        bare flex div and the .InitEntry over it is full width, so a background
+        put on the wrong one of the two would not show."""
+        for stage in initiative_highlight["turns"]:
+            rows = stage["player"]["rows"]
+            active = rows[stage["turn"]]["background"]
+            others = {r["background"] for i, r in enumerate(rows) if i != stage["turn"]}
+            assert active not in others
+            assert active not in ("rgba(0, 0, 0, 0)", "transparent")
+
+    def test_the_two_views_agree(self, initiative_highlight):
+        """The whole point: the GM and the player mark the same row the same
+        way, so neither has to translate."""
+        for stage in initiative_highlight["turns"]:
+            gm = [i for i, r in enumerate(stage["gm"]["rows"]) if r["active"]]
+            player = [i for i, r in enumerate(stage["player"]["rows"]) if r["active"]]
+            assert gm == player == [stage["turn"]]
+            assert (stage["gm"]["rows"][stage["turn"]]["background"]
+                    == stage["player"]["rows"][stage["turn"]]["background"])
+
+    def test_the_highlight_moves_with_the_turn(self, initiative_highlight):
+        """Three turns, three different rows -- a highlight painted once and
+        never moved would satisfy every assertion about a single stage."""
+        turns = [stage["turn"] for stage in initiative_highlight["turns"]]
+        assert len(set(turns)) == len(turns), turns
+        marked = [[i for i, r in enumerate(stage["player"]["rows"]) if r["active"]]
+                  for stage in initiative_highlight["turns"]]
+        assert marked == [[t] for t in turns]
+
+    def test_the_marked_row_is_readable(self, initiative_highlight):
+        """Ink on the highlight is 2.17:1, under the 3:1 the rest of the app is
+        held to. It survived on the GM's list because the legibility sweep
+        walks the tab panels and never the initiative list -- and this change
+        would have carried it over to the players."""
+        for stage in initiative_highlight["turns"]:
+            for view in ("player", "gm"):
+                row = stage[view]["rows"][stage["turn"]]
+                assert row["contrast"] >= 3, (view, stage["turn"], row)
+
+    def test_no_arrow_is_left_behind(self, initiative_highlight):
+        for stage in initiative_highlight["turns"]:
+            assert stage["player"]["arrows"] is False
+            assert stage["player"]["rows"][0]["text"] != ""
+
+    def test_no_row_carries_a_duplicated_id(self, initiative_highlight):
+        """One marker div per row, all of them id="activeInit"."""
+        for stage in initiative_highlight["turns"]:
+            assert stage["player"]["markers"] == 0
+
+    def test_the_rows_are_shaped_like_the_gms(self, initiative_highlight):
+        """The marker was the player's second child and the GM had none, which
+        is why the two views could not share the one function."""
+        for stage in initiative_highlight["turns"]:
+            assert {r["children"] for r in stage["player"]["rows"]} == {1}
+
+    def test_selecting_a_unit_still_wins_the_row(self, initiative_highlight):
+        """div.selected carries !important, so a selected row is accent rather
+        than the turn colour. That is the GM's behaviour already; the player
+        inherits it by sharing the class rather than being given its own."""
+        measured = initiative_highlight["selection"]
+        rows = measured["rows"]
+        selected = [i for i, r in enumerate(rows) if "selected" in r["classes"].split()]
+        assert selected != []
+        active = [i for i, r in enumerate(rows) if r["active"]]
+        assert active != []
+        for i in selected:
+            assert rows[i]["background"] not in ("rgba(0, 0, 0, 0)", "transparent")
+            if i not in active:
+                assert rows[i]["background"] != rows[active[0]]["background"]
+
+    def test_nothing_raised(self, initiative_highlight):
+        assert initiative_highlight["errors"] == []
+        assert initiative_highlight["playerErrors"] == []
+
+
 @pytest.fixture(scope="module")
 def panel_heights(browser, live_server):
     """The creature panel's three heights, and the tabs that move between them.
