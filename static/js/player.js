@@ -193,7 +193,10 @@ window.onload = function() {
                         field.appendChild(document.createElement("br"));
                         var box = document.createElement("input");
                         box.type = "text";
-                        box.id = "init" + i;
+                        // Named for the creature, not for where it sits in the
+                        // list. See sendInit, which has to find this again
+                        // after the list has had a chance to change.
+                        box.id = "init-" + playerData.unitList[i].uuid;
                         field.appendChild(box);
                         initForm.appendChild(field);
                     }
@@ -279,10 +282,28 @@ function sendInit() {
         tmpInit = [];
         for (i=0; i< playerData.unitList.length;i++) {
             if (playerData.unitList[i].controlledBy == charName && !playerData.unitList[i].inInit) {
-                if (Number.isNaN(parseInt(document.getElementById(`init${i}`).value)) && document.getElementById(`init${i}`).value !== ""){
+                // Found by the creature's own id rather than by its position.
+                // The boxes are drawn when the GM asks for initiative and read
+                // when the player answers, and the list changes in between: it
+                // holds only the creatures this player can see, so a monster
+                // walking into view is inserted ahead of them and moves them
+                // along by one. Keyed by position, the box looked up on the way
+                // out was one that had never been drawn, and reading it threw
+                // into the catch below -- which reports to the server and tells
+                // the player nothing. The button stopped working until a reload
+                // drew the boxes again against the list as it now stood.
+                var box = document.getElementById(`init-${playerData.unitList[i].uuid}`);
+                if (!box) {
+                    // A creature that appeared after the boxes were drawn has
+                    // none. Send a blank for it, which the server skips, so the
+                    // values still line up with the creatures it expects.
+                    tmpInit.push("");
+                    continue;
+                }
+                if (Number.isNaN(parseInt(box.value)) && box.value !== ""){
                     return
                 }
-                tmpInit.push(document.getElementById(`init${i}`).value)
+                tmpInit.push(box.value)
             }
         }
         document.getElementById("bottomDiv").style.display = "none";

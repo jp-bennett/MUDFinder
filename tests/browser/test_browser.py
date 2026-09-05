@@ -5803,3 +5803,134 @@ class TestTheJoinScreenStandsOnTheDesk:
 
     def test_nothing_raised(self, join_screen):
         assert join_screen["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def initiative_prompt(browser, live_server):
+    """Answering a request for initiative while the party finds a monster.
+
+    The boxes a player types their initiative into are drawn when the GM asks
+    and read when the player answers. The list they are drawn from holds only
+    the creatures that player can see, so it changes in between -- and a
+    monster walking into view is inserted ahead of them, moving their own
+    creature along by one.
+
+    Two players reported the button doing nothing in the beta, and this is the
+    sequence. It fails silently: the lookup throws into a catch that reports to
+    the server and tells the player nothing, so the button just stops working
+    until a reload draws the boxes again.
+    """
+    context = browser.new_context(viewport={"width": 1300, "height": 850})
+    try:
+        gm = context.new_page()
+        errors = []
+        gm.on("pageerror", lambda error: errors.append("gm: " + str(error)))
+        gm.goto(live_server + "/")
+        gm.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        gm.fill("#gameName", "initiative prompt")
+        gm.click("text=Create Game")
+        gm.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        gm.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1) for pair in gm.url.split("?", 1)[1].split("&"))["room"]
+
+        gm.fill("#mapWidth", "6")
+        gm.fill("#mapHeight", "6")
+        gm.click("text=Generate Map")
+        gm.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 36",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        # A monster the party has not found, added before the player joins so
+        # that it sits ahead of them in the list.
+        gm.evaluate(
+            """() => socket.emit("add_units", {room: room, gmKey: gmKey, count: 1,
+                 addToInitiative: false, initiativeBonus: 0,
+                 unit: {charName: "Goblin", controlledBy: "gm",
+                        x: 5, y: 5, location: [5, 5]}})"""
+        )
+        gm.wait_for_timeout(800)
+        gm.evaluate(
+            """() => socket.emit("map_edit", {room: room, gmKey: gmKey,
+                 tiles: [{newTile: "seen", xCoord: 0, yCoord: 0}]})"""
+        )
+        gm.wait_for_timeout(600)
+
+        player = context.new_page()
+        player.on("pageerror", lambda error: errors.append("player: " + str(error)))
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof playerData !== 'undefined' && playerData",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        player.wait_for_timeout(600)
+        stages = {"unitsBefore": player.evaluate(
+            "() => playerData.unitList.map(u => u.charName)")}
+
+        gm.click("text=Request initiative")
+        player.wait_for_selector("#promptDiv input", state="visible")
+        stages["boxes"] = player.evaluate(
+            """() => Array.from(document.querySelectorAll("#promptDiv input")).map(e => e.id)""")
+        player.fill("#promptDiv input", "18")
+
+        # The goblin walks into view. Moving a unit reveals ground and pushes a
+        # fresh unit list to the players, which a tile edit alone does not.
+        gm.evaluate(
+            """() => socket.emit("locate_unit", {room: room, gmKey: gmKey,
+                 selectedUnit: 0, xCoord: 0, yCoord: 0,
+                 relative_x: 8, relative_y: 8, moveType: "untracked"})"""
+        )
+        player.wait_for_function(
+            "() => playerData.unitList.length === 2", timeout=HANDSHAKE_TIMEOUT)
+        stages["unitsAfter"] = player.evaluate(
+            "() => playerData.unitList.map(u => u.charName)")
+        stages["boxesStill"] = player.evaluate(
+            """() => Array.from(document.querySelectorAll("#promptDiv input")).map(e => e.id)""")
+        stages["typedValue"] = player.input_value("#promptDiv input")
+
+        player.click("text=Send Initiative")
+        player.wait_for_timeout(1500)
+        stages["onTheServer"] = gm.evaluate(
+            """() => gmData.unitList.map(u => u.charName + "=" + u.initiative
+                                             + " inInit=" + u.inInit)""")
+        stages["promptStillOpen"] = player.is_visible("#promptDiv")
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestSendingInitiativeWhileTheListChanges:
+    def test_the_party_could_not_see_the_monster_at_first(self, initiative_prompt):
+        assert initiative_prompt["unitsBefore"] == ["Aria"]
+
+    def test_then_it_walked_into_view(self, initiative_prompt):
+        """Which moves the player's own creature from first to second."""
+        assert initiative_prompt["unitsAfter"] == ["Goblin", "Aria"]
+
+    def test_the_boxes_are_not_redrawn_underneath_them(self, initiative_prompt):
+        """Deliberate -- redrawing would throw away what they had typed."""
+        assert initiative_prompt["boxesStill"] == initiative_prompt["boxes"]
+        assert initiative_prompt["typedValue"] == "18"
+
+    def test_the_boxes_are_named_for_the_creature_not_its_place(self, initiative_prompt):
+        """A position is only true until something is inserted before it."""
+        assert len(initiative_prompt["boxes"]) == 1
+        assert initiative_prompt["boxes"][0].startswith("init-")
+        assert len(initiative_prompt["boxes"][0]) > len("init-8")
+
+    def test_the_initiative_reaches_the_server(self, initiative_prompt):
+        """The report: the button did nothing, and did it quietly."""
+        assert "Aria=18 inInit=true" in initiative_prompt["onTheServer"]
+
+    def test_the_prompt_closes(self, initiative_prompt):
+        assert initiative_prompt["promptStillOpen"] is False
+
+    def test_the_monster_is_left_out_of_the_order(self, initiative_prompt):
+        """It was not the player's to roll for."""
+        assert "Goblin=0 inInit=false" in initiative_prompt["onTheServer"]
+
+    def test_nothing_raised(self, initiative_prompt):
+        assert initiative_prompt["errors"] == []
