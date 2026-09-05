@@ -2871,7 +2871,10 @@ STATBLOCK_PANEL_JS = """() => {
     hasBlock: panel.querySelector(".statblock") !== null,
     text: panel.innerText,
     sheetName: document.getElementById("charactername").innerText,
-    unitsTab: document.getElementById("units").style.display,
+    // Whether the Units tab is actually in front, rather than what its inline
+    // display happens to say -- enableTab clears that property and lets the
+    // stylesheet decide, so a shown panel reads "" as often as "block".
+    unitsTabOpen: document.getElementById("units").offsetParent !== null,
     scrolls: getComputedStyle(panel).overflowY,
   };
 }"""
@@ -3120,7 +3123,7 @@ class TestTheStatblockOnTheUnitSheet:
 class TestReachingTheStatblock:
     def test_the_creature_list_has_an_info_button(self, unit_statblock):
         assert unit_statblock["fromList"]["name"] == "Dire Ape"
-        assert unit_statblock["fromList"]["unitsTab"] == "block"
+        assert unit_statblock["fromList"]["unitsTabOpen"] is True
 
     def test_the_info_button_also_selects_the_unit(self, unit_statblock):
         """It stops the row's own click, so it has to do the selecting itself
@@ -3137,13 +3140,13 @@ class TestReachingTheStatblock:
 
     def test_the_initiative_order_has_one_too(self, unit_statblock):
         assert unit_statblock["fromInitiative"]["name"] == "Dire Ape"
-        assert unit_statblock["fromInitiative"]["unitsTab"] == "block"
+        assert unit_statblock["fromInitiative"]["unitsTabOpen"] is True
 
     def test_double_clicking_the_token_opens_it(self, unit_statblock):
         """Single click is already select-and-move, so this needs its own
         gesture."""
         assert unit_statblock["fromMap"]["name"] == "Dire Ape"
-        assert unit_statblock["fromMap"]["unitsTab"] == "block"
+        assert unit_statblock["fromMap"]["unitsTabOpen"] is True
 
 
 class TestTheStatblockIsNotRedrawn:
@@ -5902,6 +5905,132 @@ def initiative_prompt(browser, live_server):
         context.close()
 
 
+# The player's Character tab, measured. The header was seven nested floats deep
+# and had drifted: "Save Changes" was in a fixed 80x40 box it did not fit,
+# every field was sized by a stray size="" attribute so no two columns lined
+# up, and the token hung off the right-hand edge of the window with its own
+# label cut to "Toke".
+SHEET_JS = """() => {
+  const box = (el) => {
+    const r = el.getBoundingClientRect();
+    return {top: Math.round(r.top), bottom: Math.round(r.bottom),
+            left: Math.round(r.left), right: Math.round(r.right),
+            width: Math.round(r.width), height: Math.round(r.height)};
+  };
+  const wrapper = document.getElementById("charWrapper");
+  const save = Array.from(document.querySelectorAll("#charWrapper button"))
+      .find(b => b.innerText.trim() === "Save Changes");
+  const token = document.getElementById("charTokenView");
+  const groups = [];
+  for (const g of document.querySelectorAll("#charWrapper .sheetFieldGroup")) {
+    groups.push({
+      labels: Array.from(g.querySelectorAll(".sheetFieldLabel"))
+          .map(l => ({text: l.innerText.trim(), box: box(l),
+                      clipped: l.scrollWidth > l.clientWidth + 1})),
+      // A row is one grid cell, whether that is a single input or a speed
+      // written as a pair of boxes with their units between them.
+      fields: Array.from(g.children).filter(c => !c.classList.contains("sheetFieldLabel"))
+          .map(f => ({id: f.id || f.querySelector("input, select").id, box: box(f)})),
+    });
+  }
+  return {
+    save: save ? {box: box(save), text: save.innerText.trim(),
+                  clippedDown: save.scrollHeight > save.clientHeight + 1,
+                  clippedAcross: save.scrollWidth > save.clientWidth + 1,
+                  weight: getComputedStyle(save).fontWeight} : null,
+    buttons: Array.from(document.querySelectorAll("#sheetActions button"))
+        .filter(b => b.offsetParent !== null)
+        .map(b => ({text: b.innerText.trim(), box: box(b),
+                    clippedDown: b.scrollHeight > b.clientHeight + 1})),
+    token: {box: box(token), label: document.querySelector("#sheetToken .sheetFieldLabel").innerText.trim()},
+    labels: Array.from(document.querySelectorAll("#sheetHeader .sheetFieldLabel"))
+        .map(l => ({text: l.innerText.trim(), box: box(l),
+                    clipped: l.scrollWidth > l.clientWidth + 1})),
+    header: box(document.getElementById("sheetHeader")),
+    stats: box(document.getElementById("sheetContent")),
+    panel: Object.assign(box(wrapper),
+        {client: wrapper.clientHeight, scroll: wrapper.scrollHeight,
+         padBottom: parseFloat(getComputedStyle(wrapper).paddingBottom),
+         border: parseFloat(getComputedStyle(wrapper).borderBottomWidth)}),
+    groups: groups,
+    viewport: {width: window.innerWidth, height: window.innerHeight},
+  };
+}"""
+
+
+@pytest.fixture(scope="module")
+def character_sheet(browser, live_server):
+    """A player's own Character tab, as drawn."""
+    context = browser.new_context(viewport={"width": 1400, "height": 900})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "sheet")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1) for pair in page.url.split("?", 1)[1].split("&"))["room"]
+
+        player = context.new_page()
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        player.click("div.tab:text-is('Character')")
+        player.wait_for_function(
+            """() => {
+              const el = document.getElementById("sheetCharName");
+              return el && el.getBoundingClientRect().width > 0;
+            }""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        measured = player.evaluate(SHEET_JS)
+
+        # The rewrite must not have dropped a field updatePlayer() writes back.
+        present = player.evaluate(
+            """() => {
+              const wanted = ["sheetCharName", "sheetLevel", "sheetRace",
+                              "sheetAlignment", "sheetAge", "sheetGender",
+                              "sheetSize", "sheetDeity", "sheetHomeland",
+                              "sheetHeight", "sheetWeight", "sheetHair",
+                              "sheetEyes", "sheetMovementSpeed", "sheetArmorSpeed",
+                              "sheetFlySpeed", "sheetFlyManeuverability",
+                              "sheetSwimSpeed", "sheetClimbSpeed", "sheetBurrowSpeed",
+                              "charImageView", "charTokenView"];
+              return wanted.filter(id => !document.getElementById(id));
+            }"""
+        )
+
+        # And the save still saves: type a homeland, press the button, then come
+        # back on a fresh page and see whether the server kept it. (update_player
+        # answers the sender alone, so the GM's copy is no witness here.)
+        player.fill("#sheetHomeland", "Sandpoint")
+        player.click("#sheetActions button:text-is('Save Changes')")
+        player.wait_for_timeout(400)
+        player.reload()
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        player.click("div.tab:text-is('Character')")
+        player.wait_for_function(
+            """() => document.getElementById("sheetCharName").value === "Aria" """,
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        saved = player.input_value("#sheetHomeland")
+        return {"measured": measured, "missing": present, "saved": saved,
+                "errors": errors}
+    finally:
+        context.close()
+
+
 class TestSendingInitiativeWhileTheListChanges:
     def test_the_party_could_not_see_the_monster_at_first(self, initiative_prompt):
         assert initiative_prompt["unitsBefore"] == ["Aria"]
@@ -5934,3 +6063,99 @@ class TestSendingInitiativeWhileTheListChanges:
 
     def test_nothing_raised(self, initiative_prompt):
         assert initiative_prompt["errors"] == []
+
+
+class TestThePlayersCharacterSheet:
+    def test_the_save_button_fits_its_own_label(self, character_sheet):
+        """The bug: width:80px;height:40px around "Save Changes", which wrapped
+        to two lines and spilled 18px out through the bottom border."""
+        save = character_sheet["measured"]["save"]
+        assert save is not None
+        assert save["clippedDown"] is False
+        assert save["clippedAcross"] is False
+
+    def test_no_action_button_is_clipped(self, character_sheet):
+        clipped = [b["text"] for b in character_sheet["measured"]["buttons"] if b["clippedDown"]]
+        assert clipped == []
+
+    def test_the_save_leads_the_action_row(self, character_sheet):
+        """It is the one control on the page that writes anything back, so it
+        comes first and is drawn heavier than the rest."""
+        buttons = character_sheet["measured"]["buttons"]
+        assert buttons[0]["text"] == "Save Changes"
+        save = character_sheet["measured"]["save"]
+        others = [b for b in buttons if b["text"] != "Save Changes"]
+        assert int(save["weight"]) > 400
+        assert all(b["box"]["top"] == save["box"]["top"] for b in others)
+
+    def test_the_action_row_is_below_the_header(self, character_sheet):
+        measured = character_sheet["measured"]
+        assert measured["buttons"][0]["box"]["top"] >= measured["header"]["bottom"]
+        assert measured["stats"]["top"] >= measured["buttons"][0]["box"]["bottom"]
+
+    def test_the_fields_in_a_group_are_one_width(self, character_sheet):
+        """Every field used to carry its own size="" -- 202px, 67px, 49px, 76px,
+        58px -- so no two boxes on the sheet were the same size."""
+        for group in character_sheet["measured"]["groups"]:
+            widths = {f["box"]["width"] for f in group["fields"]}
+            assert len(widths) <= 1, group
+
+    def test_the_fields_in_a_group_share_a_left_edge(self, character_sheet):
+        for group in character_sheet["measured"]["groups"]:
+            lefts = {f["box"]["left"] for f in group["fields"]}
+            assert len(lefts) <= 1, group
+
+    def test_every_field_is_labelled_on_its_own_row(self, character_sheet):
+        for group in character_sheet["measured"]["groups"]:
+            for label, field in zip(group["labels"], group["fields"]):
+                assert label["box"]["right"] <= field["box"]["left"]
+                assert abs(label["box"]["top"] - field["box"]["top"]) < 12, (label, field)
+
+    def test_no_label_is_cut_off(self, character_sheet):
+        """Every label on the header, the token's included -- that one used to
+        read "Toke", the rest of it past the right-hand edge of the window."""
+        measured = character_sheet["measured"]
+        cut = [l["text"] for l in measured["labels"] if l["clipped"]]
+        assert cut == []
+        assert measured["token"]["label"] == "Token"
+
+    def test_the_token_sits_inside_the_window(self, character_sheet):
+        """It hung 41px off the right-hand edge, taking its label with it."""
+        measured = character_sheet["measured"]
+        assert measured["token"]["box"]["right"] <= measured["viewport"]["width"]
+        assert measured["token"]["box"]["left"] >= 0
+
+    def test_the_header_leaves_room_for_the_stats(self, character_sheet):
+        """Laid out down a single column it came to 640px, which pushed the
+        ability scores off the bottom of a 900px window."""
+        measured = character_sheet["measured"]
+        assert measured["header"]["height"] < 300
+        assert measured["stats"]["top"] < measured["viewport"]["height"]
+
+    def test_the_sheet_ends_inside_its_panel(self, character_sheet):
+        """It was sized by hand -- an absolute box at calc(100% - 200px), then
+        a resize handler subtracting the header again -- and 200px stopped
+        being the header's height, so the sheet ran 60px past the foot of the
+        paper and 44px below the window, and those rows could not be reached."""
+        measured = character_sheet["measured"]
+        panel = measured["panel"]
+        floor = panel["bottom"] - panel["padBottom"] - panel["border"]
+        assert measured["stats"]["bottom"] <= floor
+        assert measured["stats"]["bottom"] <= measured["viewport"]["height"]
+
+    def test_the_panel_itself_does_not_scroll(self, character_sheet):
+        """The sheet scrolls; the panel around it holds still, or the header
+        scrolls away from under the tab bar."""
+        panel = character_sheet["measured"]["panel"]
+        assert panel["scroll"] <= panel["client"]
+
+    def test_no_field_was_dropped_in_the_rewrite(self, character_sheet):
+        assert character_sheet["missing"] == []
+
+    def test_the_save_still_saves(self, character_sheet):
+        """The button moved out of the speed fields into its own row, so the
+        edit it sends still has to reach the server and outlive a reload."""
+        assert character_sheet["saved"] == "Sandpoint"
+
+    def test_nothing_raised(self, character_sheet):
+        assert character_sheet["errors"] == []
