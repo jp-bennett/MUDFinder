@@ -792,6 +792,31 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
     display: inline-block;
     vertical-align: top;
 }
+/* The join form is the only screen with no panel of its own: a bare form
+   standing on the desk, so its dark text landed straight on the woodgrain and
+   was unreadable. It is a formCard like every other form now, and this places
+   that card -- centred and bounded, rather than the inline-block flow the
+   cards use when several sit side by side in a tab. */
+#joinDiv.formCard {
+    display: block;
+    max-width: 30em;
+    margin: 4em auto;
+    padding: 10px 24px 20px;
+}
+#joinDiv input, #joinDiv select {
+    width: 100%;
+    box-sizing: border-box;
+}
+#joinDiv #joinGameButton {
+    margin-top: 14px;
+}
+/* A note under a field label, for the field whose name does not explain it. */
+.fieldHint {
+    color: var(--ink-faint);
+    font-size: 0.85em;
+    margin-bottom: 2px;
+}
+
 /* The name of a field sitting on the same line as its control. */
 .fieldLabelInline {
     font-variant: small-caps;

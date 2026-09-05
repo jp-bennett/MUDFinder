@@ -5689,3 +5689,117 @@ class TestATurnedTokenReachesEveryone:
 class TestTheRotationRaisedNothing:
     def test_nothing_raised(self, token_rotation):
         assert token_rotation["errors"] == []
+
+
+JOIN_SCREEN_JS = """
+() => {
+  const transparent = value =>
+    value === "transparent" || value === "rgba(0, 0, 0, 0)";
+  const join = document.getElementById("joinDiv");
+  const style = getComputedStyle(join);
+  const field = document.getElementById("charName");
+  const icon = document.getElementById("charShortName");
+  return {
+    visible: style.display !== "none",
+    isCard: join.classList.contains("formCard"),
+    transparent: transparent(style.backgroundColor),
+    background: style.backgroundColor,
+    color: style.color,
+    deskBehind: getComputedStyle(document.body).backgroundColor,
+    labels: Array.from(join.querySelectorAll(".fieldLabel")).map(e => e.innerText),
+    fieldLeft: field.getBoundingClientRect().left,
+    iconLeft: icon.getBoundingClientRect().left,
+    fieldWidth: field.getBoundingClientRect().width,
+    iconWidth: icon.getBoundingClientRect().width,
+    box: join.getBoundingClientRect(),
+  };
+}
+"""
+
+
+@pytest.fixture(scope="module")
+def join_screen(browser, live_server):
+    """The player's join form, before they have joined anything.
+
+    It is the only screen with no panel of its own: a bare form standing on the
+    desk. The desk is dark wood and the form's text is dark ink, so with
+    nothing between them the form was unreadable.
+    """
+    context = browser.new_context(viewport={"width": 1000, "height": 700})
+    try:
+        gm = context.new_page()
+        errors = []
+        gm.on("pageerror", lambda error: errors.append("gm: " + str(error)))
+        gm.goto(live_server + "/")
+        gm.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        gm.fill("#gameName", "join screen")
+        gm.click("text=Create Game")
+        gm.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        room = dict(pair.split("=", 1) for pair in gm.url.split("?", 1)[1].split("&"))["room"]
+
+        page = context.new_page()
+        page.on("pageerror", lambda error: errors.append("player: " + str(error)))
+        page.goto("%s/player.html?room=%s" % (live_server, room))
+        page.wait_for_selector("#joinDiv", state="visible")
+        stages = {"joining": page.evaluate(JOIN_SCREEN_JS)}
+
+        page.select_option("#playerColor", "custom")
+        page.wait_for_timeout(200)
+        stages["customColourShown"] = page.is_visible("#customColor")
+        page.select_option("#playerColor", "dodgerblue")
+
+        page.fill("#charName", "Aria")
+        page.fill("#charShortName", "Ar")
+        page.click("#joinGameButton")
+        page.wait_for_selector("#screenDiv", state="visible")
+        page.wait_for_timeout(800)
+        stages["joined"] = page.evaluate(
+            """() => ({hidden: getComputedStyle(document.getElementById("joinDiv")).display === "none",
+                       listed: document.getElementById("unitsDiv").innerText})""")
+        stages["errors"] = errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestTheJoinScreenStandsOnTheDesk:
+    def test_the_form_is_shown_before_joining(self, join_screen):
+        assert join_screen["joining"]["visible"]
+
+    def test_it_is_a_sheet_like_every_other_form(self, join_screen):
+        """Rather than a colour of its own, so it cannot drift from the rest."""
+        assert join_screen["joining"]["isCard"]
+
+    def test_it_is_not_transparent(self, join_screen):
+        """The bug: dark ink straight onto dark wood."""
+        assert join_screen["joining"]["transparent"] is False
+
+    def test_it_is_paper_on_a_darker_desk(self, join_screen):
+        paper = join_screen["joining"]["background"]
+        desk = join_screen["joining"]["deskBehind"]
+        assert paper != desk
+        assert paper == "rgb(245, 239, 223)"
+
+    def test_its_fields_are_labelled_and_aligned(self, join_screen):
+        measured = join_screen["joining"]
+        assert len(measured["labels"]) >= 3
+        assert measured["fieldLeft"] == measured["iconLeft"]
+        assert measured["fieldWidth"] == measured["iconWidth"]
+
+    def test_it_sits_within_the_window(self, join_screen):
+        box = join_screen["joining"]["box"]
+        assert box["left"] >= 0 and box["right"] <= 1000
+        assert box["top"] >= 0
+
+    def test_the_custom_colour_field_still_opens(self, join_screen):
+        assert join_screen["customColourShown"]
+
+    def test_joining_still_works(self, join_screen):
+        assert join_screen["joined"]["hidden"]
+        assert "Aria" in join_screen["joined"]["listed"]
+
+    def test_nothing_raised(self, join_screen):
+        assert join_screen["errors"] == []
