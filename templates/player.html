@@ -10,13 +10,14 @@
 </head>
 <body>
 
-  <div id="joinDiv" style="padding:50px;">
-    Your session awaits!<br>
-    Character Name: <br>
+  <div id="joinDiv" class="formCard">
+    <div class="sectionHeading">Your session awaits</div>
+    <label class="fieldLabel" for="charName">Character Name</label>
     <input type="text" id="charName"><br>
-    Map Icon (1-3 character abbreviation used when map is zoomed out):<br>
+    <label class="fieldLabel" for="charShortName">Map Icon</label>
+    <div class="fieldHint">1-3 characters, used when the map is zoomed out</div>
     <input type="text" id="charShortName"><br>
-    DisplayColor:<br>
+    <label class="fieldLabel" for="playerColor">Display Colour</label>
     <select id="playerColor" onchange="if (this.value == 'custom') { document.getElementById('customColorDiv').style.display = 'block'} else {document.getElementById('customColorDiv').style.display = 'none'}">
       <option value="blueviolet" style="color:blueviolet;">blueviolet</option>
       <option value="darkorange" style="color:darkorange;">darkorange</option>
@@ -34,7 +35,7 @@
       <option value="custom" style="color:black;">custom</option>
     </select><br>
     <div style="display:none;" id="customColorDiv">
-      Custom Css color:<br>
+      <label class="fieldLabel" for="customColor">Custom CSS colour</label>
       <input type="text" id="customColor"><br>
     </div>
     <button id="joinGameButton" onclick="joinGame()">Join Game</button>
