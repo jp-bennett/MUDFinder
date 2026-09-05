@@ -620,7 +620,11 @@ function enableTab(tabName) {
             if (children[x].id !== "leftPopButton")
                 children[x].style.display = "none";
         }
-        document.getElementById(tabName).style.display="block";
+        // Cleared rather than set to "block": an inline display beats the
+        // stylesheet, and the character sheet lays its header, its actions and
+        // the sheet itself out as grid rows. Every panel here is a div, so
+        // clearing the inline value leaves the rest of them block as before.
+        document.getElementById(tabName).style.display = "";
         // The handle for the panel under the map goes with the map. It sits
         // outside #activeTabDiv -- it has to, since .mapSheet clips its
         // contents and the tab straddles that edge -- so the loop above never

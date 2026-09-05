@@ -44,7 +44,7 @@
   <div id="screenDiv" class="screenDiv" style="display:none;">
     <div id="tabsDiv" class="tabsDiv">
       <div class="tab tabActive" data-tab="mapWrapper" onClick="enableTab('mapWrapper')">Map</div>
-      <div class="tab" data-tab="charWrapper" onClick="enableTab('charWrapper'); hackSizes();">Character</div>
+      <div class="tab" data-tab="charWrapper" onClick="enableTab('charWrapper')">Character</div>
 
       <div class="tab" data-tab="inventory" onClick="enableTab('inventory')">Inventory</div>
       <div class="tab" data-tab="lore" onClick="enableTab('lore')">Lore</div>
@@ -93,88 +93,101 @@
 
         </div><!--mapWrapper-->
         <div id="charWrapper" class="tabSheet" style="line-height: 1.7;">
-          <div style="width:100%; overflow:auto" id="sheetHeader">
-            <img style="float:left;max-width:200px;max-height:200px;" id="charImageView" src="static/images/profile.svg" onclick="imageUpload(this, 'charImage', charName)">
+          <div id="sheetHeader">
+            <img id="charImageView" src="static/images/profile.svg" onclick="imageUpload(this, 'charImage', charName)">
 
-            <div style="float:left;">
-              <div style="float:left;">
-                <div style="float:left; padding:5px;">
-                  Name:<br>
-                  Level:<br>
-                  Race:
-                </div>
-                <div style="float:left; padding:1px;">
-                  <input id="sheetCharName" readonly><br>
-                  <input id="sheetLevel" value="Commoner (1)"><br>
-                  <input id="sheetRace" value="Human" size="5">
-                </div>
-                <div style="padding:5px; float:left;">
-                  Alignment:
-                  <select id="sheetAlignment">
-                    <option value="LG">LG</option>
-                    <option value="NG">NG</option>
-                    <option value="CG">CG</option>
-                    <option value="LN">LN</option>
-                    <option value="N" selected="selected">N</option>
-                    <option value="CN">CN</option>
-                    <option value="LE">LE</option>
-                    <option value="NE">NE</option>
-                    <option value="CE">CE</option>
-                  </select>
-                  <br>
-                  Age:  <input id="sheetAge" size="3" value=""><br>
-                  Gender: <input id="sheetGender" size="4">
-                </div>
-                <div style="padding:5px; float:left;">
-                  Size:
-                  <select id="sheetSize" onchange = "sizeUpdate()">
-                    <option value="huge">huge</option>
-                    <option value="large">large</option>
-                    <option value="medium" selected="selected">medium</option>
-                    <option value="small">small</option>
-                    <option value="tiny">tiny</option>
-                  </select><br>
-                  Deity: <input id="sheetDeity" size="6"><br>
-                  Homeland: <input id="sheetHomeland" size="6">
-                </div>
-                <div style="padding:5px; float:left;">
-                  Height: <input size="4" id="sheetHeight"> Weight: <input size="4" id="sheetWeight"><br>
-                  Hair: <input size="4" id="sheetHair"> Eyes: <input size="4" id="sheetEyes"><br>
-                </div>
-
+            <div id="sheetIdentity">
+              <div class="sheetFieldGroup">
+                <label class="sheetFieldLabel" for="sheetCharName">Name</label>
+                <input id="sheetCharName" readonly>
+                <label class="sheetFieldLabel" for="sheetLevel">Level</label>
+                <input id="sheetLevel" value="Commoner (1)">
+                <label class="sheetFieldLabel" for="sheetRace">Race</label>
+                <input id="sheetRace" value="Human">
               </div>
-            <div style="/*float:left;*/">
-              <div style="padding:5px; float:left;">
-                Speed (land): <input size="2" class="ft" id="sheetMovementSpeed" onchange="setSpeeds()"><span class="ft">ft</span> <input size="2" class="sq" id="sheetMovementSpeedSQ"><span class="sq">sq</span><br>
-                With Armor: <input size="2" class="ft" id="sheetArmorSpeed" onchange="setSpeeds()"><span class="ft">ft</span> <input size="2" class="sq" id="sheetArmorSpeedSQ"><span class="sq">sq</span>
+              <div class="sheetFieldGroup">
+                <label class="sheetFieldLabel" for="sheetAlignment">Alignment</label>
+                <select id="sheetAlignment">
+                  <option value="LG">LG</option>
+                  <option value="NG">NG</option>
+                  <option value="CG">CG</option>
+                  <option value="LN">LN</option>
+                  <option value="N" selected="selected">N</option>
+                  <option value="CN">CN</option>
+                  <option value="LE">LE</option>
+                  <option value="NE">NE</option>
+                  <option value="CE">CE</option>
+                </select>
+                <label class="sheetFieldLabel" for="sheetAge">Age</label>
+                <input id="sheetAge" value="">
+                <label class="sheetFieldLabel" for="sheetGender">Gender</label>
+                <input id="sheetGender">
               </div>
-              <div style="padding:5px; float:left;">
-                Fly: <input size="2" class="ft" id="sheetFlySpeed"><span class="ft">ft</span> <input size="4" id="sheetFlyManeuverability"> maneuverability <br>
-                Swim: <input size="2" class="ft" id="sheetSwimSpeed"><span class="ft">ft</span>
-                Climb: <input size="2" class="ft" id="sheetClimbSpeed"><span class="ft">ft</span>
-                Burrow: <input size="2" class="ft" id="sheetBurrowSpeed"><span class="ft">ft</span>
+              <div class="sheetFieldGroup">
+                <label class="sheetFieldLabel" for="sheetSize">Size</label>
+                <select id="sheetSize" onchange="sizeUpdate()">
+                  <option value="huge">huge</option>
+                  <option value="large">large</option>
+                  <option value="medium" selected="selected">medium</option>
+                  <option value="small">small</option>
+                  <option value="tiny">tiny</option>
+                </select>
+                <label class="sheetFieldLabel" for="sheetDeity">Deity</label>
+                <input id="sheetDeity">
+                <label class="sheetFieldLabel" for="sheetHomeland">Homeland</label>
+                <input id="sheetHomeland">
               </div>
-              <div style="padding:5px; float:left;">
-                <button style="width:80px;height:40px;float:left; text-align:center;" onclick="updatePlayer()">Save Changes</button>
-                <button style="width:80px;height:40px; text-align:center;" onclick="doRest()">Rest</button>
-                <button style="width:80px;height:40px; text-align:center;">LevelUp</button>
+              <div class="sheetFieldGroup">
+                <label class="sheetFieldLabel" for="sheetHeight">Height</label>
+                <input id="sheetHeight">
+                <label class="sheetFieldLabel" for="sheetWeight">Weight</label>
+                <input id="sheetWeight">
+                <label class="sheetFieldLabel" for="sheetHair">Hair</label>
+                <input id="sheetHair">
+                <label class="sheetFieldLabel" for="sheetEyes">Eyes</label>
+                <input id="sheetEyes">
               </div>
 
+              <div class="sheetFieldGroup sheetSpeeds">
+                <label class="sheetFieldLabel" for="sheetMovementSpeed">Speed</label>
+                <span><input class="ft" id="sheetMovementSpeed" onchange="setSpeeds()"><span class="ft">ft</span><input class="sq" id="sheetMovementSpeedSQ"><span class="sq">sq</span></span>
+                <label class="sheetFieldLabel" for="sheetArmorSpeed">In armour</label>
+                <span><input class="ft" id="sheetArmorSpeed" onchange="setSpeeds()"><span class="ft">ft</span><input class="sq" id="sheetArmorSpeedSQ"><span class="sq">sq</span></span>
+                <label class="sheetFieldLabel" for="sheetFlySpeed">Fly</label>
+                <span><input class="ft" id="sheetFlySpeed"><span class="ft">ft</span><input id="sheetFlyManeuverability" class="sheetManeuver"> man.</span>
+              </div>
+              <div class="sheetFieldGroup sheetSpeeds">
+                <label class="sheetFieldLabel" for="sheetSwimSpeed">Swim</label>
+                <span><input class="ft" id="sheetSwimSpeed"><span class="ft">ft</span></span>
+                <label class="sheetFieldLabel" for="sheetClimbSpeed">Climb</label>
+                <span><input class="ft" id="sheetClimbSpeed"><span class="ft">ft</span></span>
+                <label class="sheetFieldLabel" for="sheetBurrowSpeed">Burrow</label>
+                <span><input class="ft" id="sheetBurrowSpeed"><span class="ft">ft</span></span>
+              </div>
             </div>
-            <div style="/*float:left;*/ clear:both;">
-              <button onclick="showSheetPage('sheetPageOne')">Front Page</button>
-              <button onclick="showSheetPage('sheetSpellcastingPage')">Spellcasting</button>
-              <button style="display:none;" onclick="showSheetPage('sheetSpellBookPage')" id="spellbookButton">Spellbook</button>
-              <button style="display:none;" onclick="showSheetPage('sheetPreparedSpellPage')" id="spellPreparedSpellsButton">Prepared Spells</button>
-            </div>
-            </div>
-          <div style="overflow:auto;">
-              Token:<br>
-            <img id="charTokenView" src="static/images/profile.svg" width="100px" onclick="imageUpload(this, 'charToken', charName)">
+
+            <div id="sheetToken">
+              <div class="sheetFieldLabel">Token</div>
+              <img id="charTokenView" src="static/images/profile.svg" onclick="imageUpload(this, 'charToken', charName)">
             </div>
           </div>
 
-          <div style="overflow: auto;height: calc(100% - 200px);position: absolute; width: calc(100% - 40px);" id="sheetContent">
+          <!-- The save is the one control on this page that writes anything
+               back, so it leads and is marked as the primary action. It used to
+               sit at the end of the speed fields in a fixed 80x40 box, where
+               "Save Changes" did not fit and spilled out under the border. -->
+          <div id="sheetActions">
+            <button class="primaryAction" onclick="updatePlayer()">Save Changes</button>
+            <button onclick="doRest()">Rest</button>
+            <button>LevelUp</button>
+            <span class="sheetActionsSpacer"></span>
+            <button onclick="showSheetPage('sheetPageOne')">Front Page</button>
+            <button onclick="showSheetPage('sheetSpellcastingPage')">Spellcasting</button>
+            <button style="display:none;" onclick="showSheetPage('sheetSpellBookPage')" id="spellbookButton">Spellbook</button>
+            <button style="display:none;" onclick="showSheetPage('sheetPreparedSpellPage')" id="spellPreparedSpellsButton">Prepared Spells</button>
+          </div>
+
+          <div id="sheetContent">
             <div class="sheetPage" id="sheetPageOne">
               <div style="overflow:auto; width:495px; float:left;" id="sheetLeftColumn">
                 <div style="text-align:center; float:left;     margin-right: 20px;">

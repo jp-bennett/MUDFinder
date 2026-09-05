@@ -22,7 +22,6 @@ var effects;
 mapBackground = "static/images/mapbackground.jpg";
 
 const isGM = false;
-window.addEventListener("resize", hackSizes);
 window.onload = function() {
     try {
         gpTableSavedHTML = document.getElementById("gpTable").innerHTML;
@@ -1373,10 +1372,6 @@ function displaySpellSlots() {
                 document.getElementById("spellSlotsLVL" + l).lastChild.onclick = (function(l) { return function() { castSpellSlot(l) } })(l);
                 }
         }
-}
-function hackSizes() {
-    headerheights = document.getElementById("sheetHeader").offsetHeight + document.getElementById("tabsDiv").offsetHeight + 20;
-    document.getElementById("sheetContent").style.height = `calc(100% - ${headerheights}px)`;
 }
 function addSpell(selectionSource, destination) {
     spellSelectionDestination = destination;
