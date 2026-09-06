@@ -260,8 +260,25 @@ input:focus, select:focus, textarea:focus {
     border-radius: var(--radius-panel);
     background: var(--paper);
 }
+/* Header, actions and then the sheet itself, in that order down the panel.
+   The sheet used to be absolutely positioned at height:calc(100% - 200px),
+   200px being roughly what the header came to at the time -- so once the
+   header changed size the box ran 44px below the bottom of the window and the
+   last rows of it could not be scrolled to at all. It fills whatever is left
+   instead. */
 #charWrapper {
     margin-left:40px;
+    /* Grid rather than flex: the sheet is a minmax(0, 1fr) track, which is
+       sized from what is left over. A flex item is sized by shrinking it from
+       its content height instead, and a sheet 1868px tall in an 806px panel
+       does not land on the pixel. */
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    overflow: hidden;
+}
+#sheetContent {
+    overflow: auto;
+    min-height: 0;
 }
 #lore {
     /* No height here. An id beats a class, so height:100% overrode the sheet's
@@ -1992,4 +2009,109 @@ input.hp {
     font-style: italic;
     opacity: 0.7;
     padding: 4px 0;
+}
+
+/* ---- The player's character sheet header ----------------------------------
+   It was a stack of floated divs, each with its own padding and its own idea
+   of how wide an input should be: seven different field widths across one row,
+   and two fields in the same column starting 32px apart. Laid out as label and
+   field pairs in a grid instead, so a column lines up because it is a column
+   rather than because the sizes happened to add up. */
+#sheetHeader {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 8px 12px 0;
+    width: 100%;
+    box-sizing: border-box;
+    overflow: auto;
+}
+#charImageView {
+    max-width: 116px;
+    max-height: 116px;
+    cursor: pointer;
+}
+/* flex-basis 0 rather than auto: with auto it claims the width its content
+   would like, which pushed the token onto a line of its own and made the
+   header tall enough to drive the ability scores off the bottom of the
+   window. */
+#sheetIdentity {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 22px;
+    flex: 1 1 0;
+    min-width: 0;
+}
+/* Label in the first column, control in the second. The controls share a width
+   so the boxes down a group line up with each other. */
+.sheetFieldGroup {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 2px 8px;
+    min-width: 0;
+}
+.sheetFieldLabel {
+    font-variant: small-caps;
+    letter-spacing: 0.05em;
+    color: var(--ink-faint);
+    text-align: right;
+    white-space: nowrap;
+}
+.sheetFieldGroup input,
+.sheetFieldGroup select {
+    width: 9em;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+/* The speeds carry their unit beside them, so their boxes are narrower and the
+   unit sits in the same cell rather than pushing the next label along. */
+.sheetSpeeds input.ft,
+.sheetSpeeds input.sq {
+    width: 3.2em;
+}
+.sheetSpeeds input.sheetManeuver {
+    width: 4.5em;
+}
+.sheetSpeeds span.ft,
+.sheetSpeeds span.sq {
+    color: var(--ink-faint);
+    margin: 0 6px 0 2px;
+}
+/* Kept out of the flex row's stretch so it cannot be pushed off the edge of
+   the window, which is what clipped it to "Toke" before. */
+#sheetToken {
+    flex: 0 0 auto;
+    text-align: center;
+}
+#sheetToken img {
+    width: 84px;
+    cursor: pointer;
+    display: block;
+}
+/* One row of actions under the header rather than three buttons tucked in
+   beside the speeds. Sized by their text, so nothing spills out of them. */
+#sheetActions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--rule);
+    margin-top: 8px;
+}
+#sheetActions button {
+    height: auto;
+    width: auto;
+    white-space: nowrap;
+    padding: 6px 12px;
+}
+.sheetActionsSpacer {
+    flex: 1 1 auto;
+}
+/* The one control on the page that writes anything back. */
+button.primaryAction {
+    font-weight: bold;
+    border-color: var(--ink-soft);
 }
