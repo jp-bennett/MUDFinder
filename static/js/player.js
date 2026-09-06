@@ -197,6 +197,12 @@ window.onload = function() {
                         // after the list has had a chance to change.
                         box.id = "init-" + playerData.unitList[i].uuid;
                         field.appendChild(box);
+                        // Roll here, or roll at the table and type it in.
+                        field.appendChild(rollInitiativeButton(
+                            playerData.unitList[i],
+                            (function (unitNum) {
+                                return function () { rollInitiative(unitNum); };
+                            })(playerData.unitList[i].unitNum)));
                         initForm.appendChild(field);
                     }
                 }
@@ -206,6 +212,12 @@ window.onload = function() {
                 send.addEventListener("click", function () { sendInit(); });
                 prompt.appendChild(send);
                 document.getElementById("promptDiv").style.display = "block";
+            } else if (!playerData.playerList[charName].requestInit
+                       && document.getElementById("promptDiv").innerHTML !== "") {
+                // Nothing left to answer. Sending took the prompt down itself;
+                // rolling the last one goes through the server, so the prompt
+                // has to come down on the update that comes back.
+                hidePrompt();
             }
         requestedUpdate = false;
 
@@ -274,6 +286,19 @@ function advanceInit() {
     hideBottomDiv();
     socket.emit('advance_init', {room: room, charName: charName});
 }
+function hidePrompt() {
+    document.getElementById("bottomDiv").style.display = "none";
+    document.getElementById("activeTabDiv").style.height = "calc(100% - 40px)";
+    document.getElementById("promptDiv").style.display = "none";
+    document.getElementById("promptDiv").innerHTML = "";
+}
+
+// The server rolls it, so a player cannot decide what their own d20 said.
+function rollInitiative(unitNum) {
+    socket.emit('roll_initiative',
+                {room: room, charName: charName, unitNum: unitNum});
+}
+
 function sendInit() {
         try {
         console.log('Sending...');
@@ -305,10 +330,7 @@ function sendInit() {
                 tmpInit.push(box.value)
             }
         }
-        document.getElementById("bottomDiv").style.display = "none";
-        document.getElementById("activeTabDiv").style.height = "calc(100% - 40px)";
-        document.getElementById("promptDiv").style.display = "none";
-        document.getElementById("promptDiv").innerHTML = "";
+        hidePrompt();
         socket.emit('send_initiative', {initiative: tmpInit, charName: charName, room: room});
     } catch (e) {
         socket.emit("error_handle", room, e);

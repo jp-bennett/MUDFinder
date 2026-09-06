@@ -25,6 +25,14 @@ class Unit(object):
         self.type = default(unitdict, "type", "mob")
         self.HD = default(unitdict, "HD", 1)
         self.initiative = default(unitdict, "initiative", 0)
+        # In the order but still owing a roll: the GM has asked for initiative
+        # and this creature has a slot at the foot of the list with a box in
+        # it, rather than being absent until a number turns up.
+        self.awaitingInit = default(unitdict, "awaitingInit", False)
+        # What this creature adds to an initiative roll, over its DEX. It was
+        # written onto the unit by update_player and never declared here, so it
+        # reached no client and did not survive a save.
+        self.miscToInit = default(unitdict, "miscToInit", "")
         self.revealsMap = default(unitdict, "revealsMap", False)
         self.perception = default(unitdict, "perception", 0)
         # How this creature copes with the light levels painted on the map.
@@ -115,6 +123,8 @@ class Unit(object):
             "type": self.type,
             "HD": self.HD,
             "initiative": self.initiative,
+            "awaitingInit": self.awaitingInit,
+            "miscToInit": self.miscToInit,
             "revealsMap": self.revealsMap,
             "perception": self.perception,
             "darkvision": self.darkvision,
