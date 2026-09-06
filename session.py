@@ -184,28 +184,50 @@ class Session(object):
         for x in range(len(self.unitList)):
             self.unitList[x].unitNum = x
 
-    def insert_initiative(self, creature):
-        if not creature.initiative: return
-        if len(self.initiativeList) == 0:
-            self.initiativeList.insert(0, creature)
-            initNum = 0
-            for x in self.initiativeList:
-                x.initNum = initNum
-                initNum += 1
+    def renumber_initiative(self):
+        """initNum is a creature's place in the order, and the client indexes
+        the list by it, so it has to be redone whenever the order changes."""
+        for position, creature in enumerate(self.initiativeList):
+            creature.initNum = position
+
+    def await_initiative(self, creature):
+        """Give a creature a slot in the order with no score in it yet.
+
+        The GM asks the party for initiative and the party rolls at their own
+        pace; before this, a character simply was not in the list until their
+        number arrived, so the GM had no way to see who they were waiting on
+        and nowhere to type a number a player had called across the table.
+
+        The slot goes at the foot of the list and stays there until it has a
+        score. inInit is deliberately left alone: it means "has taken a place
+        in the order", which this creature has not done yet, and the player's
+        prompt and send_initiative both go by it.
+        """
+        if creature in self.initiativeList:
             return
-        for x in range(len(self.initiativeList)):
-            if int(self.initiativeList[x].initiative) <= int(creature.initiative):
-                self.initiativeList.insert(x, creature)
-                initNum = 0
-                for x in self.initiativeList:
-                    x.initNum = initNum
-                    initNum += 1
-                return
+        creature.awaitingInit = True
+        # Blank rather than 0, so the row shows an empty box instead of a score
+        # the creature has not rolled.
+        creature.initiative = ""
         self.initiativeList.append(creature)
-        initNum = 0
-        for x in self.initiativeList:
-            x.initNum = initNum
-            initNum += 1
+        self.renumber_initiative()
+
+    def insert_initiative(self, creature):
+        if not creature.initiative:
+            return
+        creature.awaitingInit = False
+        if creature in self.initiativeList:
+            self.initiativeList.remove(creature)
+        # Above the first creature it beats -- and above every creature still
+        # waiting on a roll, whatever is in their slot.
+        position = len(self.initiativeList)
+        for x in range(len(self.initiativeList)):
+            entry = self.initiativeList[x]
+            if entry.awaitingInit or int(entry.initiative) <= int(creature.initiative):
+                position = x
+                break
+        self.initiativeList.insert(position, creature)
+        self.renumber_initiative()
 
     def player_json(self):
         tmpplayerList = {}
