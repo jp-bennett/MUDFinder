@@ -1576,3 +1576,103 @@ class TestAStaircaseIsNotShownThroughTheFog:
         room.mapData["mapArray"][1][1]["secret"] = True
         player_map = room.player_map()
         assert "warp" not in player_map["mapArray"][1][1]
+
+
+class TestWhatPlayersSeeOfTheInitiativeOrder:
+    """A creature the party has not found should not be named to them.
+
+    The unit list was already filtered by whether the creature's tile had been
+    explored. The initiative list was not, so a monster waiting in an unlit
+    room announced itself there by name and by its count.
+
+    It cannot simply be dropped from the list. initiativeCount is a plain index
+    into it on the client -- it decides whose turn is highlighted, and whether
+    a player is shown the button to end their turn -- so removing entries would
+    slide every index after them. The entry stays; what is in it does not.
+    """
+
+    @pytest.fixture
+    def ambush(self):
+        session = Session("room-1", "key-1", "Ambush")
+        session.mapData["mapArray"] = [[
+            {"tile": "floorTile", "walkable": True, "seen": x == 0,
+             "secret": False, "x": x, "y": 0}
+            for x in range(3)]]
+        aria = make_player(charName="Aria", initiative=18, inInit=True)
+        aria.location = [0, 0]          # on the explored square
+        session.unitList.append(aria)
+        session.playerList["Aria"] = aria
+
+        lurker = make_unit(charName="Lurker", initiative=25, inInit=True,
+                           controlledBy="gm")
+        lurker.location = [0, 2]        # on an unexplored square
+        session.unitList.append(lurker)
+
+        session.initiativeList = [lurker, aria]
+        session.inInit = True
+        session.number_units()
+        return session
+
+    def test_the_hidden_creature_is_not_named(self, ambush):
+        assert ambush.player_json()["initiativeList"][0]["charName"] == "?"
+
+    def test_its_initiative_count_is_not_given_away(self, ambush):
+        assert ambush.player_json()["initiativeList"][0]["initiative"] == ""
+
+    def test_its_position_is_not_given_away(self, ambush):
+        hidden = ambush.player_json()["initiativeList"][0]
+        assert (hidden["x"], hidden["y"]) == (-1, -1)
+        assert hidden["movePath"] == []
+
+    def test_nothing_else_of_it_is_sent_at_all(self, ambush):
+        """Built from scratch rather than blanked, so a field nobody thought
+        about cannot leak through it."""
+        assert set(ambush.player_json()["initiativeList"][0]) == {
+            "charName", "initiative", "controlledBy", "unitNum",
+            "x", "y", "movePath", "distance", "size", "color"}
+
+    def test_the_order_keeps_its_length_and_its_places(self, ambush):
+        order = ambush.player_json()["initiativeList"]
+        assert len(order) == 2
+        assert order[1]["charName"] == "Aria"
+
+    def test_a_creature_on_explored_ground_is_named(self, ambush):
+        ambush.mapData["mapArray"][0][2]["seen"] = True
+        assert ambush.player_json()["initiativeList"][0]["charName"] == "Lurker"
+
+    def test_the_party_still_sees_itself_in_full(self, ambush):
+        aria = ambush.player_json()["initiativeList"][1]
+        assert aria["charName"] == "Aria"
+        assert aria["initiative"] == 18
+
+    def test_the_hidden_creature_is_kept_out_of_the_unit_list_too(self, ambush):
+        assert [u["charName"] for u in ambush.player_json()["unitList"]] == ["Aria"]
+
+    def test_a_creature_with_no_controller_named_is_hidden_as_well(self, ambush):
+        """The older test asked whether the GM ran it. A creature added without
+        a controller at all had an empty string there, which is not "gm", so it
+        was never hidden from anybody."""
+        ambush.initiativeList[0].controlledBy = ""
+        assert ambush.player_json()["initiativeList"][0]["charName"] == "?"
+        assert [u["charName"] for u in ambush.player_json()["unitList"]] == ["Aria"]
+
+    def test_a_players_own_summon_stays_visible_wherever_it_is(self, ambush):
+        ambush.initiativeList[0].controlledBy = "Aria"
+        assert ambush.player_json()["initiativeList"][0]["charName"] == "Lurker"
+
+    def test_an_unplaced_creature_is_hidden(self, ambush):
+        ambush.initiativeList[0].location = [-1, -1]
+        assert ambush.player_json()["initiativeList"][0]["charName"] == "?"
+
+    def test_a_creature_left_outside_a_shrunken_map_is_hidden(self, ambush):
+        """Shrinking a map sets a stranded unit's x and y but not its location,
+        so the coordinates can point past the end of the grid."""
+        ambush.initiativeList[0].location = [40, 40]
+        assert ambush.player_json()["initiativeList"][0]["charName"] == "?"
+
+    def test_the_gm_still_sees_everything(self, ambush):
+        assert [u["charName"] for u in ambush.to_json()["initiativeList"]] == ["Lurker", "Aria"]
+
+    def test_out_of_initiative_players_are_sent_no_order_at_all(self, ambush):
+        ambush.inInit = False
+        assert ambush.player_json()["initiativeList"] == []

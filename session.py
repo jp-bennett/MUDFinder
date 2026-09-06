@@ -21,6 +21,25 @@ BACKGROUND_ALIGNMENT_KEYS = ("backgroundTilesWide", "backgroundOffsetX", "backgr
 BACKGROUND_ALIGNMENT_SEQ = "backgroundAlignmentSeq"
 
 
+# What a player is sent in place of a creature in the initiative order that
+# their party cannot see. It holds every field the client reads off an entry
+# and nothing else -- no name, no count, no position -- so the players know a
+# turn is passing without learning whose.
+def masked_initiative_entry():
+    return {
+        "charName": "?",
+        "initiative": "",
+        "controlledBy": "",
+        "unitNum": -1,
+        "x": -1,
+        "y": -1,
+        "movePath": [],
+        "distance": 0,
+        "size": "medium",
+        "color": "black",
+    }
+
+
 class Session(object):
 
     def __init__(self, room, gmKey, name):
@@ -211,14 +230,47 @@ class Session(object):
         }  # add visible units from unitlist
 
         if self.inInit:
-            playerObject["initiativeList"] = tmpinitiativeList
+            # Kept the same length and the same order, with the creatures the
+            # party cannot see replaced rather than removed. initiativeCount is
+            # a plain index into this list on the client -- it decides whose
+            # turn is highlighted and whether the player is shown the button to
+            # end their turn -- so dropping entries would slide every index
+            # after them.
+            playerObject["initiativeList"] = [
+                x.to_json() if self.unit_visible_to_players(x) else masked_initiative_entry()
+                for x in self.initiativeList]
         else:
             playerObject["initiativeList"] = []
         for i in range(len(self.unitList)):
-            if self.unitList[i].controlledBy != "gm" or (
-                    self.unitList[i].location != [-1, -1] and self.mapData["mapArray"][self.unitList[i].location[0]][self.unitList[i].location[1]]["seen"]):
+            if self.unit_visible_to_players(self.unitList[i]):
                 playerObject["unitList"].append(self.unitList[i].to_json())
         return playerObject
+
+    def unit_visible_to_players(self, unit):
+        """Whether the party is allowed to know this creature is there.
+
+        Anything a player runs -- their own character, a summon, a pet -- is
+        theirs to see. Everything else is the GM's, and is visible only once it
+        stands somewhere the party has explored.
+
+        The test is "is it run by a player" rather than the older "is it run by
+        the GM", because a creature added without a controller named at all had
+        an empty string there, which is not "gm", and so was never hidden from
+        anybody.
+        """
+        if unit.controlledBy in self.playerList:
+            return True
+        if unit.location == [-1, -1]:
+            return False
+        # Bounds checked rather than assumed. Shrinking a map moves a unit left
+        # outside it off the board by setting x and y, but not the location
+        # this reads, so the coordinates can point past the end of the grid. A
+        # creature standing nowhere is not visible either.
+        grid = self.mapData["mapArray"]
+        row, column = unit.location[0], unit.location[1]
+        if not 0 <= row < len(grid) or not 0 <= column < len(grid[row]):
+            return False
+        return bool(grid[row][column]["seen"])
 
     def player_map(self):
         tmpMapData = {}
