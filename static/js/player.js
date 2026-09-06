@@ -361,9 +361,16 @@ function selectInitiative(initiativeNum) {
         socket.emit("error_handle", room, e);
     }
 }
+// Whose turn it is, marked the way the GM's list marks it. It used to be an
+// arrow revealed on the end of the row -- a marker div carrying id="activeInit"
+// that playerListRow emitted once per row, so a five-way fight had five
+// elements sharing the one id.
 function activeInitiative(initiativeNum) {
-
-    document.getElementById("initiativeDiv").children[initiativeNum].children[1].style.display = "block";
+    try {
+        document.getElementById("initiativeDiv").children[initiativeNum].classList.add("activeUnit");
+    } catch (e) {
+        socket.emit("error_handle", room, e);
+    }
 }
 function sendChat() {
     socket.emit('chat', {chat: document.getElementById('newChat').value, charName: charName, room: room});
@@ -632,12 +639,6 @@ function playerListRow(unit, index, inInitiative) {
         entry.appendChild(score);
     }
     row.appendChild(entry);
-    if (inInitiative) {
-        var marker = document.createElement("div");
-        marker.id = "activeInit";
-        marker.innerText = "<-";
-        row.appendChild(marker);
-    }
     return row;
 }
 

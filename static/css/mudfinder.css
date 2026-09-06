@@ -364,8 +364,13 @@ input:focus, select:focus, textarea:focus {
     width:100%;
 }
 
+/* Whose turn it is, in both the GM's list and the players'. Ink on this is
+   2.17:1, under the 3:1 the rest of the app is held to -- it went unnoticed
+   because the legibility sweep walks the tab panels and not the initiative
+   list. Paper on it instead. */
 div.activeUnit {
     background: var(--danger);
+    color: var(--paper);
 }
 
 .nonSelected {
@@ -382,10 +387,6 @@ div.selected {
     background: var(--accent) !important;
 }
 
-#activeInit {
-    display: none;
-    padding:7px;
-}
 .screenDiv {
     height:100%;
     margin:0px;
