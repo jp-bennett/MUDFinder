@@ -330,7 +330,7 @@ WALL_CASES = [["left"], ["right"], ["top"], ["bottom"], ["left", "right", "top",
 # "Show Features" only bites when a map image has been uploaded: that is when
 # tiles get the fullyTransparent class whose opacity the toggle drives.
 DEFAULT_BACKGROUND = "static/images/mapbackground.jpg"
-UPLOADED_BACKGROUND = "get_image.html?room=x&id=y"
+UPLOADED_BACKGROUND = "images/x/y"
 
 # Measures every case in one pass. A fixture per case meant a fresh game per
 # case, which was slow enough to exhaust the server's connections partway
@@ -1226,7 +1226,7 @@ class TestUploadingABattlemapImage:
     def test_an_ordinary_battlemap_uploads(self, uploads):
         """Three megabytes is unremarkable for a battlemap and used to be four
         times over the transport's limit."""
-        assert uploads["ordinary"]["background"].startswith("get_image.html")
+        assert uploads["ordinary"]["background"].startswith("images/")
 
     def test_the_socket_survives_it(self, uploads):
         """Losing this is what made the page stop responding entirely."""
@@ -1553,7 +1553,7 @@ class TestUploadingATokenForTheGroup:
     def test_every_creature_wears_it(self, encounter):
         tokens = [unit["token"] for unit in encounter["added"]["added"]]
         assert len(tokens) == 6
-        assert all(token.startswith("get_image.html") for token in tokens)
+        assert all(token.startswith("images/") for token in tokens)
 
     def test_they_share_one_stored_image(self, encounter):
         """Six copies of the same token would go into every autosave six
@@ -6720,3 +6720,154 @@ class TestPickingSeveralCreatures:
 
     def test_nothing_raised(self, creature_selection):
         assert creature_selection["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def token_traffic(browser, live_server, tmp_path_factory):
+    """What the browser actually fetches when a token is drawn and redrawn.
+
+    Two things were wrong at once. A creature added one at a time kept its
+    token as a data URI on the unit, so the base64 was copied into every update
+    packet the room sent. And an image that *was* stored came back with no
+    Cache-Control, no ETag and no Last-Modified, so every redraw fetched it
+    again -- and the client rebuilds img.src on each update.
+    """
+    png = (b"\x89PNG\r\n\x1a\n" + b"\x00" * 3000)
+    token_file = tmp_path_factory.mktemp("traffic") / "token.png"
+    token_file.write_bytes(png)
+
+    context = browser.new_context(viewport={"width": 1200, "height": 900})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        asked = []
+        page.on("request", lambda request: asked.append(request.url))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "traffic")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        page.fill("#mapWidth", "8")
+        page.fill("#mapHeight", "6")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 48",
+            timeout=HANDSHAKE_TIMEOUT)
+
+        # One creature, added the way a GM adds one: through the Encounter tab
+        # with a token chosen from a file. This is the path that skipped the
+        # image store.
+        page.click("div.tab:text-is('Encounter')")
+        page.wait_for_selector("#unitCount", state="visible")
+        page.click("text=Choose Token")
+        page.wait_for_selector("#imageFileUpload")
+        page.set_input_files("#imageFileUpload", str(token_file))
+        page.click('#modalBackground button:has-text("Select")')
+        page.wait_for_function(
+            "() => document.getElementById('unitToken').value.startsWith('data:image')",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.fill("#unitName", "Goblin")
+        page.fill("#unitHP", "6")
+        page.fill("#unitCount", "1")
+        page.dispatch_event("#unitCount", "change")
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Goblin")""",
+            timeout=HANDSHAKE_TIMEOUT)
+
+        measured = {}
+        measured["token"] = page.evaluate(
+            """() => gmData.unitList.find(u => u.charName === "Goblin").token""")
+        measured["packetHasBase64"] = page.evaluate(
+            """() => JSON.stringify(gmData).indexOf("data:image") > -1""")
+        measured["packetBytes"] = page.evaluate(
+            "() => JSON.stringify(gmData).length")
+
+        page.click("div.tab:text-is('Map')")
+        page.wait_for_timeout(600)
+
+        stored_at = "/" + measured["token"]
+
+        def image_asks(collected):
+            return len([url for url in collected
+                        if url.endswith(stored_at) or "get_image" in url])
+
+        del asked[:]
+        for _ in range(6):
+            page.evaluate("() => drawUnits(gmData)")
+            page.wait_for_timeout(150)
+        page.wait_for_timeout(600)
+        measured["redrawFetches"] = image_asks(asked)
+
+        # A second view of the same room in the same context, so it shares the
+        # HTTP cache. Fresh elements and a fresh page load: this is the ask a
+        # cacheable response can answer out of the cache and an uncacheable one
+        # cannot.
+        del asked[:]
+        second = context.new_page()
+        seen = []
+        served = []
+        second.on("request", lambda request: seen.append(request.url))
+        def note(response):
+            if response.url.endswith(stored_at) or "get_image" in response.url:
+                # What came down the wire. A response served out of the cache
+                # still raises the event; the body size is what tells them
+                # apart.
+                served.append(response.request.sizes()["responseBodySize"])
+        second.on("response", note)
+        second.goto(page.url)
+        second.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        second.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Goblin")""",
+            timeout=HANDSHAKE_TIMEOUT)
+        second.wait_for_timeout(1200)
+        measured["reloadFetches"] = image_asks(seen)
+        measured["reloadBytes"] = sum(served)
+        measured["tokenBytes"] = len(png)
+        second.close()
+        measured["errors"] = errors
+        return measured
+    finally:
+        context.close()
+
+
+class TestATokenIsFetchedOnceAndKept:
+    def test_the_creature_wears_a_link(self, token_traffic):
+        """Not a data URI. add_unit built the Unit straight from the wire."""
+        assert token_traffic["token"].startswith("images/")
+
+    def test_the_packet_carries_no_image_data(self, token_traffic):
+        assert token_traffic["packetHasBase64"] is False
+
+    def test_and_is_small(self, token_traffic):
+        """A 3KB token is 4KB of base64; the whole state is smaller than that
+        now, rather than carrying a copy of it."""
+        assert token_traffic["packetBytes"] < 4000
+
+    def test_redrawing_does_not_fetch_it_again(self, token_traffic):
+        assert token_traffic["redrawFetches"] == 0
+
+    def test_a_second_view_does_not_pull_it_down_again(self, token_traffic):
+        """A second view of the room, sharing the cache.
+
+        Within one page load a browser reuses an image whatever the headers
+        say, so redrawing alone proves nothing about them -- this is the ask
+        that separates a cacheable response from an uncacheable one. Measured
+        in bytes off the wire, because a cache hit raises the request event
+        just the same: the token is a little over 3KB, and without the headers
+        every one of those bytes comes down again.
+        """
+        assert token_traffic["tokenBytes"] > 3000
+        assert token_traffic["reloadBytes"] < 1000
+
+    def test_nothing_raised(self, token_traffic):
+        assert token_traffic["errors"] == []
+
+
