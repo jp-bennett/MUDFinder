@@ -6,6 +6,7 @@ covered: if a dependency bump breaks the wire protocol or the handler
 signatures, these fail rather than the app merely failing to work in a browser.
 """
 
+import base64
 import json
 import re
 import sqlite3
@@ -872,7 +873,7 @@ class TestImagePruning:
         set_background(gm_client, room, PNG_PIXEL)
         set_background(gm_client, room, OTHER_PIXEL)
         current = mudfinder.ROOMS[room].mapData["mapBackground"]
-        assert current.split("&id=")[1] in mudfinder.ROOMS[room].images
+        assert current.rsplit("/", 1)[-1] in mudfinder.ROOMS[room].images
 
     def test_an_image_a_unit_is_wearing_is_kept(self, gm):
         """The current background is not the only thing that can hold an image,
@@ -885,7 +886,7 @@ class TestImagePruning:
         gm_client.emit("image_upload", room, PNG_PIXEL, "unitToken", "0")
         token = mudfinder.ROOMS[room].unitList[0].token
         set_background(gm_client, room, OTHER_PIXEL)
-        assert token.split("&id=")[1] in mudfinder.ROOMS[room].images
+        assert token.rsplit("/", 1)[-1] in mudfinder.ROOMS[room].images
 
     def test_an_image_a_saved_encounter_refers_to_is_kept(self, gm):
         """Saved encounters keep their own copy of mapData, so the background
@@ -897,7 +898,7 @@ class TestImagePruning:
             "room": room, "gmKey": key, "encounterName": "Ambush",
         })
         set_background(gm_client, room, OTHER_PIXEL)
-        assert saved_background.split("&id=")[1] in mudfinder.ROOMS[room].images
+        assert saved_background.rsplit("/", 1)[-1] in mudfinder.ROOMS[room].images
 
     def test_a_linked_background_stores_nothing_to_prune(self, gm):
         """A plain URL is not an upload, so there is nothing in the dict."""
@@ -1059,7 +1060,7 @@ class TestSharingATokenAcrossCopies:
     def test_every_copy_wears_it(self, gm):
         gm_client, room, key = gm
         session = self.add(gm_client, room, key, 6, PNG_TOKEN)
-        stored = "get_image.html?room=%s&id=%s" % (room, list(session.images)[0])
+        stored = "images/%s/%s" % (room, list(session.images)[0])
         assert [u.token for u in session.unitList] == [stored] * 6
 
     def test_they_share_one_copy_of_it(self, gm):
@@ -2958,3 +2959,184 @@ class TestASavedSheetReachesTheGm:
         client.get_received()
         client.emit("update_player", self.sheet(room, DEX="14"))
         assert "do_update" in event_names(client.get_received())
+
+
+PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"x" * 4000
+BIG_TOKEN = "data:image;base64, " + base64.b64encode(PNG_BYTES).decode()
+
+
+def packet_of(room):
+    return json.dumps(mudfinder.ROOMS[room].to_json())
+
+
+class TestNoImageRidesInThePacket:
+    """unitList is in to_json, so a token left as a data URI is copied into
+    every gm_update and do_update the room sends for the rest of the game. One
+    200KB token took the GM's packet from 1.4KB to 268KB."""
+
+    def test_a_creature_added_one_at_a_time(self, gm):
+        """add_units converted its template; add_unit, the path a GM uses far
+        more often, built the Unit straight from the wire."""
+        client, room, key = gm
+        client.emit("add_unit", {"room": room, "gmKey": key,
+                                 "addToInitiative": False,
+                                 "unit": {"charName": "Goblin", "token": BIG_TOKEN}})
+        assert "data:image" not in packet_of(room)
+        assert len(packet_of(room)) < 4000
+
+    def test_and_it_is_wearing_a_link_instead(self, gm):
+        client, room, key = gm
+        client.emit("add_unit", {"room": room, "gmKey": key,
+                                 "addToInitiative": False,
+                                 "unit": {"charName": "Goblin", "token": BIG_TOKEN}})
+        token = mudfinder.ROOMS[room].unitList[0].token
+        assert token.startswith("images/%s/" % room)
+        assert token.rsplit("/", 1)[-1] in mudfinder.ROOMS[room].images
+
+    def test_a_creature_a_player_adds(self, gm):
+        client, room, _ = gm
+        mudfinder.ROOMS[room].playerList["Aria"] = make_player(charName="Aria")
+        client.emit("add_player_unit",
+                    {"room": room, "charName": "Aria",
+                     "unit": {"charName": "Pet", "token": BIG_TOKEN}})
+        assert "data:image" not in packet_of(room)
+
+    def test_a_creature_added_without_the_gm_key(self, gm):
+        """The branch of add_unit that asks for no key at all."""
+        client, room, _ = gm
+        mudfinder.ROOMS[room].playerList["Aria"] = make_player(charName="Aria")
+        client.emit("add_unit", {"room": room, "charName": "Aria",
+                                 "addToInitiative": False,
+                                 "unit": {"charName": "Summon", "token": BIG_TOKEN}})
+        assert "data:image" not in packet_of(room)
+
+    def test_a_character_that_joins_wearing_one(self, gm):
+        """Player(data) took token and image straight off the join payload."""
+        client, room, _ = gm
+        joiner = mudfinder.socketio.test_client(mudfinder.app)
+        joiner.emit("player_join", {"room": room, "charName": "Aria",
+                                    "token": BIG_TOKEN, "image": BIG_TOKEN})
+        assert "data:image" not in packet_of(room)
+        joiner.disconnect()
+
+    def test_a_save_the_gm_uploads(self, gm):
+        """from_json rebuilds a session verbatim and send_updates puts it on
+        the wire, so the conversion has to happen between the two."""
+        client, room, key = gm
+        save = mudfinder.ROOMS[room].gen_save()
+        save["unitList"] = [Unit({"charName": "Goblin", "token": BIG_TOKEN}).to_json()]
+        save["mapData"]["mapBackground"] = BIG_TOKEN
+        client.emit("game_upload", {"room": room, "saveGame": save})
+        assert "data:image" not in packet_of(room)
+        assert "data:image" not in mudfinder.ROOMS[room].mapData["mapBackground"]
+
+
+class TestEverythingInASaveIsConverted:
+    """The conversion that ran on load did unit tokens and player portraits
+    only, so a map background, a piece of lore or a saved encounter carrying a
+    data URI came back as one."""
+
+    def loaded(self, make_session, **contents):
+        session = make_session(room="loaded")
+        session.unitList = [Unit({"charName": "Goblin", "token": BIG_TOKEN})]
+        session.mapData["mapBackground"] = BIG_TOKEN
+        session.lore = [{"loreURL": BIG_TOKEN, "loreName": "Map", "loreText": "",
+                         "loreVisible": False, "loreSize": 0, "loreOwner": "gm"}]
+        session.savedEncounters = {
+            "Ambush": {"mapData": {"mapBackground": BIG_TOKEN},
+                       "unitList": [{"charName": "Rat", "token": BIG_TOKEN}]}}
+        mudfinder.store_loose_images("loaded")
+        return session
+
+    def test_the_map_background(self, make_session):
+        assert "data:image" not in self.loaded(make_session).mapData["mapBackground"]
+
+    def test_a_piece_of_lore(self, make_session):
+        assert "data:image" not in self.loaded(make_session).lore[0]["loreURL"]
+
+    def test_a_saved_encounters_background(self, make_session):
+        session = self.loaded(make_session)
+        assert "data:image" not in \
+            session.savedEncounters["Ambush"]["mapData"]["mapBackground"]
+
+    def test_a_saved_encounters_creatures(self, make_session):
+        session = self.loaded(make_session)
+        assert "data:image" not in \
+            session.savedEncounters["Ambush"]["unitList"][0]["token"]
+
+    def test_nothing_is_left_anywhere_in_the_save(self, make_session):
+        session = self.loaded(make_session)
+        saved = session.gen_save()
+        saved.pop("images", None)
+        assert "data:image" not in json.dumps(saved)
+
+    def test_they_are_all_in_the_store(self, make_session):
+        session = self.loaded(make_session)
+        assert len(session.images) == 5
+
+    def test_and_nothing_is_pruned_as_unused(self, make_session):
+        """Every one of those five is named by a URL the pruner has to be able
+        to read. If it cannot, the next background upload deletes them."""
+        session = self.loaded(make_session)
+        assert mudfinder.prune_unused_images(session) == []
+
+
+class TestPruningReadsBothUrlShapes:
+    """prune_unused_images decides by regex over the serialised session. A URL
+    shape it cannot read looks unreferenced, and the image is deleted while it
+    is still on screen."""
+
+    def test_an_image_named_by_a_path_url_survives(self, make_session):
+        session = make_session(room="prune")
+        session.images["keep"] = "aGk="
+        session.mapData["mapBackground"] = "images/prune/keep"
+        assert mudfinder.prune_unused_images(session) == []
+        assert "keep" in session.images
+
+    def test_an_image_named_by_the_old_url_survives(self, make_session):
+        session = make_session(room="prune")
+        session.images["keep"] = "aGk="
+        session.mapData["mapBackground"] = "get_image.html?room=prune&id=keep"
+        assert mudfinder.prune_unused_images(session) == []
+
+    def test_one_nothing_names_is_still_dropped(self, make_session):
+        session = make_session(room="prune")
+        session.images["orphan"] = "aGk="
+        assert mudfinder.prune_unused_images(session) == ["orphan"]
+
+    def test_the_default_background_names_nothing(self, make_session):
+        """static/images/mapbackground.jpg is a path with "images/" in it, and
+        must not be read as naming a stored image."""
+        session = make_session(room="prune")
+        session.images["orphan"] = "aGk="
+        assert session.mapData["mapBackground"] == "static/images/mapbackground.jpg"
+        assert mudfinder.prune_unused_images(session) == ["orphan"]
+
+
+class TestReadingADataUri:
+    def test_the_prefix_the_upload_dialog_sends(self, make_session):
+        session = make_session(room="uri")
+        url = mudfinder.store_image("uri", "data:image;base64, aGVsbG8=")
+        assert session.images[url.rsplit("/", 1)[-1]] == "aGVsbG8="
+
+    def test_one_pasted_without_the_space(self, make_session):
+        """The prefix was tested at 18 characters and sliced at 19, which works
+        only for the dialog's own string. A data URI pasted into the Image Link
+        box lost its first base64 character on the way in."""
+        session = make_session(room="uri")
+        url = mudfinder.store_image("uri", "data:image;base64,aGVsbG8=")
+        assert session.images[url.rsplit("/", 1)[-1]] == "aGVsbG8="
+
+    def test_one_carrying_a_subtype(self, make_session):
+        session = make_session(room="uri")
+        url = mudfinder.store_image("uri", "data:image/png;base64,aGVsbG8=")
+        assert session.images[url.rsplit("/", 1)[-1]] == "aGVsbG8="
+
+    def test_a_plain_link_is_left_alone(self, make_session):
+        make_session(room="uri")
+        assert mudfinder.store_image("uri", "https://example.invalid/a.png") \
+            == "https://example.invalid/a.png"
+
+    def test_an_empty_field_is_left_alone(self, make_session):
+        make_session(room="uri")
+        assert mudfinder.store_image("uri", "") == ""

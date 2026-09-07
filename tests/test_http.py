@@ -1,5 +1,6 @@
 """Tests for the plain HTTP routes."""
 
+import base64
 import json
 
 import pytest
@@ -80,6 +81,19 @@ class TestDownload:
         assert response.status_code == 404
 
 
+PNG = b"\x89PNG\r\n\x1a\n" + b"body"
+JPEG = b"\xff\xd8\xff\xe0" + b"body"
+GIF = b"GIF89a" + b"body"
+WEBP = b"RIFF" + b"\x00\x00\x00\x00" + b"WEBP" + b"body"
+SVG = b"<svg xmlns='http://www.w3.org/2000/svg'></svg>"
+
+
+def planted(make_session, room, raw, image_id="abc"):
+    session = make_session(room=room)
+    session.images[image_id] = base64.b64encode(raw).decode()
+    return session
+
+
 class TestGetImage:
     def test_image_is_returned(self, http, make_session):
         session = make_session(room="img-room")
@@ -88,6 +102,98 @@ class TestGetImage:
         response = http.get("/get_image.html?room=img-room&id=abc")
         assert response.status_code == 200
         assert response.data == b"hello"
+
+    def test_the_same_image_at_the_path_url(self, http, make_session):
+        """The shape store_image hands out now. Relative from the page, so it
+        follows the app under a subpath the way every other link does."""
+        planted(make_session, "img-room", PNG)
+        response = http.get("/images/img-room/abc")
+        assert response.status_code == 200
+        assert response.data == PNG
+
+    def test_the_old_url_still_serves(self, http, make_session):
+        """Saves, running rooms and saved encounters are full of these."""
+        planted(make_session, "img-room", PNG)
+        response = http.get("/get_image.html?room=img-room&id=abc")
+        assert response.status_code == 200
+        assert response.data == PNG
+
+
+class TestAnImageCanBeCached:
+    """Every redraw refetched every token: the client rebuilds img.src on each
+    update, and the response carried no Cache-Control, no ETag and no
+    Last-Modified, so a browser had nothing to reuse."""
+
+    def test_it_may_be_kept(self, http, make_session):
+        planted(make_session, "cache-room", PNG)
+        response = http.get("/images/cache-room/abc")
+        assert "max-age=" in response.headers["Cache-Control"]
+        assert "public" in response.headers["Cache-Control"]
+
+    def test_it_carries_a_validator(self, http, make_session):
+        planted(make_session, "cache-room", PNG)
+        assert http.get("/images/cache-room/abc").headers.get("ETag")
+
+    def test_the_old_url_is_cacheable_too(self, http, make_session):
+        planted(make_session, "cache-room", PNG)
+        response = http.get("/get_image.html?room=cache-room&id=abc")
+        assert "max-age=" in response.headers["Cache-Control"]
+
+    def test_a_second_ask_is_answered_not_modified(self, http, make_session):
+        """What the caching is for: the bytes go out once."""
+        planted(make_session, "cache-room", PNG)
+        etag = http.get("/images/cache-room/abc").headers["ETag"]
+        again = http.get("/images/cache-room/abc",
+                         headers={"If-None-Match": etag})
+        assert again.status_code == 304
+        assert again.data == b""
+
+
+class TestAnImageSaysWhatItIs:
+    """The route answered "image", which is not a media type. Nothing records a
+    type at upload -- the client's data URI prefix carries no subtype -- so it
+    is read off the front of the file, which also covers images already stored
+    in live rooms."""
+
+    def test_a_png(self, http, make_session):
+        planted(make_session, "type-room", PNG)
+        assert http.get("/images/type-room/abc").mimetype == "image/png"
+
+    def test_a_jpeg(self, http, make_session):
+        planted(make_session, "type-room", JPEG)
+        assert http.get("/images/type-room/abc").mimetype == "image/jpeg"
+
+    def test_a_gif(self, http, make_session):
+        planted(make_session, "type-room", GIF)
+        assert http.get("/images/type-room/abc").mimetype == "image/gif"
+
+    def test_a_webp(self, http, make_session):
+        planted(make_session, "type-room", WEBP)
+        assert http.get("/images/type-room/abc").mimetype == "image/webp"
+
+    def test_an_svg(self, http, make_session):
+        planted(make_session, "type-room", SVG)
+        assert http.get("/images/type-room/abc").mimetype \
+            == "image/svg+xml"
+
+    def test_something_unrecognisable_is_not_called_an_image(self, http, make_session):
+        planted(make_session, "type-room", b"not a picture at all")
+        assert http.get("/images/type-room/abc").mimetype \
+            == "application/octet-stream"
+
+    def test_the_old_url_says_it_too(self, http, make_session):
+        planted(make_session, "type-room", PNG)
+        response = http.get("/get_image.html?room=type-room&id=abc")
+        assert response.mimetype == "image/png"
+
+
+class TestAMissingImageAtThePathUrl:
+    def test_an_unknown_room_is_a_404(self, http):
+        assert http.get("/images/nope/abc").status_code == 404
+
+    def test_an_unknown_id_is_a_404(self, http, make_session):
+        make_session(room="img-room")
+        assert http.get("/images/img-room/nope").status_code == 404
 
 
 class TestMissingResources:

@@ -785,7 +785,14 @@ def savegame_thread():
 # https://github.com/miguelgrinberg/Flask-SocketIO/issues/651 https://github.com/miguelgrinberg/Flask-SocketIO/issues/651
 
 
-IMAGE_REFERENCE = re.compile(r"get_image\.html\?room=[^&\"'\\\\ ]*&id=([^&\"'\\\\ ]+)")
+# Both shapes an uploaded image can be referred to by: the path form stored
+# from now on, and the query-string form that saves and running rooms are full
+# of. Whatever is added here has to be added to prune_unused_images's regex in
+# the same breath -- an image whose URL that regex cannot read looks
+# unreferenced, and the next background upload deletes it while it is on screen.
+IMAGE_REFERENCE = re.compile(
+    r"images/[^/\"'\\\\ ]+/([^/?\"'\\\\ ]+)"
+    r"|get_image\.html\?room=[^&\"'\\\\ ]*&id=([^&\"'\\\\ ]+)")
 
 
 def prune_unused_images(session):
@@ -804,7 +811,10 @@ def prune_unused_images(session):
     """
     saved = session.gen_save()
     saved.pop("images", None)
-    referenced = set(IMAGE_REFERENCE.findall(json.dumps(saved)))
+    # Two alternatives, so each match is a pair with one side empty.
+    referenced = set()
+    for groups in IMAGE_REFERENCE.findall(json.dumps(saved)):
+        referenced.update(group for group in groups if group)
     unused = [image_id for image_id in session.images if image_id not in referenced]
     for image_id in unused:
         del session.images[image_id]
@@ -841,6 +851,49 @@ def push_lore(event, room, lore_num=None):
         emit(event, payload, room=ROOMS[room].gmRoom)
 
 
+def store_loose_images(room):
+    """Move every data URI in a room into the image store, and link to it.
+
+    A data URI on a unit is not merely untidy: unitList is in to_json, so the
+    base64 rides inside every gm_update and do_update for the rest of the game.
+    One 200KB token took the GM's packet from 1.4KB to 268KB.
+
+    Applied wherever a whole session arrives at once -- a save loaded off disk,
+    a save uploaded by the GM -- rather than trusting each of those paths to
+    remember. The handlers that take a single image still convert it themselves
+    on the way in; this is the net underneath them.
+
+    Everything in gen_save that can hold an image is covered: unit tokens,
+    player portraits, the map background, lore, and both halves of a saved
+    encounter. The version of this that lived in check_room did tokens and
+    portraits only.
+    """
+    session = ROOMS[room]
+
+    def convert(holder, key):
+        if isinstance(holder, dict):
+            if key in holder:
+                holder[key] = store_image(room, holder[key])
+        elif hasattr(holder, key):
+            setattr(holder, key, store_image(room, getattr(holder, key)))
+
+    for unit in session.unitList:
+        convert(unit, "token")
+        convert(unit, "image")
+    for player in session.playerList.values():
+        convert(player, "token")
+        convert(player, "image")
+    convert(session.mapData, "mapBackground")
+    for entry in session.lore:
+        convert(entry, "loreURL")
+    for encounter in session.savedEncounters.values():
+        if isinstance(encounter.get("mapData"), dict):
+            convert(encounter["mapData"], "mapBackground")
+        for unit in encounter.get("unitList", []):
+            convert(unit, "token")
+            convert(unit, "image")
+
+
 def check_room(room):
     global ROOMS
     if room in ROOMS:
@@ -853,16 +906,7 @@ def check_room(room):
             data = json.loads(infile.read())
             ROOMS[room] = Session(room, data["gmKey"], data["name"])
             ROOMS[room].from_json(data)
-            # versioning
-            for x in ROOMS[room].unitList:
-                if x.token[0:18] == "data:image;base64,":
-                    image_uuid = str(uuid.uuid4())
-                    ROOMS[room].images[image_uuid] = x.token[19:]
-                    x.token = "get_image.html?room=" + room + "&id=" + image_uuid
-                if x.type == "player" and x.image[0:18] == "data:image;base64,":
-                    image_uuid = str(uuid.uuid4())
-                    ROOMS[room].images[image_uuid] = x.image[19:]
-                    x.image = "get_image.html?room=" + room + "&id=" + image_uuid
+            store_loose_images(room)
             ROOMS[room].number_units()
             return True
     else:
@@ -918,6 +962,7 @@ def upload():
         abort(400)
     ROOMS[room] = Session(room, data["gmKey"], data["name"])
     ROOMS[room].from_json(data)
+    store_loose_images(room)
     ROOMS[room].number_units()
     return redirect("gm.html?gmKey=" + ROOMS[room].gmKey + "&room=" + room)
 
@@ -940,16 +985,82 @@ def save_download():
     abort(404)
 
 
+# What the bytes actually are. Nothing records a type at upload: the client
+# sends a bare "data:image;base64," prefix carrying no subtype, so the only
+# place the answer exists is the front of the file. Sniffing here also fixes
+# the images already sitting in live rooms and old saves.
+IMAGE_SIGNATURES = (
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+    (b"BM", "image/bmp"),
+)
+
+
+def image_mimetype(raw):
+    """The MIME type of some image bytes, falling back to a byte stream.
+
+    The route used to answer "image", which is not a media type at all -- a
+    browser is entitled to refuse it, and it tells caches nothing.
+    """
+    for signature, mimetype in IMAGE_SIGNATURES:
+        if raw.startswith(signature):
+            return mimetype
+    if raw[0:4] == b"RIFF" and raw[8:12] == b"WEBP":
+        return "image/webp"
+    head = raw[:200].lstrip()
+    if head.startswith(b"<svg") or head.startswith(b"<?xml"):
+        return "image/svg+xml"
+    return "application/octet-stream"
+
+
+def image_response(room, image_id):
+    """One stored image, answered so the browser can keep it.
+
+    An id is a fresh uuid per upload, so what a URL points at never changes and
+    it can be cached hard. Without that every redraw refetched every token --
+    the client rebuilds img.src on each update, and the response carried no
+    Cache-Control, no ETag and no Last-Modified, so nothing could be reused.
+    """
+    if not check_room(room) or image_id not in ROOMS[room].images:
+        return None
+    raw = base64.b64decode(ROOMS[room].images[image_id])
+    response = app.response_class(
+        response=raw, status=200, mimetype=image_mimetype(raw))
+    response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    # The id names the bytes, so it is the validator. make_conditional is what
+    # turns it into a 304 -- set_etag alone only writes the header, and the
+    # bytes still go out on every ask.
+    response.set_etag(image_id)
+    return response.make_conditional(request)
+
+
+@app.route('/images/<room>/<image_id>')
+def get_image_by_path(room, image_id):
+    """An uploaded image at a plain path.
+
+    Referred to from the page as "images/<room>/<id>" with no leading slash --
+    every link in this app is relative so that it survives being served under a
+    subpath, which is what /beta is.
+    """
+    response = image_response(room, image_id)
+    if response is None:
+        abort(404)
+    return response
+
+
 @app.route('/get_image.html')
 def get_image():
+    """The shape images were referred to by before the path route existed.
+
+    Kept because saves, running rooms and saved encounters are full of these.
+    """
     room = request.args['room']
     if check_room(room) and request.args['id'] in ROOMS[room].images:
-        response = app.response_class(
-            response=base64.b64decode(ROOMS[room].images[request.args['id']]),
-            status=200,
-            mimetype='image'
-        )
-        return response
+        response = image_response(room, request.args['id'])
+        if response is not None:
+            return response
     # Same fall-through as save_download: an unknown room or image id returned
     # None, which Flask reports as a 500.
     abort(404)
@@ -991,18 +1102,52 @@ def on_lore_url(room, lore_url, lore_name, lore_text, lore_owner):
         push_lore("showLore", room)
 
 
+DATA_URI_PREFIX = re.compile(r"^data:image/?[-\w.+]*;base64,\s*")
+
+
 def store_image(room, image):
     """Take a data URI into the room's image store and hand back its URL.
 
     Anything that is not a data URI -- a link the GM pasted, or an image
     already stored -- is returned untouched, so callers can hand this whatever
     arrived in an image field without inspecting it first.
+
+    The prefix is matched rather than counted. It used to be tested at 18
+    characters and sliced at 19, which works only because the upload dialog
+    happens to emit "data:image;base64, " with a space on the end
+    (shared.js). A data URI pasted into the Image Link box has no space, and
+    lost its first base64 character on the way in.
     """
-    if image[0:18] != "data:image;base64,":
+    if not isinstance(image, str):
+        return image
+    prefix = DATA_URI_PREFIX.match(image)
+    if prefix is None:
         return image
     image_uuid = str(uuid.uuid4())
-    ROOMS[room].images[image_uuid] = image[19:]
-    return "get_image.html?room=" + room + "&id=" + image_uuid
+    ROOMS[room].images[image_uuid] = image[prefix.end():]
+    return image_url(room, image_uuid)
+
+
+def image_url(room, image_id):
+    """Relative on purpose -- see get_image_by_path."""
+    return "images/" + room + "/" + image_id
+
+
+def stored_unit_images(room, unit_data):
+    """A creature's fields as sent, with any image in them put in the store.
+
+    Every handler that builds a Unit or Player out of client data goes through
+    this. A token left as a data URI does not stay a local untidiness: unitList
+    is in to_json, so it is copied into every update packet the room sends from
+    then on.
+    """
+    if not isinstance(unit_data, dict):
+        return unit_data
+    unit_data = dict(unit_data)
+    for key in ("token", "image"):
+        if key in unit_data:
+            unit_data[key] = store_image(room, unit_data[key])
+    return unit_data
 
 
 @socketio.on('image_upload')
@@ -1079,7 +1224,8 @@ def on_player_join(data):
     if check_room(room):
         join_room(room)
         if not any(d == data['charName'] for d in ROOMS[room].playerList):  # TODO: make this a class function
-            ROOMS[room].playerList[data['charName']] = Player(data)
+            ROOMS[room].playerList[data['charName']] = Player(
+                stored_unit_images(room, data))
             ROOMS[room].unitList.append(ROOMS[room].playerList[data['charName']])
         ROOMS[room].playerList[data['charName']].sid = request.sid
         ROOMS[room].playerList[data['charName']].connections += 1
@@ -1333,7 +1479,7 @@ def on_load_encounter(data):
 def on_add_player_unit(data):
     room = data['room']
     if check_room(room):
-        unit = Unit(data['unit'])
+        unit = Unit(stored_unit_images(room, data['unit']))
         unit.controlledBy = data["charName"]
         if ROOMS[room].inInit:
             unit.initiative = ROOMS[room].playerList[data["charName"]].initiative
@@ -1373,7 +1519,7 @@ def on_add_unit(data):
     room = data['room']
     if check_room(room):
         if "gmKey" in data.keys() and ROOMS[room].gmKey == data['gmKey']:
-            unit = Unit(data['unit'])
+            unit = Unit(stored_unit_images(room, data['unit']))
             ROOMS[room].unitList.append(unit)
             if data["addToInitiative"]:
                 ROOMS[room].insert_initiative(ROOMS[room].unitList[-1])
@@ -1382,7 +1528,7 @@ def on_add_unit(data):
             ROOMS[room].number_units()
             ROOMS[room].send_updates()
         else:
-            unit = Unit(data['unit'])
+            unit = Unit(stored_unit_images(room, data['unit']))
             if ROOMS[room].inInit:
                 unit.initiative = ROOMS[room].playerList[data["charName"]].initiative
             ROOMS[room].unitList.append(unit)
@@ -2629,6 +2775,9 @@ def on_create(data):
 def on_game_upload(data):
     room = data['room']
     ROOMS[room].from_json(data["saveGame"])
+    # Before the packet goes out, not after: send_updates is what would carry
+    # the base64 to every client in the room.
+    store_loose_images(room)
     ROOMS[room].send_updates()
 
 
