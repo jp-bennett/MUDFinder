@@ -1,0 +1,16 @@
+[Unit]
+Description=Check whether either MUDFinder instance has something to deploy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+# Only the token lives here. It needs no scopes beyond public read; the
+# githubrelease resource requires one even for a public repository.
+EnvironmentFile=/etc/mudfinder/updatecli.env
+
+# Both manifests in one run. Each writes a file and nothing more -- the deploy
+# is a separate unit, triggered by that file changing.
+ExecStart=/usr/local/bin/updatecli apply --config /srv/mudfinder-deploy/updatecli/beta.yaml
+ExecStart=/usr/local/bin/updatecli apply --config /srv/mudfinder-deploy/updatecli/primary.yaml

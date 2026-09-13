@@ -1,0 +1,47 @@
+---
+# The primary instance follows releases.
+#
+# Nothing happens here until the first release is cut -- there are no tags in
+# the repository at the time of writing, so `updatecli diff` against this finds
+# no version and reports nothing to do. That is the correct answer, not a
+# misconfiguration, and it is what you should see before the first release.
+
+name: "MUDFinder primary follows releases"
+
+sources:
+  release:
+    name: "The latest published release"
+    kind: githubrelease
+    spec:
+      owner: "jp-bennett"
+      repository: "MUDFinder"
+      # Required by the resource even for a public repository. It needs no
+      # scopes beyond public read; the units load it from
+      # /etc/mudfinder/updatecli.env.
+      token: '{{ requiredEnv "UPDATECLI_GITHUB_TOKEN" }}'
+      username: "jp-bennett"
+      versionfilter:
+        kind: semver
+      # Spelled out rather than left to defaults. updatecli ignores spec fields
+      # it does not recognise without a word of complaint -- a misspelling here
+      # would look like it was working and quietly filter nothing -- so every
+      # flag this filter has is named, and these four are all of them.
+      #
+      # Drafts and prereleases are for looking at, not for serving to a table
+      # mid-game. Only the release GitHub marks as latest moves the primary.
+      typefilter:
+        latest: true
+        release: true
+        draft: false
+        prerelease: false
+
+targets:
+  recorded:
+    name: "Record it for the deploy unit to pick up"
+    kind: file
+    sourceid: release
+    spec:
+      file: /srv/mudfinder-primary/DEPLOY_TARGET
+      # Without this the very first run on a fresh server fails: the file
+      # target refuses to create a file that is not already there.
+      forcecreate: true

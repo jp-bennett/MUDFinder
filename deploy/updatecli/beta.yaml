@@ -1,0 +1,43 @@
+---
+# The beta instance follows master.
+#
+# All this does is write the commit master points at into a file. The deploy
+# itself is a systemd path unit watching that file -- see deploy/README.md for
+# why the work is not done here: updatecli runs `shell` targets even under
+# `updatecli diff`, and a target that restarts a live game server is not
+# something to run while asking what would change.
+
+name: "MUDFinder beta follows master"
+
+sources:
+  master:
+    name: "The commit master points at"
+    # No updatecli source returns "the head of a branch" -- gitbranch yields
+    # branch names, and githubrelease needs a release. ls-remote is the whole
+    # question, asked directly.
+    kind: shell
+    spec:
+      command: >-
+        git ls-remote https://github.com/jp-bennett/MUDFinder.git refs/heads/master
+        | cut -f1
+      environments:
+        - name: PATH
+        - name: HOME
+
+# No condition guarding against an empty SHA. There was one, and it was both
+# broken and unnecessary: a shell condition is judged on its console output
+# rather than its exit code, and it receives the source value neither as an
+# argument nor on stdin, so it never passed. It turns out updatecli will not
+# write an empty source into a target anyway -- an empty value reports no
+# change and leaves the file alone, which is the behaviour that was wanted.
+
+targets:
+  recorded:
+    name: "Record it for the deploy unit to pick up"
+    kind: file
+    sourceid: master
+    spec:
+      file: /srv/mudfinder-beta/DEPLOY_TARGET
+      # Without this the very first run on a fresh server fails: the file
+      # target refuses to create a file that is not already there.
+      forcecreate: true

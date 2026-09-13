@@ -1,0 +1,17 @@
+[Unit]
+# Started by mudfinder-deploy@%i.path, or by hand:
+#   systemctl start mudfinder-deploy@beta
+Description=Deploy MUDFinder (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/srv/mudfinder-%i
+ExecStart=/usr/local/bin/mudfinder-deploy /srv/mudfinder-%i mudfinder@%i.service
+
+# root because it restarts a unit and installs into the instance's venv. The
+# script does the git work as the owning user; if you would rather it did not
+# run as root at all, give the mudfinder user a polkit rule or a sudoers line
+# for `systemctl restart mudfinder@*.service` and set User=mudfinder here.

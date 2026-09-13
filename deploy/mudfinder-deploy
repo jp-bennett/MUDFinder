@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+#
+# Move one MUDFinder instance to the ref recorded in its DEPLOY_TARGET file.
+#
+# Usage: mudfinder-deploy <instance-directory> <systemd-unit>
+#   e.g. mudfinder-deploy /srv/mudfinder-beta mudfinder-beta.service
+#
+# Started by mudfinder-*-deploy.service, which a .path unit triggers when
+# updatecli writes a new ref into DEPLOY_TARGET. Safe to run by hand at any
+# time: if the checkout is already at that ref it does nothing and says so.
+
+set -euo pipefail
+
+directory=${1:?usage: mudfinder-deploy <instance-directory> <systemd-unit>}
+unit=${2:?usage: mudfinder-deploy <instance-directory> <systemd-unit>}
+
+target_file="$directory/DEPLOY_TARGET"
+venv="$directory/.venv"
+
+if [[ ! -f "$target_file" ]]; then
+    echo "no $target_file yet -- updatecli has not run, nothing to deploy"
+    exit 0
+fi
+
+target=$(tr -d '[:space:]' < "$target_file")
+if [[ -z "$target" ]]; then
+    # The manifest guards against writing an empty ref, but a truncated write
+    # or a hand-edit could still leave one, and "check out nothing" resolves to
+    # something unhelpful rather than failing.
+    echo "$target_file is empty -- refusing to deploy" >&2
+    exit 1
+fi
+
+cd "$directory"
+
+# The unit runs this as root so it can restart the service, but the checkout
+# belongs to the service user. Running git as root against someone else's
+# repository trips its dubious-ownership guard, and anything pip writes into
+# the venv would come out owned by root. So the repository work is done as the
+# directory's owner and only the restart is done as root.
+#
+# Run by hand as that user already, this is a no-op.
+owner=$(stat -c '%U' "$directory")
+as_owner() {
+    if [[ "$(id -un)" == "$owner" ]]; then
+        "$@"
+    else
+        runuser -u "$owner" -- "$@"
+    fi
+}
+
+as_owner git fetch --tags --prune origin
+
+if ! as_owner git rev-parse --verify --quiet "${target}^{commit}" > /dev/null; then
+    echo "$target is not a commit, tag or ref in $directory" >&2
+    exit 1
+fi
+
+resolved=$(as_owner git rev-parse "${target}^{commit}")
+current=$(as_owner git rev-parse HEAD)
+
+if [[ "$resolved" == "$current" ]]; then
+    echo "already at $target ($current) -- nothing to do"
+    exit 0
+fi
+
+echo "deploying $target ($resolved), was $current"
+
+# reset --hard, never `git clean -x`. saves/ and .venv*/ are gitignored and
+# untracked, so a hard reset leaves both alone -- but -x would delete every
+# saved game in saves/ and the virtualenv with them.
+as_owner git checkout --detach --force "$resolved"
+as_owner git reset --hard "$resolved"
+
+# Dependencies move with the code often enough to be worth the few seconds
+# this costs when they have not.
+as_owner "$venv/bin/pip" install --quiet --upgrade -r requirements.txt
+
+# Sessions live in the process, so this drops whoever is connected. They are
+# flushed to saves/ on shutdown and read back on the next request for the room,
+# so the games survive; the connections do not.
+systemctl restart "$unit"
+
+echo "deployed $target ($resolved)"

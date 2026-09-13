@@ -1,0 +1,50 @@
+[Unit]
+# One MUDFinder instance. %i is beta or primary; each has its own checkout,
+# its own saves and its own port.
+Description=MUDFinder (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mudfinder
+Group=mudfinder
+
+# Both of these matter more than they look.
+#
+# WorkingDirectory: SAVE_DIR is the relative string "saves" (mudfinder.py), so
+# it is resolved against the process's working directory. Point this somewhere
+# else and the instance writes its games somewhere else, and reads none of the
+# ones it had.
+WorkingDirectory=/srv/mudfinder-%i
+EnvironmentFile=/etc/mudfinder/%i.env
+
+# A single worker, always. Sessions live in the process, so a second worker
+# serves a different set of games to whoever it happens to answer.
+ExecStart=/srv/mudfinder-%i/.venv/bin/gunicorn \
+    -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker \
+    -w 1 -b 127.0.0.1:${MUDFINDER_PORT} \
+    --graceful-timeout 30 \
+    mudfinder:app
+
+# Shutdown is how the games get saved, so it must be allowed to finish.
+#
+# The rooms are held in memory and written to saves/ by an atexit handler.
+# atexit does not run on a bare SIGTERM -- it runs because gunicorn catches the
+# signal and exits the worker cleanly, which was measured taking about two
+# seconds on an idle instance. Kill it before that and the last five minutes of
+# play (the autosave interval) go with it.
+#
+# KillMode=mixed sends SIGTERM to gunicorn's master alone and lets it stop its
+# own worker, which is the shutdown that was tested. TimeoutStopSec is set
+# above gunicorn's --graceful-timeout so systemd is never the one to give up
+# first.
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=60
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

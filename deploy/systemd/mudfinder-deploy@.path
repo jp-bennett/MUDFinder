@@ -1,0 +1,12 @@
+[Unit]
+# Watches the file updatecli writes. When the ref in it changes, the deploy
+# runs. Keeping the two apart is the point: updatecli only ever writes a file,
+# so `updatecli diff` cannot restart a game server by accident.
+Description=Watch for a new deploy target (%i)
+
+[Path]
+PathChanged=/srv/mudfinder-%i/DEPLOY_TARGET
+Unit=mudfinder-deploy@%i.service
+
+[Install]
+WantedBy=multi-user.target
