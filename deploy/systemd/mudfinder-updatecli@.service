@@ -22,6 +22,15 @@ User=root
 # not need this file to exist.
 EnvironmentFile=-/etc/mudfinder/updatecli.env
 
+# The beta manifest's shell source passes PATH and HOME through to git, and
+# updatecli logs "ERROR: environment variable HOME not found, skipping" for a
+# name it cannot resolve. It still resolves the commit and still reports no
+# failure, so the line is noise -- but it is noise that reads like the reason
+# something did not work, in the one place you look when something did not.
+# Whether systemd provides HOME depends on its version and on User=, so it is
+# set here rather than assumed.
+Environment=HOME=/root
+
 # This writes a file and nothing else. The deploy is a separate unit, started
 # by a .path watching that file -- which is what keeps `updatecli diff` from
 # restarting a live game server while being asked what would change.
