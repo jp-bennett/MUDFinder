@@ -47,7 +47,7 @@ for i in beta primary; do
     git clone https://github.com/jp-bennett/MUDFinder.git /opt/mudfinder-$i
     python3.11 -m venv /opt/mudfinder-$i/.venv
     /opt/mudfinder-$i/.venv/bin/pip install -r /opt/mudfinder-$i/requirements.txt
-    /opt/mudfinder-$i/.venv/bin/pip install gunicorn gevent gevent-websocket
+    /opt/mudfinder-$i/.venv/bin/pip install gunicorn gevent packaging
     chown -R mudfinder: /opt/mudfinder-$i
 done
 
@@ -66,6 +66,25 @@ systemctl enable --now mudfinder@beta mudfinder@primary
 systemctl enable --now mudfinder-deploy@beta.path mudfinder-deploy@primary.path
 systemctl enable --now mudfinder-updatecli.timer
 ```
+
+`packaging` is in that pip line because gunicorn's gevent worker imports it
+without declaring it. Without it the unit starts, fails to load the worker
+class, and systemd restarts it on a loop -- the journal shows a
+`ModuleNotFoundError` inside gunicorn's own import machinery, which does not
+look like a missing dependency of yours.
+
+If nginx answers 502 while `curl` on the host returns 200, the instance is
+bound somewhere the proxy cannot route to -- see MUDFINDER_BIND in
+beta.env.example. A proxy on another machine cannot reach 127.0.0.1 here.
+
+If every page loads but no game ever appears, and the browser console says
+`Invalid frame header` on the `socket.io/?...&transport=websocket` request,
+the unit is running the wrong gunicorn worker. It must be `-k gevent`.
+`gevent-websocket`'s `GeventWebSocketWorker` is the one that looks right and
+breaks this: the app runs in `async_mode="threading"`, so Engine.IO opens the
+websocket itself and handshakes a connection that worker has already
+handshaked. Nothing in the journal says so, and nginx is not involved -- the
+same failure reproduces with no proxy at all.
 
 nginx goes in front of the two ports — see "Behind a reverse proxy" and
 "Serving it under a subpath" in the top-level README.
