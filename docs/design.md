@@ -574,6 +574,15 @@ washes, which cost real debugging to get right:
 - A dark wash must stack **above** the tile. `.mapTile` is `z-index: 2`; behind
   it, fully opaque black comes out mid-grey through 0.6 opacity.
 
+Thin doors joined that family and added one reason to it. A thin wall is drawn
+into the square's own `background`, which is fine for terrain: with a battlemap
+image loaded every square is `opacity: 0` so the artwork shows through, and a
+wall drawn into the square goes with it — but the artwork already shows the
+wall. **A door is state rather than terrain.** The GM opens and locks it
+mid-game and has to see which it is on any map, so it is drawn over the grid
+like the washes are, not into the square. The same rule catches anything else
+the map carries that can change during play.
+
 ## Working on this
 
 **Panels that JavaScript rewrites cannot be styled in the template.**
