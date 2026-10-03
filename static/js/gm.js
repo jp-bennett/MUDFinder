@@ -1426,6 +1426,22 @@ function showUnitInfoEvent(e, unitNum) {
 // ctrl (or cmd) adds or removes one, and shift takes everything between the
 // row last clicked and this one.
 //
+// In the list, a plain click on the one creature already selected lets go of
+// it. Before that the only way back to nothing selected was to ctrl-click the
+// single selected row, which is not a gesture anyone guesses, so a creature
+// picked by accident stayed picked -- and the players' view had toggled on a
+// second click all along, so the two halves of the app disagreed.
+//
+// Clicking one of several selected rows still narrows to that one rather than
+// dropping it, as a file list does; the click after that lets go.
+//
+// Only in the list, because on the map a click on a creature is the first
+// half of ordering it to move, and the map lets go on its own: the click that
+// names a destination moves it and calls deselectAll(). Toggling there would
+// mean a second click on a token silently disarmed the move, and the click
+// after it -- aimed at a destination -- would fall through to the initiative
+// branch below and move whoever's turn it is instead.
+//
 // Shift only ranges in the creature list. On the map it keeps the meaning it
 // had -- add this creature to the selection -- because the rows' order is the
 // unit list's, and a range over it means nothing spatially. The map's own
@@ -1453,6 +1469,12 @@ function selectUnit(e, unitNum, fromList) {
             // The anchor follows the last creature named by hand, so a ctrl
             // click then a shift click ranges from the one just added.
             selectionAnchor = unitNum;
+        } else if (fromList && selectedUnits.length === 1
+                && selectedUnits[0] === unitNum) {
+            selectedUnits = [];
+            // The anchor goes with it. Left behind, the next shift-click would
+            // range from the row just let go of and take it back.
+            selectionAnchor = null;
         } else {
             selectedUnits = [unitNum];
             selectionAnchor = unitNum;
