@@ -1,0 +1,17 @@
+[Unit]
+# Enabled per instance:
+#   systemctl enable --now mudfinder-updatecli@beta.timer
+# A templated timer starts the service of the same instance name, so this
+# needs no Unit= line.
+Description=Check for MUDFinder %i updates every ten minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+# Without this every server on the same schedule asks GitHub at the same
+# second. It costs nothing to be a little late.
+RandomizedDelaySec=2min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

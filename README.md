@@ -51,13 +51,33 @@ fine for a game night on your own machine or LAN. To serve it publicly, run it
 under a real server instead:
 
 ```
-pip install gunicorn gevent gevent-websocket
-gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker \
-         -w 1 -b 0.0.0.0:5000 mudfinder:app
+pip install gunicorn gevent packaging
+gunicorn -k gevent -w 1 -b 0.0.0.0:5000 mudfinder:app
 ```
 
 Use a **single worker**. Sessions live in the process, so a second worker would
 serve a different set of games.
+
+Use `-k gevent`, and don't reach for `gevent-websocket`'s
+`GeventWebSocketWorker` — the obvious choice for a websocket app, and wrong
+here. The server is started in `async_mode="threading"`, so Engine.IO does the
+websocket itself with `simple-websocket`: it takes the raw socket out of the
+WSGI environ and performs its own handshake. That worker has already performed
+one and replied, so the browser gets two overlapping upgrades and reads the
+second as a corrupt frame. Every page loads perfectly, no websocket ever
+opens, and the console says only `Invalid frame header`.
+`tests/browser/test_deploy_config.py` runs the production command line against
+a real browser for exactly this reason.
+
+`-k gthread --threads N` also works, and is the closest match to the async
+mode, but a websocket holds its worker thread for as long as it stays open —
+so the table is capped at N, and client N+1 gets a page that never finishes
+loading rather than a slow one. gevent's greenlets have no such ceiling.
+
+`packaging` is in that list because gunicorn's gevent worker imports it without
+declaring it as a dependency. Leave it out and gunicorn starts, reads the
+worker class, and dies with `ModuleNotFoundError: No module named 'packaging'`
+buried in an import traceback that names neither gunicorn nor this project.
 
 Python 3.9 or newer, which is what Flask 3 needs. On EL8 that means installing
 one alongside the system 3.6 (`dnf install python3.11`, or `dnf module install
@@ -142,6 +162,10 @@ If Chromium is installed somewhere playwright does not expect, point
 `MUDFINDER_CHROMIUM` at the binary.
 
 ## Notes for anyone working on it
+
+`wsfix.py` patches a dropped-frame bug in simple-websocket that only appears
+over a real network, and the comment at the top of it says how it was measured.
+Delete it when the library is fixed upstream.
 
 `static/js/socket.io.js` is the vendored Socket.IO 4.x browser client. It has to
 stay in the same generation as the server libraries, since the two negotiate an

@@ -8,6 +8,11 @@
 # "the site loads but nothing works" -- tests/browser/ guards this pairing.
 #
 # simple-websocket provides websocket support for the threading async mode.
+# It writes a frame with one socket.send() and ignores the count it returns, so
+# a frame larger than the socket's send buffer is truncated and silently
+# discarded -- which only happens over a real network, and so broke the
+# deployed instance while every test passed. wsfix.py finishes the write; see
+# the comment at the top of it. Still true as of 1.1.0, the newest release.
 #
 # python-socketio is held below 5.17. A room here is named after the socket
 # that created it -- `room = request.sid` in mudfinder.py -- and 5.17 added a
