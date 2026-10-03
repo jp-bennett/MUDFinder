@@ -1,0 +1,34 @@
+[Unit]
+# Ask what %i should be running, and write the answer into its DEPLOY_TARGET.
+# One instance per unit, so beta can be running on a server where primary has
+# not been installed yet.
+#
+# Running both from a single unit, as this did first, could not do that. The
+# primary manifest needs a GitHub token the beta one does not, and its file
+# target creates the parent directory it writes into -- so a server with no
+# primary yet got a failing timer and a root-owned /opt/mudfinder-primary,
+# which git then refuses to clone into.
+Description=Check whether MUDFinder %i has something to deploy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+
+# Optional, hence the dash. Only the primary manifest reads a token from
+# here, because only it talks to the GitHub API; the beta manifest asks git
+# for the head of master, which needs no credentials. A beta-only server does
+# not need this file to exist.
+EnvironmentFile=-/etc/mudfinder/updatecli.env
+
+# This writes a file and nothing else. The deploy is a separate unit, started
+# by a .path watching that file -- which is what keeps `updatecli diff` from
+# restarting a live game server while being asked what would change.
+#
+# The path includes deploy/ because /opt/mudfinder-deploy is a clone of the
+# whole repository, not of that directory. Leaving it out is how this was
+# first written, and updatecli then exits non-zero on a config it cannot
+# find, every ten minutes, for a reason the journal states plainly and
+# nothing else does.
+ExecStart=/usr/bin/updatecli apply --config /opt/mudfinder-deploy/deploy/updatecli/%i.yaml

@@ -64,8 +64,25 @@ cp /opt/mudfinder-deploy/deploy/systemd/mudfinder*.{service,path,timer} \
 systemctl daemon-reload
 systemctl enable --now mudfinder@beta mudfinder@primary
 systemctl enable --now mudfinder-deploy@beta.path mudfinder-deploy@primary.path
-systemctl enable --now mudfinder-updatecli.timer
+systemctl enable --now mudfinder-updatecli@beta.timer
+systemctl enable --now mudfinder-updatecli@primary.timer
 ```
+
+**One instance at a time is fine, and is how this was first installed.** Do
+only the `beta` half of all of that and the server runs beta alone; add
+primary later by repeating it with the other name. Nothing is shared but
+`/opt/mudfinder-deploy` and the units themselves.
+
+Do not, though, enable `mudfinder-updatecli@primary.timer` before
+`/opt/mudfinder-primary` is a clone. The manifest's file target creates the
+directory it writes into, so it would leave a root-owned `/opt/mudfinder-primary`
+holding nothing but `DEPLOY_TARGET` -- and `git clone` refuses a directory that
+is not empty, so the real install then fails for a reason that looks unrelated.
+
+`beta` needs no GitHub token: its manifest asks `git ls-remote` for the head of
+master, which wants no credentials. Only `primary` reads
+`/etc/mudfinder/updatecli.env`, and the unit treats that file as optional, so a
+beta-only server can skip it.
 
 `packaging` is in that pip line because gunicorn's gevent worker imports it
 without declaring it. Without it the unit starts, fails to load the worker
@@ -144,7 +161,8 @@ release.
 updatecli diff --config /opt/mudfinder-deploy/deploy/updatecli/beta.yaml
 systemctl start mudfinder-deploy@beta      # force one by hand
 journalctl -u mudfinder-deploy@beta -n 50
-systemctl list-timers mudfinder-updatecli.timer
+systemctl list-timers 'mudfinder-updatecli@*'
+journalctl -u mudfinder-updatecli@beta -n 20
 ```
 
 The deploy script is safe to run at any time: it does nothing when the checkout
