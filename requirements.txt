@@ -8,9 +8,20 @@
 # "the site loads but nothing works" -- tests/browser/ guards this pairing.
 #
 # simple-websocket provides websocket support for the threading async mode.
+#
+# python-socketio is held below 5.17. A room here is named after the socket
+# that created it -- `room = request.sid` in mudfinder.py -- and 5.17 added a
+# guard that refuses join_room() for a room whose name is a session id, so
+# creating or joining a game raises "cannot enter a sid room" and the app does
+# not work at all. 5.16 and everything before it is fine; the bisect is in the
+# commit that added this line.
+#
+# This is a holding pin, not the fix. The fix is for a room id to stop being a
+# sid, which is a bigger change than it looks: a room id is also the filename
+# a game is saved under in saves/, so existing games have to come with it.
 
 Flask>=3.0
 Flask-SocketIO>=5.3
-python-socketio>=5.0
+python-socketio>=5.0,<5.17
 python-engineio>=4.0
 simple-websocket>=1.0
