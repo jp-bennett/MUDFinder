@@ -1,5 +1,9 @@
 [Unit]
-Description=Check for MUDFinder updates every ten minutes
+# Enabled per instance:
+#   systemctl enable --now mudfinder-updatecli@beta.timer
+# A templated timer starts the service of the same instance name, so this
+# needs no Unit= line.
+Description=Check for MUDFinder %i updates every ten minutes
 
 [Timer]
 OnBootSec=5min
