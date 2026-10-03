@@ -383,6 +383,21 @@ div.activeUnit {
     padding: 3px;
     overflow: auto;
 }
+
+/* A click on one of these rows picks a creature, so the browser must not read
+   it as the start of a text selection as well. Shift-clicking a run of them
+   dragged a blue selection across the names, sitting on top of the highlight
+   that says what is actually picked -- two kinds of "selected" on the same
+   words, one of which means nothing here.
+
+   The same reason .tab, #mapGraphic, .rotateHandle and .creatureHeading carry
+   this: a thing that is clicked rather than read. Names stay selectable
+   everywhere they are text to be copied, the statblock panel included. */
+.unitListEntry,
+.InitEntry {
+    user-select: none;
+}
+
 div.selected {
     background: var(--accent) !important;
 }
