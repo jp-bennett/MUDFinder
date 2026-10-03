@@ -3140,3 +3140,103 @@ class TestReadingADataUri:
     def test_an_empty_field_is_left_alone(self, make_session):
         make_session(room="uri")
         assert mudfinder.store_image("uri", "") == ""
+
+
+class TestPaintingSeeThroughSquares:
+    """Whether sight carries through a square is a detail of the square, not a
+    kind of square. A window, a portcullis, a chasm edge and a wall of force
+    are all "you can see it, you cannot cross it", and each being its own tile
+    type would multiply every tile the idea ever applies to.
+    """
+
+    def mapped(self, gm_client, room, key, width=4, height=3):
+        gm_client.emit("map_generate", {
+            "room": room, "gmKey": key,
+            "mapWidth": width, "mapHeight": height, "discovered": True,
+        })
+        gm_client.get_received()
+        return mudfinder.ROOMS[room]
+
+    def paint(self, gm_client, room, key, tool, *squares):
+        gm_client.emit("map_edit", {
+            "room": room, "gmKey": key,
+            "tiles": [{"newTile": tool, "xCoord": x, "yCoord": y} for x, y in squares],
+        })
+
+    def test_a_fresh_square_carries_nothing(self, gm):
+        """Opaque is the absence of the key, which is what makes every map that
+        existed before this a solid one with nothing to migrate."""
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        assert "transparent" not in session.mapData["mapArray"][0][0]
+
+    def test_the_tool_marks_a_square(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "seeThroughOn", (1, 1))
+        assert session.mapData["mapArray"][1][1]["transparent"] is True
+
+    def test_and_the_other_tool_clears_it(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "seeThroughOn", (1, 1))
+        self.paint(gm_client, room, key, "seeThroughOff", (1, 1))
+        assert "transparent" not in session.mapData["mapArray"][1][1]
+
+    def test_it_paints_across_a_drag(self, gm):
+        """The reason it is two tools rather than one toggle: a toggle dragged
+        over a run of squares flips each one, which is never what was meant."""
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "seeThroughOn", (0, 0), (1, 0), (2, 0))
+        assert [session.mapData["mapArray"][0][x].get("transparent")
+                for x in range(4)] == [True, True, True, None]
+
+    def test_it_leaves_the_square_itself_alone(self, gm):
+        """It is a detail of whatever the square already is, so painting it
+        must not turn a wall into a floor or make it walkable."""
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "wallTile", (1, 1))
+        self.paint(gm_client, room, key, "seeThroughOn", (1, 1))
+        tile = session.mapData["mapArray"][1][1]
+        assert tile["tile"] == "wallTile"
+        assert tile["walkable"] is False
+
+    def test_it_is_not_written_into_the_tile_type(self, gm):
+        """map_edit dispatches on substrings -- `"Tile" in newTile` -- so a
+        tool whose id carried that substring would be stored as a kind of
+        square. The ids avoid it and the branch sits in front of the chain;
+        this is the check on both."""
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        before = session.mapData["mapArray"][1][1]["tile"]
+        self.paint(gm_client, room, key, "seeThroughOn", (1, 1))
+        assert session.mapData["mapArray"][1][1]["tile"] == before
+
+    @pytest.mark.parametrize("tool,expected", [
+        ("floorTile", "floorTile"),
+        ("wallTile", "wallTile"),
+        ("doorClosed", "doorClosed"),
+    ])
+    def test_the_other_tools_still_dispatch(self, gm, tool, expected):
+        """A branch in front of that substring chain could swallow the tools
+        that follow it."""
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, tool, (1, 1))
+        assert session.mapData["mapArray"][1][1]["tile"] == expected
+
+    def test_only_the_gm_may_paint_it(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, "not-the-key", "seeThroughOn", (1, 1))
+        assert "transparent" not in session.mapData["mapArray"][1][1]
+
+    def test_it_survives_a_save_and_load(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "seeThroughOn", (1, 1))
+        restored = Session(room, key, "placeholder")
+        restored.from_json(session.gen_save())
+        assert restored.mapData["mapArray"][1][1]["transparent"] is True

@@ -1312,6 +1312,33 @@ tr:nth-child(even) {background-color: var(--paper-warm);}
 .swatchDarkness {
     background: rgb(20, 22, 34);
 }
+
+/* See-through squares.
+   --------------------------------------------------------------------------
+   The mark has to survive being laid over any tile -- a wall, a door, a pit,
+   a battlemap image -- so it is a border and a hatch rather than a fill. A
+   fill would say "this square is made of glass"; what is meant is "whatever
+   this square is, you can see past it". */
+.swatchSeeThrough {
+    background: repeating-linear-gradient(
+        45deg,
+        rgba(173, 216, 230, 0.55) 0 3px,
+        rgba(255, 255, 255, 0.9) 3px 6px);
+    border-style: dashed !important;
+}
+.swatchSolid {
+    background: var(--ink-soft);
+}
+.seeThroughTile {
+    /* Dashed because the square is still there and still stops a creature.
+       inset so it reads as part of the square rather than as a selection,
+       which is drawn as an outline on top. */
+    box-shadow: inset 0 0 0 2px rgba(173, 216, 230, 0.85);
+    background-image: repeating-linear-gradient(
+        45deg,
+        rgba(173, 216, 230, 0.22) 0 4px,
+        rgba(173, 216, 230, 0) 4px 8px);
+}
 .unseenTileTransparent {
     background: transparent;
     border:none;

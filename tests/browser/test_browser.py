@@ -319,8 +319,6 @@ class TestSelfContained:
         assert external == []
 
 
-
-
 # Every one of these paints through the background property -- the CSS classes
 # for these types, and inline gradients for thin walls -- which the overlay
 # used to overwrite.
@@ -3333,8 +3331,8 @@ def chrome(browser, live_server):
 class TestThePalette:
     def test_the_tools_are_grouped_and_named(self, chrome):
         assert chrome["palette"]["labels"] == [
-            "Terrain", "Doors & Stairs", "Markers", "Light", "Movement",
-            "Map", "Show"]
+            "Terrain", "Doors & Stairs", "Markers", "Light", "See-through",
+            "Movement", "Map", "Show"]
 
     def test_every_group_is_on_one_row(self, chrome):
         """Floated, the last group wrapped to a second line as soon as the
@@ -6883,3 +6881,138 @@ class TestATokenIsFetchedOnceAndKept:
         assert token_traffic["errors"] == []
 
 
+@pytest.fixture(scope="module")
+def see_through(browser, live_server):
+    """A window cut into a wall, from both sides of it.
+
+    Sight and movement used to be the same question: the ray stopped on
+    `walkable`, so every square that turned a creature back also hid whatever
+    stood behind it. There was no way to draw a window, a portcullis or the
+    far side of a chasm.
+    """
+    context = browser.new_context(viewport={"width": 1400, "height": 900})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "window")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        args = dict(pair.split("=", 1) for pair in page.url.split("?", 1)[1].split("&"))
+        room, key = args["room"], args["gmKey"]
+        page.fill("#mapWidth", "9")
+        page.fill("#mapHeight", "5")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 45",
+            timeout=HANDSHAKE_TIMEOUT)
+
+        player_errors = []
+        player = context.new_page()
+        player.on("pageerror", lambda error: player_errors.append(str(error)))
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Aria")""",
+            timeout=HANDSHAKE_TIMEOUT)
+
+        stages = {}
+        stages["tools"] = page.evaluate(
+            """() => Array.from(
+                 document.querySelectorAll('#seeThroughTools .mapTile')).map(d => d.id)""")
+
+        # A wall down column 4, and Aria to the west of it.
+        page.evaluate(
+            """([room, key]) => {
+              const edits = [];
+              for (let y = 0; y < 5; y++) {
+                edits.push({newTile: 'wallTile', xCoord: 4, yCoord: y});
+              }
+              socket.emit('map_edit', {tiles: edits, room: room, gmKey: key,
+                                       relative_x: 0, relative_y: 0});
+            }""", [room, key])
+        page.wait_for_timeout(600)
+        unit = page.evaluate(
+            """() => gmData.unitList.findIndex(u => u.charName === "Aria")""")
+
+        def place():
+            page.evaluate(
+                """([room, key, n]) => socket.emit('locate_unit', {
+                     selectedUnit: n, moveType: 5, xCoord: 2, yCoord: 2,
+                     relative_x: 4, relative_y: 4, room: room, gmKey: key})""",
+                [room, key, unit])
+            page.wait_for_timeout(900)
+
+        def fog():
+            return player.evaluate(
+                """() => mapObject.mapArray.map(row => row.map(
+                     t => t.tile === 'unseenTile' ? '.'
+                          : (t.transparent ? 'W' : (t.walkable ? 'o' : '#'))).join(''))""")
+
+        place()
+        stages["solid"] = fog()
+
+        page.evaluate(
+            """([room, key]) => socket.emit('map_edit', {
+                 tiles: [{newTile: 'seeThroughOn', xCoord: 4, yCoord: 2}],
+                 room: room, gmKey: key, relative_x: 0, relative_y: 0})""",
+            [room, key])
+        page.wait_for_timeout(500)
+        place()
+        stages["window"] = fog()
+
+        stages["gmMarked"] = page.evaluate(
+            "() => document.querySelectorAll('#mapGraphic .seeThroughTile').length")
+        stages["playerMarked"] = player.evaluate(
+            "() => document.querySelectorAll('#mapGraphic .seeThroughTile').length")
+        stages["square"] = page.evaluate(
+            """() => ({tile: mapObject.mapArray[2][4].tile,
+                       walkable: mapObject.mapArray[2][4].walkable})""")
+        stages["errors"] = errors
+        stages["playerErrors"] = player_errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestAWindowInAWall:
+    def test_the_gm_has_a_tool_for_it(self, see_through):
+        assert see_through["tools"] == ["seeThroughOn", "seeThroughOff"]
+
+    def test_a_solid_wall_hides_what_is_behind_it(self, see_through):
+        assert see_through["solid"] == ["oooo#...."] * 5
+
+    def test_a_window_lets_the_party_see_past_it(self, see_through):
+        """And only through the gap: the rows level with the window open up,
+        the corners stay dark. A blanket reveal would show all five."""
+        assert see_through["window"] == [
+            "oooo#....",
+            "oooo#oooo",
+            "ooooWoooo",
+            "oooo#oooo",
+            "oooo#....",
+        ]
+
+    def test_the_square_is_still_a_wall(self, see_through):
+        """It is a detail of the square, not a kind of square. Painting it must
+        not turn the wall into something a creature can walk through."""
+        assert see_through["square"] == {"tile": "wallTile", "walkable": False}
+
+    def test_both_views_mark_it(self, see_through):
+        """The GM has to tell it from the solid wall it is drawn as, and
+        without the mark a player seeing a lit room through a wall reads it as
+        a bug rather than as a window."""
+        assert see_through["gmMarked"] == 1
+        assert see_through["playerMarked"] == 1
+
+    def test_nothing_raised(self, see_through):
+        assert see_through["errors"] == []
+        assert see_through["playerErrors"] == []

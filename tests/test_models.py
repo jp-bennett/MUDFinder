@@ -1764,3 +1764,95 @@ class TestSlotsForCreaturesStillOwingARoll:
         restored = Unit(party.unitList[1].to_json())
         assert restored.awaitingInit is True
         assert restored.initiative == ""
+
+
+class TestSeeingThroughWhatYouCannotCross:
+    """A window, a portcullis, a chasm edge: sight carries on, a creature does
+    not. Sight and movement were the same question before this -- the ray
+    stopped on `walkable`, so every square that turned a creature back also hid
+    whatever stood behind it.
+    """
+
+    def corridor(self, transparent=False, secret=False):
+        """Aria at the west end, something unwalkable at square 3."""
+        session = Session("room-1", "key-1", "Corridor")
+        row = []
+        for x in range(7):
+            tile = {"tile": "floorTile", "walkable": True, "seen": False,
+                    "secret": False, "x": x, "y": 0}
+            if x == 3:
+                tile = {"tile": "wallTile", "walkable": False, "seen": False,
+                        "secret": secret, "x": x, "y": 0}
+                if transparent:
+                    tile["transparent"] = True
+            row.append(tile)
+        session.mapData["mapArray"] = [row]
+        aria = Unit({"charName": "Aria", "controlledBy": "Aria"})
+        aria.location = [0, 0]
+        session.unitList.append(aria)
+        session.playerList["Aria"] = aria
+        return session
+
+    def looked(self, session):
+        session.reveal_map(0)
+        return "".join("X" if tile["seen"] else "."
+                       for tile in session.mapData["mapArray"][0])
+
+    def test_a_solid_square_stops_sight_at_itself(self):
+        """The square is seen -- you can see the wall -- and nothing past it."""
+        assert self.looked(self.corridor()) == "XXXX..."
+
+    def test_a_see_through_square_does_not(self):
+        assert self.looked(self.corridor(transparent=True)) == "XXXXXXX"
+
+    def test_a_creature_still_cannot_cross_it(self):
+        """The whole point of the pair being separate."""
+        session = self.corridor(transparent=True)
+        session.reveal_map(0)
+        assert session.calc_path(session.unitList[0], [0, 3], 0) is None
+
+    def test_a_secret_square_keeps_blocking_however_it_is_marked(self):
+        """A secret door is masked to the players as the wall it is pretending
+        to be. A ray carrying on through one would show them the room behind a
+        door they have not found, which is the tell the mask exists to stop."""
+        assert self.looked(self.corridor(transparent=True, secret=True)) == "XXXX..."
+
+    def test_the_players_are_told_which_square_it_is(self):
+        """Without the mark a player sees a lit room through a solid wall and
+        reads it as a bug rather than as a window."""
+        session = self.corridor(transparent=True)
+        session.reveal_map(0)
+        assert session.player_map()["mapArray"][0][3]["transparent"] is True
+
+    def test_but_not_about_one_they_have_not_reached(self):
+        """Before the masking it would draw the shape of an unexplored room
+        through the fog, which is what the light and the warp are held back
+        for."""
+        session = self.corridor(transparent=True)
+        # Nobody has looked yet.
+        assert "transparent" not in session.player_map()["mapArray"][0][3]
+
+    def test_nor_about_a_secret_one(self):
+        session = self.corridor(transparent=True, secret=True)
+        session.mapData["mapArray"][0][3]["seen"] = True
+        assert "transparent" not in session.player_map()["mapArray"][0][3]
+
+    def test_an_ordinary_square_says_nothing_either_way(self):
+        session = self.corridor()
+        session.reveal_map(0)
+        assert "transparent" not in session.player_map()["mapArray"][0][0]
+
+    def test_it_survives_a_save_and_load(self):
+        session = self.corridor(transparent=True)
+        restored = Session("room-1", "key-1", "placeholder")
+        restored.from_json(session.gen_save())
+        row = restored.mapData["mapArray"][0]
+        assert [tile.get("transparent") for tile in row] == \
+            [None, None, None, True, None, None, None]
+
+    def test_a_map_from_before_the_feature_is_all_solid(self):
+        """The absence of the key is opaque, so there is nothing to migrate."""
+        session = self.corridor()
+        for tile in session.mapData["mapArray"][0]:
+            assert "transparent" not in tile
+        assert self.looked(session) == "XXXX..."
