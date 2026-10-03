@@ -51,6 +51,22 @@ class TestStatic:
         assert int(version("python-socketio").split(".")[0]) >= 5
         assert int(version("python-engineio").split(".")[0]) >= 4
 
+    def test_socketio_is_below_the_version_that_refuses_our_rooms(self):
+        """5.17 refuses join_room() for a room named after a session id, and
+        every room here is: `room = request.sid`. Installed above it, creating
+        or joining a game raises "cannot enter a sid room" and nothing works.
+
+        This is the guard on the holding pin in requirements.txt. It fails
+        rather than the 39 scattered handler tests that fail without it, none
+        of which say why. Lift it when a room id stops being a sid.
+        """
+        from importlib.metadata import version
+
+        major, minor = (int(part) for part in version("python-socketio").split(".")[:2])
+        assert (major, minor) < (5, 17), (
+            "python-socketio %s refuses join_room() on a sid-named room; "
+            "see the note in requirements.txt" % version("python-socketio"))
+
 
 class TestDownload:
     def test_gm_can_download_a_save(self, http, make_session):
