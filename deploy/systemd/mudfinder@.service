@@ -21,9 +21,14 @@ EnvironmentFile=/etc/mudfinder/%i.env
 
 # A single worker, always. Sessions live in the process, so a second worker
 # serves a different set of games to whoever it happens to answer.
+# MUDFINDER_BIND is host:port, not just a port, because where nginx lives
+# decides the host. On the same machine, 127.0.0.1:5001 keeps the instance off
+# the network entirely. On another machine -- which is the setup this was first
+# installed on -- loopback is unreachable and nginx answers 502 while a local
+# curl returns 200, so it has to bind an address the proxy can route to.
 ExecStart=/opt/mudfinder-%i/.venv/bin/gunicorn \
     -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker \
-    -w 1 -b 127.0.0.1:${MUDFINDER_PORT} \
+    -w 1 -b ${MUDFINDER_BIND} \
     --graceful-timeout 30 \
     mudfinder:app
 

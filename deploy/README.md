@@ -73,6 +73,10 @@ class, and systemd restarts it on a loop -- the journal shows a
 `ModuleNotFoundError` inside gunicorn's own import machinery, which does not
 look like a missing dependency of yours.
 
+If nginx answers 502 while `curl` on the host returns 200, the instance is
+bound somewhere the proxy cannot route to -- see MUDFINDER_BIND in
+beta.env.example. A proxy on another machine cannot reach 127.0.0.1 here.
+
 nginx goes in front of the two ports — see "Behind a reverse proxy" and
 "Serving it under a subpath" in the top-level README.
 
