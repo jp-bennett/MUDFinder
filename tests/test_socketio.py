@@ -13,7 +13,7 @@ import sqlite3
 import pytest
 
 import mudfinder
-from helpers import GM_KEY, event, event_names
+from helpers import GM_KEY, event, event_names, make_player
 from session import Session
 from unit import Unit
 
@@ -2670,3 +2670,291 @@ class TestTurningAToken:
         gm_client.emit("rotate_unit", {"room": room, "gmKey": key,
                                        "unitNum": 0, "clockwise": True})
         assert self.rotation(room) == 90
+
+
+def seat_party(room, extra=()):
+    """A monster in the order and a character and familiar that are not."""
+    session = mudfinder.ROOMS[room]
+    session.playerList["Aria"] = make_player(charName="Aria")
+    session.unitList = [
+        Unit({"charName": "Goblin", "controlledBy": "gm", "initiative": 20,
+              "inInit": True}),
+        Unit({"charName": "Aria", "controlledBy": "Aria", "DEX": 14}),
+        Unit({"charName": "Owl", "controlledBy": "Aria"}),
+    ]
+    for extra_unit in extra:
+        session.unitList.append(extra_unit)
+    for number, unit in enumerate(session.unitList):
+        unit.unitNum = number
+    session.insert_initiative(session.unitList[0])
+    return session
+
+
+def names_in_order(room):
+    return [u.charName for u in mudfinder.ROOMS[room].initiativeList]
+
+
+class TestRequestingInitiativeSeatsTheParty:
+    """Asking for initiative now puts the party in the order straight away,
+    each with an empty slot, rather than leaving them out until a number
+    arrives."""
+
+    def test_the_players_creatures_get_a_slot(self, gm):
+        client, room, key = gm
+        seat_party(room)
+        client.emit("request_init", {"room": room, "gmKey": key})
+        assert names_in_order(room) == ["Goblin", "Aria", "Owl"]
+
+    def test_the_slots_are_empty(self, gm):
+        client, room, key = gm
+        seat_party(room)
+        client.emit("request_init", {"room": room, "gmKey": key})
+        waiting = [u.charName for u in mudfinder.ROOMS[room].initiativeList
+                   if u.awaitingInit]
+        assert waiting == ["Aria", "Owl"]
+
+    def test_a_gm_creature_gets_none(self, gm):
+        """The GM adds those through the Encounter tab with a score already on
+        them; a slot with a box in it would be asking the GM to answer their
+        own question."""
+        client, room, key = gm
+        seat_party(room, extra=[Unit({"charName": "Rat", "controlledBy": "gm"})])
+        client.emit("request_init", {"room": room, "gmKey": key})
+        assert "Rat" not in names_in_order(room)
+
+    def test_a_creature_already_in_the_order_is_left_where_it_is(self, gm):
+        client, room, key = gm
+        seat_party(room)
+        client.emit("request_init", {"room": room, "gmKey": key})
+        assert mudfinder.ROOMS[room].initiativeList[0].initiative == 20
+        assert mudfinder.ROOMS[room].initiativeList[0].awaitingInit is False
+
+    def test_the_players_are_still_prompted(self, gm):
+        client, room, key = gm
+        seat_party(room)
+        client.emit("request_init", {"room": room, "gmKey": key})
+        assert mudfinder.ROOMS[room].playerList["Aria"].requestInit is True
+
+    def test_only_the_gm_may_ask(self, gm):
+        client, room, _ = gm
+        seat_party(room)
+        client.emit("request_init", {"room": room, "gmKey": "not-the-key"})
+        assert names_in_order(room) == ["Goblin"]
+
+
+class TestTheGmCanTypeAScore:
+    def test_a_typed_score_puts_the_creature_in_the_order(self, gm):
+        client, room, key = gm
+        seat_party(room)
+        client.emit("request_init", {"room": room, "gmKey": key})
+        client.emit("set_initiative",
+                    {"room": room, "gmKey": key, "unitNum": 1, "initiative": "19"})
+        assert names_in_order(room) == ["Goblin", "Aria", "Owl"]
+        assert mudfinder.ROOMS[room].unitList[1].initiative == 19
+        assert mudfinder.ROOMS[room].unitList[1].inInit is True
+
+    def test_it_sorts_rather_than_landing_where_it_was(self, gm):
+        client, room, key = gm
+        seat_party(room)
+        client.emit("request_init", {"room": room, "gmKey": key})
+        client.emit("set_initiative",
+                    {"room": room, "gmKey": key, "unitNum": 2, "initiative": "25"})
+        assert names_in_order(room) == ["Owl", "Goblin", "Aria"]
+
+    def test_it_needs_the_gm_key(self, gm):
+        client, room, key = gm
+        seat_party(room)
+        client.emit("request_init", {"room": room, "gmKey": key})
+        client.emit("set_initiative",
+                    {"room": room, "gmKey": "wrong", "unitNum": 1, "initiative": "19"})
+        assert mudfinder.ROOMS[room].unitList[1].awaitingInit is True
+
+    def test_something_that_is_not_a_number_is_ignored(self, gm):
+        client, room, key = gm
+        seat_party(room)
+        client.emit("request_init", {"room": room, "gmKey": key})
+        client.emit("set_initiative",
+                    {"room": room, "gmKey": key, "unitNum": 1, "initiative": "soon"})
+        assert mudfinder.ROOMS[room].unitList[1].awaitingInit is True
+
+    def test_a_creature_that_is_not_there_is_ignored(self, gm):
+        client, room, key = gm
+        seat_party(room)
+        client.emit("set_initiative",
+                    {"room": room, "gmKey": key, "unitNum": 99, "initiative": "19"})
+        assert names_in_order(room) == ["Goblin"]
+
+
+class TestWhatARollAdds:
+    """The button says what it is about to add, so the sum behind it has to be
+    the one the sheet shows -- setInitBonus in player.js works out the same."""
+
+    def test_the_dex_modifier(self):
+        assert mudfinder.initiative_modifier(Unit({"charName": "A", "DEX": 14})) == 2
+
+    def test_a_low_score_subtracts(self):
+        assert mudfinder.initiative_modifier(Unit({"charName": "A", "DEX": 7})) == -2
+
+    def test_misc_is_added_on(self):
+        unit = Unit({"charName": "A", "DEX": 14, "miscToInit": "4"})
+        assert mudfinder.initiative_modifier(unit) == 6
+
+    def test_a_temporary_score_replaces_the_modifier(self):
+        unit = Unit({"charName": "A", "DEX": 14, "DEXTemp": "10"})
+        assert mudfinder.initiative_modifier(unit) == 0
+
+    def test_a_blank_sheet_adds_nothing(self):
+        assert mudfinder.initiative_modifier(Unit({"charName": "A"})) == 0
+
+    def test_rubbish_on_the_sheet_adds_nothing(self):
+        unit = Unit({"charName": "A", "DEX": "lots", "miscToInit": "some"})
+        assert mudfinder.initiative_modifier(unit) == 0
+
+
+class TestRollingInitiative:
+    def test_the_gm_can_roll_for_a_creature(self, gm):
+        client, room, key = gm
+        seat_party(room)
+        client.emit("request_init", {"room": room, "gmKey": key})
+        client.emit("roll_initiative", {"room": room, "gmKey": key, "unitNum": 1})
+        assert mudfinder.ROOMS[room].unitList[1].awaitingInit is False
+        assert mudfinder.ROOMS[room].unitList[1].inInit is True
+
+    def test_the_result_is_a_d20_plus_the_modifier(self, gm):
+        client, room, key = gm
+        seat_party(room)
+        client.emit("request_init", {"room": room, "gmKey": key})
+        client.emit("roll_initiative", {"room": room, "gmKey": key, "unitNum": 1})
+        # Aria has DEX 14, so +2.
+        assert 3 <= mudfinder.ROOMS[room].unitList[1].initiative <= 22
+
+    def test_a_player_may_roll_for_their_own(self, gm):
+        client, room, key = gm
+        seat_party(room)
+        client.emit("request_init", {"room": room, "gmKey": key})
+        client.emit("roll_initiative",
+                    {"room": room, "charName": "Aria", "unitNum": 2})
+        assert mudfinder.ROOMS[room].unitList[2].inInit is True
+
+    def test_but_not_for_someone_elses(self, gm):
+        """The check rolling one of their own saves goes through."""
+        client, room, key = gm
+        seat_party(room)
+        client.emit("request_init", {"room": room, "gmKey": key})
+        client.emit("roll_initiative",
+                    {"room": room, "charName": "Aria", "unitNum": 0})
+        assert mudfinder.ROOMS[room].unitList[0].initiative == 20
+
+    def test_the_roll_is_announced(self, browser_style_game, client):
+        gm_client, room, key = browser_style_game
+        seat_party(room)
+        gm_client.emit("request_init", {"room": room, "gmKey": key})
+        gm_client.get_received()
+        client.get_received()
+        gm_client.emit("roll_initiative", {"room": room, "gmKey": key, "unitNum": 1})
+        said = event(client.get_received(), "chat")["args"][0]["chat"]
+        assert said.startswith("Aria — initiative: d20(")
+        assert said.endswith(str(mudfinder.ROOMS[room].unitList[1].initiative))
+
+    def test_a_creature_that_is_not_there_is_ignored(self, gm):
+        client, room, key = gm
+        seat_party(room)
+        client.emit("roll_initiative", {"room": room, "gmKey": key, "unitNum": 99})
+        assert names_in_order(room) == ["Goblin"]
+
+
+class TestThePromptComesDownWhenNothingIsOwed:
+    def test_one_of_two_leaves_it_up(self, gm):
+        """A player running a character and a familiar answers for both."""
+        client, room, key = gm
+        seat_party(room)
+        client.emit("request_init", {"room": room, "gmKey": key})
+        client.emit("set_initiative",
+                    {"room": room, "gmKey": key, "unitNum": 1, "initiative": "19"})
+        assert mudfinder.ROOMS[room].playerList["Aria"].requestInit is True
+
+    def test_the_last_one_takes_it_down(self, gm):
+        client, room, key = gm
+        seat_party(room)
+        client.emit("request_init", {"room": room, "gmKey": key})
+        client.emit("set_initiative",
+                    {"room": room, "gmKey": key, "unitNum": 1, "initiative": "19"})
+        client.emit("set_initiative",
+                    {"room": room, "gmKey": key, "unitNum": 2, "initiative": "7"})
+        assert mudfinder.ROOMS[room].playerList["Aria"].requestInit is False
+
+
+def seat_a_player(room, name):
+    """A character in the room the way joining puts one there.
+
+    playerList and unitList hold the same object -- join appends the Player it
+    just made to unitList rather than making a second one -- and a test that
+    builds two separate ones is testing something the app never does.
+    """
+    player = make_player(charName=name)
+    mudfinder.ROOMS[room].playerList[name] = player
+    mudfinder.ROOMS[room].unitList = [player]
+    player.unitNum = 0
+    return player
+
+
+class TestASavedSheetReachesTheGm:
+    """update_player answered the sender alone, so the GM's copy of a character
+    kept whatever it held before the player saved. Everything the GM sees of a
+    player is drawn from that copy -- the unit list, the sheet in the Units
+    tab, and what a Roll button on the initiative row promises to add."""
+
+    def sheet(self, room, **fields):
+        payload = {"room": room, "charName": "Aria"}
+        # update_player reads every field on the sheet by name, so a partial
+        # payload throws a KeyError rather than saving what was sent.
+        for key in ["alignment", "size", "height", "weight", "level", "age",
+                    "deity", "hair", "eyes", "race", "gender", "homeland",
+                    "flySpeed", "flyManeuverability", "swimSpeed", "climbSpeed",
+                    "burrowSpeed", "STR", "DEX", "CON", "INT", "WIS", "CHA",
+                    "STRTemp", "DEXTemp", "CONTemp", "INTTemp", "WISTemp",
+                    "CHATemp", "HP", "maxHP", "DR", "wounds", "nonLethal",
+                    "miscToInit", "BAB", "ACArmor", "ACShield", "ACNatural",
+                    "deflection", "ACMisc", "fortBase", "fortMagic", "fortMisc",
+                    "reflexBase", "reflexMagic", "reflexMisc", "willBase",
+                    "willMagic", "willMisc", "SR", "ER"]:
+            payload[key] = ""
+        payload["movementSpeed"] = 30
+        payload["armorSpeed"] = 0
+        payload["weapons"] = []
+        payload["skills"] = {}
+        payload["spellcasting"] = []
+        payload.update(fields)
+        return payload
+
+    def test_the_gm_is_told(self, browser_style_game, client):
+        gm_client, room, _ = browser_style_game
+        seat_a_player(room, "Aria")
+        gm_client.get_received()
+        client.emit("update_player", self.sheet(room, DEX="14", miscToInit="2"))
+        assert "gm_update" in event_names(gm_client.get_received())
+
+    def test_the_gm_copy_carries_the_new_values(self, browser_style_game, client):
+        gm_client, room, _ = browser_style_game
+        seat_a_player(room, "Aria")
+        gm_client.get_received()
+        client.emit("update_player", self.sheet(room, DEX="14", miscToInit="2"))
+        sent = event(gm_client.get_received(), "gm_update")["args"][0]
+        aria = [u for u in sent["unitList"] if u["charName"] == "Aria"][0]
+        assert aria["DEX"] == "14"
+        assert aria["miscToInit"] == "2"
+
+    def test_so_the_roll_button_can_promise_the_right_bonus(self, browser_style_game, client):
+        gm_client, room, _ = browser_style_game
+        seat_a_player(room, "Aria")
+        client.emit("update_player", self.sheet(room, DEX="14", miscToInit="2"))
+        assert mudfinder.initiative_modifier(
+            mudfinder.ROOMS[room].unitList[0]) == 4
+
+    def test_the_player_is_still_answered(self, gm):
+        """It was a do_update to the sender, and the sheet repaints from it."""
+        client, room, _ = gm
+        seat_a_player(room, "Aria")
+        client.get_received()
+        client.emit("update_player", self.sheet(room, DEX="14"))
+        assert "do_update" in event_names(client.get_received())

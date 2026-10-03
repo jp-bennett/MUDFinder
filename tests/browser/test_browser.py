@@ -6368,3 +6368,355 @@ class TestThePlayersCharacterSheet:
 
     def test_nothing_raised(self, character_sheet):
         assert character_sheet["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def initiative_entry(browser, live_server):
+    """Asking the party for initiative, and the several ways a score arrives.
+
+    A character used to be absent from the order until their number came in.
+    Now they get a slot with a box in it, so the GM can see who they are
+    waiting on, type a number a player called out, or roll it themselves --
+    and the player has a button for it too.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "entry")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        room = dict(pair.split("=", 1)
+                    for pair in page.url.split("?", 1)[1].split("&"))["room"]
+
+        player_errors = []
+        player = context.new_page()
+        player.on("pageerror", lambda error: player_errors.append(str(error)))
+        player.goto("%s/player.html?room=%s&charName=Vex" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.wait_for_function(
+            """() => Array.from(document.getElementById("unitControlledBy").options)
+                 .some(o => o.value === "Vex")""",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+
+        # DEX 14 and +2 misc, so the button has something to promise.
+        player.click("div.tab:text-is('Character')")
+        player.wait_for_function(
+            """() => document.getElementById("sheetDEXScore")""",
+            timeout=HANDSHAKE_TIMEOUT)
+        player.fill("#sheetDEXScore", "14")
+        player.dispatch_event("#sheetDEXScore", "change")
+        player.fill("#sheetMiscToInit", "2")
+        player.dispatch_event("#sheetMiscToInit", "change")
+        player.click("#sheetActions button:text-is('Save Changes')")
+        # Waited on the GM's copy deliberately: update_player used to answer the
+        # sender alone, so a saved sheet never reached the GM at all and this
+        # would sit here until it timed out.
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(
+                 u => u.charName === "Vex" && String(u.DEX) === "14"
+                      && String(u.miscToInit) === "2")""",
+            timeout=HANDSHAKE_TIMEOUT)
+        sheet_bonus = player.input_value("#sheetInitBonus")
+        gm_copy = page.evaluate(
+            """() => { const u = gmData.unitList.find(u => u.charName === "Vex");
+                       return {DEX: String(u.DEX), misc: String(u.miscToInit)}; }""")
+
+        # A monster already in the order, and a familiar the player also runs.
+        page.click("div.tab:text-is('Encounter')")
+        page.check("#addToInit")
+        page.fill("#unitName", "Goblin")
+        page.fill("#unitHP", "6")
+        page.fill("#unitInit", "20")
+        page.select_option("#unitControlledBy", "gm")
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData && gmData.unitList.some(u => u.charName === "Goblin")""",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.uncheck("#addToInit")
+        page.fill("#unitName", "Owl")
+        page.fill("#unitHP", "3")
+        page.fill("#unitInit", "")
+        page.select_option("#unitControlledBy", "Vex")
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData.unitList.some(u => u.charName === "Owl")""",
+            timeout=HANDSHAKE_TIMEOUT)
+        # A creature of the GM's own, which must not be given a slot.
+        page.fill("#unitName", "Rat")
+        page.fill("#unitHP", "2")
+        page.select_option("#unitControlledBy", "gm")
+        page.click("text=Add Unit")
+        page.wait_for_function(
+            """() => gmData.unitList.some(u => u.charName === "Rat")""",
+            timeout=HANDSHAKE_TIMEOUT)
+
+        page.click("div.tab:text-is('Map')")
+        page.wait_for_timeout(400)
+        stages = {"sheetBonus": sheet_bonus, "gmCopy": gm_copy}
+        stages["before"] = page.evaluate(
+            "() => gmData.initiativeList.map(u => u.charName)")
+
+        page.click("text=Request initiative")
+        page.wait_for_function(
+            """() => gmData.initiativeList.length >= 3""", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_timeout(500)
+        stages["seated"] = page.evaluate(
+            """() => gmData.initiativeList.map(
+                 u => ({name: u.charName, waiting: !!u.awaitingInit,
+                        score: u.initiative}))""")
+        stages["boxes"] = page.evaluate(
+            """() => Array.from(document.querySelectorAll("#initiativeDiv .initEntryBox"))
+                 .map(b => b.id)""")
+        stages["rollButtons"] = page.evaluate(
+            """() => Array.from(document.querySelectorAll("#initiativeDiv button"))
+                 .map(b => b.innerText).filter(t => t.indexOf("Roll") === 0)""")
+        stages["arrows"] = page.evaluate(
+            """() => Array.from(document.getElementById("initiativeDiv").children)
+                 .map(row => ({name: row.innerText.split("\\n")[0].trim(),
+                               arrows: row.innerText.indexOf("\u25b2") > -1}))""")
+
+        # The GM types a number the player called out.
+        vex = page.evaluate(
+            """() => gmData.unitList.findIndex(u => u.charName === "Vex")""")
+        page.fill("#setInit" + str(vex), "19")
+        page.press("#setInit" + str(vex), "Enter")
+        page.wait_for_function(
+            """() => gmData.initiativeList.some(
+                 u => u.charName === "Vex" && u.initiative === 19)""",
+            timeout=HANDSHAKE_TIMEOUT)
+        stages["afterTyping"] = page.evaluate(
+            """() => gmData.initiativeList.map(u => u.charName)""")
+
+        # The player rolls the familiar from their own prompt.
+        player.wait_for_selector("#promptDiv button", timeout=HANDSHAKE_TIMEOUT)
+        stages["promptButtons"] = player.evaluate(
+            """() => Array.from(document.querySelectorAll("#promptDiv button"))
+                 .map(b => b.innerText)""")
+        player.evaluate(
+            """() => {
+              const fields = Array.from(document.querySelectorAll("#promptDiv div"));
+              const owl = fields.find(f => f.innerText.indexOf("Owl") === 0);
+              owl.querySelector("button").click();
+            }""")
+        page.wait_for_function(
+            """() => gmData.initiativeList.every(u => !u.awaitingInit)""",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_timeout(500)
+        stages["afterRolling"] = page.evaluate(
+            """() => gmData.initiativeList.map(
+                 u => ({name: u.charName, score: u.initiative}))""")
+        stages["chat"] = page.evaluate(
+            "() => (document.body.innerText.match(/initiative: d20[^\\n]*/g) || [])")
+        stages["promptUp"] = player.is_visible("#promptDiv")
+        stages["errors"] = errors
+        stages["playerErrors"] = player_errors
+        return stages
+    finally:
+        context.close()
+
+
+class TestAskingThePartyForInitiative:
+    def test_the_party_take_their_places_at_once(self, initiative_entry):
+        """They used to be absent until a number arrived, so the GM could not
+        see who they were still waiting on."""
+        assert initiative_entry["before"] == ["Goblin"]
+        seated = [u["name"] for u in initiative_entry["seated"]]
+        assert seated == ["Goblin", "Vex", "Owl"]
+
+    def test_the_slots_are_at_the_foot_and_empty(self, initiative_entry):
+        waiting = [u for u in initiative_entry["seated"] if u["waiting"]]
+        assert [u["name"] for u in waiting] == ["Vex", "Owl"]
+        assert all(u["score"] == "" for u in waiting)
+
+    def test_the_gms_own_creature_gets_no_slot(self, initiative_entry):
+        """The GM adds those with a score already on them; a box there would
+        be asking the GM to answer their own question."""
+        assert "Rat" not in [u["name"] for u in initiative_entry["seated"]]
+
+    def test_each_empty_slot_has_a_box(self, initiative_entry):
+        assert len(initiative_entry["boxes"]) == 2
+
+    def test_and_a_roll_button_saying_what_it_adds(self, initiative_entry):
+        """The face carries the modifier, the way the save buttons do, so the
+        GM can see what is about to be added before pressing it."""
+        assert initiative_entry["rollButtons"] == ["Roll +4", "Roll +0"]
+
+    def test_a_slot_has_no_reorder_arrows(self, initiative_entry):
+        """Nudging a slot up or down is undone the moment a score arrives and
+        sorts the row, so the arrows are not offered on one."""
+        waiting = [r for r in initiative_entry["arrows"]
+                   if r["name"] in ("Vex", "Owl")]
+        assert waiting != []
+        assert all(not r["arrows"] for r in waiting)
+
+    def test_but_a_settled_row_still_has_them(self, initiative_entry):
+        settled = [r for r in initiative_entry["arrows"] if r["name"] == "Goblin"]
+        assert settled != [] and all(r["arrows"] for r in settled)
+
+    def test_a_saved_sheet_reaches_the_gm(self, initiative_entry):
+        """update_player answered the sender alone, so the GM's copy of a
+        character held whatever it had before the player saved -- and the GM's
+        views, this Roll button included, are drawn from that copy."""
+        assert initiative_entry["gmCopy"] == {"DEX": "14", "misc": "2"}
+
+    def test_the_button_agrees_with_the_sheet(self, initiative_entry):
+        """DEX 14 and +2 misc. If the two ever drift the button is lying."""
+        assert initiative_entry["sheetBonus"] == "4"
+        assert "Roll +4" in initiative_entry["rollButtons"]
+
+
+class TestAScoreArrivingFromEitherSide:
+    def test_the_gm_can_type_one_in(self, initiative_entry):
+        assert initiative_entry["afterTyping"] == ["Goblin", "Vex", "Owl"]
+
+    def test_the_player_can_roll_from_the_prompt(self, initiative_entry):
+        assert "Roll +0" in initiative_entry["promptButtons"]
+        assert "Send Initiative" in initiative_entry["promptButtons"]
+
+    def test_a_rolled_creature_lands_in_the_order(self, initiative_entry):
+        owl = [u for u in initiative_entry["afterRolling"]
+               if u["name"] == "Owl"][0]
+        assert isinstance(owl["score"], int)
+        assert 1 <= owl["score"] <= 20
+
+    def test_the_order_sorts_by_the_scores(self, initiative_entry):
+        scores = [u["score"] for u in initiative_entry["afterRolling"]]
+        assert scores == sorted(scores, key=int, reverse=True)
+
+    def test_the_roll_is_announced(self, initiative_entry):
+        assert initiative_entry["chat"] != []
+        assert "d20(" in initiative_entry["chat"][0]
+
+    def test_the_prompt_comes_down_once_nothing_is_owed(self, initiative_entry):
+        """Sending took it down itself; rolling the last one goes through the
+        server, so it has to come down on the update that comes back."""
+        assert initiative_entry["promptUp"] is False
+
+    def test_nothing_raised(self, initiative_entry):
+        assert initiative_entry["errors"] == []
+        assert initiative_entry["playerErrors"] == []
+
+
+@pytest.fixture(scope="module")
+def creature_selection(browser, live_server):
+    """Picking several creatures out of the list the way a file list works.
+
+    Shift used to add one more creature, so selecting a run of them meant
+    clicking every one. It takes a range now, and ctrl took over adding a
+    single creature.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "selection")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+
+        page.click("div.tab:text-is('Encounter')")
+        for name in ["Rat", "Bat", "Cat", "Dog", "Eel"]:
+            page.fill("#unitName", name)
+            page.fill("#unitHP", "3")
+            page.select_option("#unitControlledBy", "gm")
+            page.click("text=Add Unit")
+            page.wait_for_function(
+                """(who) => gmData.unitList.some(u => u.charName === who)""",
+                arg=name, timeout=HANDSHAKE_TIMEOUT)
+        page.click("div.tab:text-is('Units')")
+        page.wait_for_function(
+            """() => document.querySelectorAll("#unitsDiv > div").length === 5""",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_timeout(400)
+
+        rows = "#unitsDiv > div"
+        picked = {}
+
+        def selection():
+            return page.evaluate("() => selectedUnits.slice().sort((a, b) => a - b)")
+
+        page.click(rows + " >> nth=0")
+        picked["plain"] = selection()
+        page.click(rows + " >> nth=2", modifiers=["Control"])
+        picked["ctrlAdds"] = selection()
+        page.click(rows + " >> nth=4", modifiers=["Shift"])
+        picked["shiftRanges"] = selection()
+
+        page.click(rows + " >> nth=0")
+        picked["plainResets"] = selection()
+        page.click(rows + " >> nth=3", modifiers=["Shift"])
+        picked["rangeFromPlain"] = selection()
+        page.click(rows + " >> nth=2", modifiers=["Control"])
+        picked["ctrlRemoves"] = selection()
+
+        # Backwards, which is the same range.
+        page.click(rows + " >> nth=4")
+        page.click(rows + " >> nth=1", modifiers=["Shift"])
+        picked["rangeBackwards"] = selection()
+
+        # On the map shift keeps its old meaning: add this creature. A range
+        # over the unit list's order would mean nothing spatially, and the map's
+        # own handler reads shift to tell an add from an order to move.
+        page.click(rows + " >> nth=0")
+        page.evaluate("() => selectUnit({shiftKey: true}, 3)")
+        picked["shiftOffTheList"] = selection()
+
+        return {"picked": picked, "errors": errors}
+    finally:
+        context.close()
+
+
+class TestPickingSeveralCreatures:
+    def test_a_plain_click_takes_one(self, creature_selection):
+        assert creature_selection["picked"]["plain"] == [0]
+
+    def test_ctrl_adds_one_more(self, creature_selection):
+        assert creature_selection["picked"]["ctrlAdds"] == [0, 2]
+
+    def test_shift_takes_everything_in_between(self, creature_selection):
+        """The whole point: click the top one, shift-click the bottom one, and
+        the run between them comes with it. Shift used to add a single
+        creature, so a run of five meant five clicks."""
+        assert creature_selection["picked"]["shiftRanges"] == [2, 3, 4]
+
+    def test_the_range_runs_from_the_last_one_named_by_hand(self, creature_selection):
+        """Ctrl-clicking row 2 moved the anchor there, so the shift-click that
+        followed ranged from 2 rather than from the original click on 0."""
+        assert creature_selection["picked"]["ctrlAdds"][-1] == 2
+        assert creature_selection["picked"]["shiftRanges"][0] == 2
+
+    def test_a_plain_click_starts_again(self, creature_selection):
+        assert creature_selection["picked"]["plainResets"] == [0]
+        assert creature_selection["picked"]["rangeFromPlain"] == [0, 1, 2, 3]
+
+    def test_ctrl_takes_one_back_out(self, creature_selection):
+        assert creature_selection["picked"]["ctrlRemoves"] == [0, 1, 3]
+
+    def test_a_range_drawn_upwards_is_the_same_range(self, creature_selection):
+        assert creature_selection["picked"]["rangeBackwards"] == [1, 2, 3, 4]
+
+    def test_shift_away_from_the_list_still_adds_one(self, creature_selection):
+        """On the map a range over the list's order means nothing, so shift
+        keeps the meaning it had there."""
+        assert creature_selection["picked"]["shiftOffTheList"] == [0, 3]
+
+    def test_nothing_raised(self, creature_selection):
+        assert creature_selection["errors"] == []
