@@ -1,5 +1,7 @@
 //var selectedInitiative;
 var selectedUnits = [];
+// Where a shift-click ranges from: the creature last clicked on its own.
+var selectionAnchor = null;
 var gmData;
 var zoomSize = 70;
 var selectedTool;
@@ -797,7 +799,7 @@ function gmUnitRow(unit, index) {
         entry.classList.add("selected");
     }
     entry.style.width = "100%";
-    entry.addEventListener("click", function (e) { selectUnit(e, index); });
+    entry.addEventListener("click", function (e) { selectUnit(e, index, true); });
 
     var name = document.createElement("div");
     name.style.cssFloat = "left";
@@ -860,8 +862,40 @@ function gmInitiativeRow(unit, index) {
 
     var right = document.createElement("div");
     right.style.cssFloat = "right";
-    right.style.width = "120px";
-    right.appendChild(document.createTextNode("  " + unit.initiative + " "));
+    if (unit.awaitingInit) {
+        // Still owing a roll: a box to type the number the player called out,
+        // and a button to roll it here instead.
+        //
+        // Packed rather than given a fixed width. The panel is about 260px and
+        // a slot carries two more controls than a settled row does, so a fixed
+        // column left the last button stranded on a third line.
+        right.style.cssFloat = "none";
+        right.style.display = "flex";
+        right.style.flexWrap = "wrap";
+        right.style.alignItems = "center";
+        right.style.gap = "3px";
+        right.style.justifyContent = "flex-end";
+        var form = document.createElement("form");
+        form.style.display = "inline";
+        var box = document.createElement("input");
+        box.type = "text";
+        box.className = "initEntryBox";
+        box.id = "setInit" + unit.unitNum;
+        box.title = "initiative for " + unit.charName;
+        box.addEventListener("click", function (e) { e.stopPropagation(); });
+        form.addEventListener("submit", function (e) {
+            e.preventDefault();
+            setInitiative(unit.unitNum, box.value);
+        });
+        form.appendChild(box);
+        right.appendChild(form);
+        right.appendChild(rollInitiativeButton(unit, function () {
+            rollInitiative(unit.unitNum);
+        }));
+    } else {
+        right.style.width = "120px";
+        right.appendChild(document.createTextNode("  " + unit.initiative + " "));
+    }
     right.appendChild(rowButton("Rem", function (e) { removeInit(e, index); }));
     if (unit.type !== "player") {
         right.appendChild(rowButton("Del", function (e) { delInit(e, index); }));
@@ -871,20 +905,24 @@ function gmInitiativeRow(unit, index) {
     }));
     entry.appendChild(right);
 
-    var nudge = document.createElement("div");
-    nudge.style.cssFloat = "right";
-    var up = document.createElement("span");
-    up.style.cursor = "default";
-    up.innerText = "▲";
-    up.addEventListener("click", function (e) { earlierInit(e, index); });
-    var down = document.createElement("span");
-    down.style.cursor = "default";
-    down.innerText = "▼";
-    down.addEventListener("click", function (e) { laterInit(e, index); });
-    nudge.appendChild(up);
-    nudge.appendChild(document.createElement("br"));
-    nudge.appendChild(down);
-    entry.appendChild(nudge);
+    // Not on a slot that is still waiting on a roll: the order is by score, so
+    // a score arriving sorts the row and undoes the nudge on the spot.
+    if (!unit.awaitingInit) {
+        var nudge = document.createElement("div");
+        nudge.style.cssFloat = "right";
+        var up = document.createElement("span");
+        up.style.cursor = "default";
+        up.innerText = "▲";
+        up.addEventListener("click", function (e) { earlierInit(e, index); });
+        var down = document.createElement("span");
+        down.style.cursor = "default";
+        down.innerText = "▼";
+        down.addEventListener("click", function (e) { laterInit(e, index); });
+        nudge.appendChild(up);
+        nudge.appendChild(document.createElement("br"));
+        nudge.appendChild(down);
+        entry.appendChild(nudge);
+    }
 
     row.appendChild(entry);
     return row;
@@ -1302,6 +1340,19 @@ function mapClick(e, x, y) {
     }
 }
 
+// A score the GM was told rather than rolled.
+function setInitiative(unitNum, value) {
+    if (String(value).trim() === "") {
+        return;
+    }
+    socket.emit('set_initiative',
+                {room: room, gmKey: gmKey, unitNum: unitNum, initiative: value});
+}
+
+function rollInitiative(unitNum) {
+    socket.emit('roll_initiative', {room: room, gmKey: gmKey, unitNum: unitNum});
+}
+
 function changeHP(initnum) {
     socket.emit('change_hp', {changeHP: document.getElementById(`hpChange${initnum}`).value, room: room, gmKey: gmKey, initCount: initnum});
 }
@@ -1371,19 +1422,40 @@ function showUnitInfoEvent(e, unitNum) {
     showUnitInfo(unitNum);
 }
 
-function selectUnit(e, unitNum) {
+// Selecting creatures the way a file list does: a plain click takes one,
+// ctrl (or cmd) adds or removes one, and shift takes everything between the
+// row last clicked and this one.
+//
+// Shift only ranges in the creature list. On the map it keeps the meaning it
+// had -- add this creature to the selection -- because the rows' order is the
+// unit list's, and a range over it means nothing spatially. The map's own
+// handler reads shift as well, to tell a click that adds a creature from a
+// click that orders the selected one to move.
+function selectUnit(e, unitNum, fromList) {
     try {
         selectedTool = undefined;
-        if (selectedUnits.length == 0) {
-            selectedUnits = [unitNum];
-        } else if (selectedUnits.includes(unitNum)) {
-            selectedUnits.splice(selectedUnits.indexOf(unitNum), 1)
-        } else if (e.shiftKey) {
-            tmpUnits = selectedUnits;
-            selectedUnits = tmpUnits
-            selectedUnits.push(unitNum);
+        var addOne = !!(e && (e.ctrlKey || e.metaKey));
+        var ranging = !!(e && e.shiftKey);
+        if (fromList && ranging && selectionAnchor !== null
+                && selectionAnchor < gmData.unitList.length) {
+            var low = Math.min(selectionAnchor, unitNum);
+            var high = Math.max(selectionAnchor, unitNum);
+            selectedUnits = [];
+            for (var step = low; step <= high; step++) {
+                selectedUnits.push(step);
+            }
+        } else if (addOne || ranging) {
+            if (selectedUnits.includes(unitNum)) {
+                selectedUnits.splice(selectedUnits.indexOf(unitNum), 1);
+            } else {
+                selectedUnits.push(unitNum);
+            }
+            // The anchor follows the last creature named by hand, so a ctrl
+            // click then a shift click ranges from the one just added.
+            selectionAnchor = unitNum;
         } else {
             selectedUnits = [unitNum];
+            selectionAnchor = unitNum;
         }
         if (typeof selectedUnits[0] !== "undefined") {
             populateEditChar(gmData, selectedUnits[0]);

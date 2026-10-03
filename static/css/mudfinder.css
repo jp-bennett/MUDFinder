@@ -2116,3 +2116,10 @@ button.primaryAction {
     font-weight: bold;
     border-color: var(--ink-soft);
 }
+
+/* The box in an initiative slot that is still waiting on a roll. Narrow: it
+   takes a number, and the row it shares is already carrying three buttons. */
+.initEntryBox {
+    width: 42px;
+    text-align: center;
+}

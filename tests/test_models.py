@@ -1676,3 +1676,91 @@ class TestWhatPlayersSeeOfTheInitiativeOrder:
     def test_out_of_initiative_players_are_sent_no_order_at_all(self, ambush):
         ambush.inInit = False
         assert ambush.player_json()["initiativeList"] == []
+
+
+@pytest.fixture
+def party(make_session):
+    """A monster already in the order, and two creatures still owing a roll."""
+    session = make_session()
+    goblin = Unit({"charName": "Goblin", "controlledBy": "gm", "initiative": 20})
+    aria = Unit({"charName": "Aria", "controlledBy": "Aria"})
+    owl = Unit({"charName": "Owl", "controlledBy": "Aria"})
+    session.unitList = [goblin, aria, owl]
+    session.insert_initiative(goblin)
+    return session
+
+
+def order_of(session):
+    return [(u.charName, u.initiative) for u in session.initiativeList]
+
+
+class TestSlotsForCreaturesStillOwingARoll:
+    """A character used to be absent from the order until their number came in,
+    so the GM could not see who they were waiting on and had nowhere to put a
+    score a player had called out across the table."""
+
+    def test_a_slot_goes_to_the_foot_of_the_order(self, party):
+        party.await_initiative(party.unitList[1])
+        assert order_of(party) == [("Goblin", 20), ("Aria", "")]
+
+    def test_it_holds_a_blank_rather_than_a_zero(self, party):
+        """A zero is a score a creature could have rolled; blank is not."""
+        party.await_initiative(party.unitList[1])
+        assert party.unitList[1].initiative == ""
+        assert party.unitList[1].awaitingInit is True
+
+    def test_it_is_not_yet_in_initiative(self, party):
+        """inInit means "has taken a place in the order", which this creature
+        has not. The player's prompt and send_initiative both go by it."""
+        party.await_initiative(party.unitList[1])
+        assert party.unitList[1].inInit is False
+
+    def test_seating_the_same_creature_twice_does_not_double_it(self, party):
+        party.await_initiative(party.unitList[1])
+        party.await_initiative(party.unitList[1])
+        assert order_of(party) == [("Goblin", 20), ("Aria", "")]
+
+    def test_a_score_sorts_in_above_every_slot_still_waiting(self, party):
+        """Even a low one. A creature with a number beats a creature without,
+        whatever the numbers say, or the pending block stops being a block."""
+        party.await_initiative(party.unitList[1])
+        party.await_initiative(party.unitList[2])
+        party.unitList[2].initiative = 3
+        party.insert_initiative(party.unitList[2])
+        assert order_of(party) == [("Goblin", 20), ("Owl", 3), ("Aria", "")]
+
+    def test_a_score_takes_the_creature_out_of_waiting(self, party):
+        party.await_initiative(party.unitList[1])
+        party.unitList[1].initiative = 19
+        party.insert_initiative(party.unitList[1])
+        assert party.unitList[1].awaitingInit is False
+        assert order_of(party) == [("Goblin", 20), ("Aria", 19)]
+
+    def test_a_scored_creature_is_not_left_in_its_old_place(self, party):
+        """insert_initiative is now reached with the creature already in the
+        list, which it never used to be."""
+        party.await_initiative(party.unitList[1])
+        party.unitList[1].initiative = 19
+        party.insert_initiative(party.unitList[1])
+        assert [u.charName for u in party.initiativeList].count("Aria") == 1
+
+    def test_the_places_are_renumbered(self, party):
+        party.await_initiative(party.unitList[1])
+        party.await_initiative(party.unitList[2])
+        assert [u.initNum for u in party.initiativeList] == [0, 1, 2]
+
+    def test_and_renumbered_again_when_a_score_moves_one(self, party):
+        party.await_initiative(party.unitList[1])
+        party.await_initiative(party.unitList[2])
+        party.unitList[2].initiative = 25
+        party.insert_initiative(party.unitList[2])
+        assert [u.charName for u in party.initiativeList] == ["Owl", "Goblin", "Aria"]
+        assert [u.initNum for u in party.initiativeList] == [0, 1, 2]
+
+    def test_a_slot_survives_the_round_trip_through_json(self, party):
+        """It has to: a game saved mid-request comes back with the slots in it
+        rather than with the party quietly dropped from the order."""
+        party.await_initiative(party.unitList[1])
+        restored = Unit(party.unitList[1].to_json())
+        assert restored.awaitingInit is True
+        assert restored.initiative == ""

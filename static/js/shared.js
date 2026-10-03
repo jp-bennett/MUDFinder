@@ -960,6 +960,35 @@ function parseSaves(text) {
     return saves;
 }
 
+// What a creature adds to an initiative roll: its DEX modifier and whatever
+// misc is on the sheet. The same sum initiative_modifier works out on the
+// server -- this copy is only so the button can say what it is about to add,
+// the way the save buttons carry their modifier on the face.
+function initiativeModifier(unit) {
+    var score = parseInt(unit.DEX) || 0;
+    var modifier = score ? Math.floor((score - 10) / 2) : 0;
+    var temp = String(unit.DEXTemp === undefined || unit.DEXTemp === null
+                      ? "" : unit.DEXTemp).trim();
+    if (temp !== "") {
+        modifier -= Math.floor((score - (parseInt(temp) || 0)) / 2);
+    }
+    return modifier + (parseInt(unit.miscToInit) || 0);
+}
+
+// The button that rolls it, labelled with the modifier it will add.
+function rollInitiativeButton(unit, press) {
+    var modifier = initiativeModifier(unit);
+    var button = document.createElement("button");
+    button.type = "button";
+    button.innerText = "Roll " + (modifier < 0 ? "" : "+") + modifier;
+    button.title = "roll initiative for " + unit.charName;
+    button.addEventListener("click", function (e) {
+        e.stopPropagation();
+        press();
+    });
+    return button;
+}
+
 function rollSave(who, save, bonus) {
     socket.emit("roll_save", {
         room: room,

@@ -1135,6 +1135,13 @@ def on_request_init(data):
     if check_room(room) and ROOMS[room].gmKey == data['gmKey']:
         for d in ROOMS[room].playerList:
             ROOMS[room].playerList[d].requestInit = True
+        # And a slot each at the foot of the order. Before this a character was
+        # simply absent until their number arrived, so the GM could not see who
+        # they were still waiting on, and had nowhere to put a number a player
+        # had just called out across the table.
+        for unit in ROOMS[room].unitList:
+            if unit.controlledBy in ROOMS[room].playerList and not unit.inInit:
+                ROOMS[room].await_initiative(unit)
         ROOMS[room].send_updates()
 
 
@@ -1148,13 +1155,60 @@ def on_initiative(data):
             if x.controlledBy == data['charName'] and ("inInit" not in data or not x.inInit):
                 tmpInit = data["initiative"].pop(0)
                 if tmpInit != "":
-                    x.initiative = tmpInit
-                    x.inInit = True
-                    x.flatFooted = True
-                    x.movePath = []
-                    x.distance = 0
-                    ROOMS[room].insert_initiative(x)
+                    enter_initiative(room, x, tmpInit)
         ROOMS[room].send_updates()
+
+
+@socketio.on('set_initiative')
+def on_set_initiative(data):
+    """The GM writes a score into a slot that is waiting on one.
+
+    Which is most of what a GM does with initiative -- a player says "nineteen"
+    across the table and the GM types it, rather than everyone reaching for a
+    browser.
+    """
+    room = data.get('room')
+    if not check_room(room) or ROOMS[room].gmKey != data.get('gmKey'):
+        return
+    unit = unit_at(room, data.get('unitNum'))
+    if unit is None:
+        return
+    try:
+        score = int(str(data.get('initiative') or "").strip())
+    except ValueError:
+        return
+    enter_initiative(room, unit, score)
+    ROOMS[room].send_updates()
+
+
+@socketio.on('roll_initiative')
+def on_roll_initiative(data):
+    """Roll a d20 for one creature and put it in the order on the result.
+
+    Either side may press it: the GM from the slot in the list, the player from
+    the prompt. A player may only roll for a creature they run, which is the
+    check rolling one of their own saves goes through.
+
+    The roll is announced the way a save is. Initiative is open at most tables,
+    and without the line a rolled score and a typed one look the same.
+    """
+    room = data.get('room')
+    if not check_room(room):
+        return
+    is_gm = ROOMS[room].gmKey == data.get('gmKey')
+    unit = unit_at(room, data.get('unitNum'))
+    if unit is None:
+        return
+    if not is_gm and unit.controlledBy != str(data.get('charName') or "").strip():
+        return
+    modifier = initiative_modifier(unit)
+    die = randint(1, 20)
+    enter_initiative(room, unit, die + modifier)
+    message = "%s — initiative: d20(%d)%+d = %d" % (
+        unit.charName or "Unit", die, modifier, die + modifier)
+    emit("chat", {"chat": message, "charName": "System"}, room=room)
+    emit("chat", {"chat": message, "charName": "System"}, room=ROOMS[room].gmRoom)
+    ROOMS[room].send_updates()
 
 
 @socketio.on('begin_init')
@@ -1360,6 +1414,54 @@ def initiative_bonus(value):
         return int(str(value).strip().lstrip("+") or 0)
     except (TypeError, ValueError):
         return 0
+
+
+def initiative_modifier(unit):
+    """What a creature adds to an initiative roll.
+
+    Its DEX modifier plus whatever misc sits on the sheet, which is the sum
+    the sheet's own Init box shows -- setInitBonus in player.js works it out
+    the same way, and the two must not disagree about what the button on the
+    row is promising to add.
+    """
+    score = initiative_bonus(getattr(unit, "DEX", ""))
+    modifier = (score - 10) // 2 if score else 0
+    temp = str(getattr(unit, "DEXTemp", "") or "").strip()
+    if temp:
+        # A temporary score replaces the modifier the real one gave, which is
+        # how the sheet does it rather than by recomputing from scratch.
+        modifier -= (score - initiative_bonus(temp)) // 2
+    return modifier + initiative_bonus(getattr(unit, "miscToInit", ""))
+
+
+def enter_initiative(room, unit, score):
+    """Put a creature into the order on a score, from wherever it came from.
+
+    Typed by the GM, rolled by either side, or sent by the player: the same
+    four fields have to be set and the same prompt has to be taken down, and
+    they were being set in one place and forgotten in the next.
+    """
+    unit.initiative = score
+    unit.inInit = True
+    unit.flatFooted = True
+    unit.movePath = []
+    unit.distance = 0
+    ROOMS[room].insert_initiative(unit)
+    clear_init_request(room, unit.controlledBy)
+
+
+def clear_init_request(room, who):
+    """Take the prompt off a player once none of their creatures still owe one.
+
+    A player running a character and a familiar answers for both, so the
+    prompt cannot come down on the first of them.
+    """
+    if who not in ROOMS[room].playerList:
+        return
+    for unit in ROOMS[room].unitList:
+        if unit.controlledBy == who and not unit.inInit:
+            return
+    ROOMS[room].playerList[who].requestInit = False
 
 
 def unit_at(room, unit_number):
@@ -1822,7 +1924,11 @@ def on_update_player(data):
         tmp_unit.ER = data["ER"]
         tmp_unit.weapons = data["weapons"]
         tmp_unit.skills = data["skills"]
-        emit('do_update', ROOMS[room].player_json())
+        # Everyone, not just whoever typed it. This answered the sender alone,
+        # so the GM's copy of a character kept whatever it was holding before
+        # the player saved -- and the GM's own views are drawn from that copy,
+        # down to what a Roll button on the initiative row promises to add.
+        ROOMS[room].send_updates()
 
 
 @socketio.on('add_to_initiative')
