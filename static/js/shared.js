@@ -437,6 +437,14 @@ function drawSingleTile(mapData, x, y) {
         newMapTile.classList.add("warpTile");
         newMapTile.title = "stairs to " + mapArray[y][x].warp[1] + "," + mapArray[y][x].warp[0];
     }
+    // A square sight carries through but a creature cannot cross: a window, a
+    // portcullis, a chasm edge. Marked for both views -- the GM has to be able
+    // to tell one from the solid wall it is drawn as, and without the mark a
+    // player seeing a lit room through a wall reads it as a bug.
+    if (mapArray[y][x].transparent) {
+        newMapTile.classList.add("seeThroughTile");
+        newMapTile.title = "you can see through this, but not walk through it";
+    }
     return newMapTile
 
 } // There is a lot of needlessly duplicated code in the functions above. Move it here.
