@@ -41,7 +41,7 @@ targets:
     kind: file
     sourceid: release
     spec:
-      file: /srv/mudfinder-primary/DEPLOY_TARGET
+      file: /opt/mudfinder-primary/DEPLOY_TARGET
       # Without this the very first run on a fresh server fails: the file
       # target refuses to create a file that is not already there.
       forcecreate: true

@@ -8,8 +8,8 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 User=root
-WorkingDirectory=/srv/mudfinder-%i
-ExecStart=/usr/local/bin/mudfinder-deploy /srv/mudfinder-%i mudfinder@%i.service
+WorkingDirectory=/opt/mudfinder-%i
+ExecStart=/usr/local/bin/mudfinder-deploy /opt/mudfinder-%i mudfinder@%i.service
 
 # root because it restarts a unit and installs into the instance's venv. The
 # script does the git work as the owning user; if you would rather it did not

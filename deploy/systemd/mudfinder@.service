@@ -16,12 +16,12 @@ Group=mudfinder
 # it is resolved against the process's working directory. Point this somewhere
 # else and the instance writes its games somewhere else, and reads none of the
 # ones it had.
-WorkingDirectory=/srv/mudfinder-%i
+WorkingDirectory=/opt/mudfinder-%i
 EnvironmentFile=/etc/mudfinder/%i.env
 
 # A single worker, always. Sessions live in the process, so a second worker
 # serves a different set of games to whoever it happens to answer.
-ExecStart=/srv/mudfinder-%i/.venv/bin/gunicorn \
+ExecStart=/opt/mudfinder-%i/.venv/bin/gunicorn \
     -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker \
     -w 1 -b 127.0.0.1:${MUDFINDER_PORT} \
     --graceful-timeout 30 \

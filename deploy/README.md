@@ -19,16 +19,16 @@ checked rather than assumed:
 ```
 $ updatecli diff --config deploy/updatecli/beta.yaml
   * Changed: 1
-$ cat /srv/mudfinder-beta/DEPLOY_TARGET     # untouched
+$ cat /opt/mudfinder-beta/DEPLOY_TARGET     # untouched
 0000000000000000000000000000000000000000
 ```
 
 ## Layout
 
 ```
-/srv/mudfinder-beta/      checkout, venv, saves/, DEPLOY_TARGET
-/srv/mudfinder-primary/   the same, for the release instance
-/srv/mudfinder-deploy/    this directory, checked out on its own
+/opt/mudfinder-beta/      checkout, venv, saves/, DEPLOY_TARGET
+/opt/mudfinder-primary/   the same, for the release instance
+/opt/mudfinder-deploy/    this directory, checked out on its own
 /etc/mudfinder/           beta.env, primary.env, updatecli.env
 /usr/local/bin/mudfinder-deploy
 ```
@@ -36,30 +36,30 @@ $ cat /srv/mudfinder-beta/DEPLOY_TARGET     # untouched
 Instances are named `beta` and `primary`, and the systemd units are templates
 on those names — `mudfinder@beta.service`, `mudfinder-deploy@primary.path` and
 so on. The directory names follow, which is why the release instance is at
-`/srv/mudfinder-primary` rather than `/srv/mudfinder`.
+`/opt/mudfinder-primary` rather than `/opt/mudfinder`.
 
 ## Installing
 
 ```sh
-useradd --system --home-dir /srv/mudfinder-beta mudfinder
+useradd --system --home-dir /opt/mudfinder-beta mudfinder
 
 for i in beta primary; do
-    git clone https://github.com/jp-bennett/MUDFinder.git /srv/mudfinder-$i
-    python3.11 -m venv /srv/mudfinder-$i/.venv
-    /srv/mudfinder-$i/.venv/bin/pip install -r /srv/mudfinder-$i/requirements.txt
-    /srv/mudfinder-$i/.venv/bin/pip install gunicorn gevent gevent-websocket
-    chown -R mudfinder: /srv/mudfinder-$i
+    git clone https://github.com/jp-bennett/MUDFinder.git /opt/mudfinder-$i
+    python3.11 -m venv /opt/mudfinder-$i/.venv
+    /opt/mudfinder-$i/.venv/bin/pip install -r /opt/mudfinder-$i/requirements.txt
+    /opt/mudfinder-$i/.venv/bin/pip install gunicorn gevent gevent-websocket
+    chown -R mudfinder: /opt/mudfinder-$i
 done
 
-git clone https://github.com/jp-bennett/MUDFinder.git /srv/mudfinder-deploy
-install -m 755 /srv/mudfinder-deploy/deploy/mudfinder-deploy /usr/local/bin/
+git clone https://github.com/jp-bennett/MUDFinder.git /opt/mudfinder-deploy
+install -m 755 /opt/mudfinder-deploy/deploy/mudfinder-deploy /usr/local/bin/
 
 mkdir -p /etc/mudfinder
-cp /srv/mudfinder-deploy/deploy/systemd/*.env.example /etc/mudfinder/
+cp /opt/mudfinder-deploy/deploy/systemd/*.env.example /etc/mudfinder/
 # rename each to <instance>.env and updatecli.env, fill in the token
 chmod 600 /etc/mudfinder/updatecli.env
 
-cp /srv/mudfinder-deploy/deploy/systemd/mudfinder*.{service,path,timer} \
+cp /opt/mudfinder-deploy/deploy/systemd/mudfinder*.{service,path,timer} \
    /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now mudfinder@beta mudfinder@primary
@@ -122,7 +122,7 @@ release.
 ## Checking it
 
 ```sh
-updatecli diff --config /srv/mudfinder-deploy/deploy/updatecli/beta.yaml
+updatecli diff --config /opt/mudfinder-deploy/deploy/updatecli/beta.yaml
 systemctl start mudfinder-deploy@beta      # force one by hand
 journalctl -u mudfinder-deploy@beta -n 50
 systemctl list-timers mudfinder-updatecli.timer

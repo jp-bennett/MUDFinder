@@ -3,7 +3,7 @@
 # Move one MUDFinder instance to the ref recorded in its DEPLOY_TARGET file.
 #
 # Usage: mudfinder-deploy <instance-directory> <systemd-unit>
-#   e.g. mudfinder-deploy /srv/mudfinder-beta mudfinder-beta.service
+#   e.g. mudfinder-deploy /opt/mudfinder-beta mudfinder-beta.service
 #
 # Started by mudfinder-*-deploy.service, which a .path unit triggers when
 # updatecli writes a new ref into DEPLOY_TARGET. Safe to run by hand at any
