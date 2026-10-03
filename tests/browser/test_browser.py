@@ -1626,6 +1626,19 @@ def paint_square(page, tool, x, y):
     page.click('[id="tile%d,%d"]' % (x, y))
 
 
+def paint_run(page, tool, squares):
+    """Pick a tool once, then click several squares with it.
+
+    Not a loop over paint_square: the palette toggles, so clicking the tool
+    that is already selected puts it down again. Picking the tool per square
+    therefore lays every other square and silently skips the rest -- which
+    looks like the squares themselves refusing to paint.
+    """
+    page.click("#" + tool)
+    for x, y in squares:
+        page.click('[id="tile%d,%d"]' % (x, y))
+
+
 @pytest.fixture(scope="module")
 def lighting(browser, live_server):
     """Paint light levels through the real palette and measure what happens.
@@ -7129,3 +7142,123 @@ class TestAWindowInAWall:
     def test_nothing_raised(self, see_through):
         assert see_through["errors"] == []
         assert see_through["playerErrors"] == []
+
+
+@pytest.fixture(scope="module")
+def doorways(browser, live_server):
+    """Two-square doorways, with one leaf opened.
+
+    Which way a door is drawn used to be decided by asking whether the square
+    above or below it was walkable. An open door is walkable, so opening one
+    leaf of a double door told the other leaf there was floor that way, and at
+    the next full redraw the shut leaf drew itself across the opening -- at
+    right angles to the wall it was standing in, and at right angles to the
+    leaf beside it.
+
+    It needs the redraw to show, which is the awkward part and the reason this
+    drives one: map_edit sends back only the square that changed, so the
+    neighbour keeps the class it already had until something redraws the whole
+    map. The bug arrives later, on a reload or the next map-wide update,
+    looking like it came from nowhere.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "doorways")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        page.evaluate(
+            """() => socket.emit('map_generate', {room: room, gmKey: gmKey,
+                 mapWidth: 14, mapHeight: 10, discovered: true})""")
+        page.wait_for_function(
+            "() => mapObject && mapObject.mapArray.length === 10",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_timeout(500)
+
+        # A wall running down the map with a two-square doorway in it, and a
+        # wall running across with the same. One single door in each as well,
+        # to show the ordinary case is untouched.
+        paint_run(page, "wallTile",
+                  [(3, y) for y in range(1, 8)] + [(x, 7) for x in range(7, 13)])
+        page.wait_for_timeout(400)
+        paint_run(page, "doorClosed",
+                  [(3, 4), (3, 5), (9, 7), (10, 7), (3, 2), (12, 7)])
+        page.wait_for_timeout(700)
+
+        def orientation(x, y):
+            """A for a door drawn across the square, B for one drawn along it."""
+            return page.evaluate(
+                """([x, y]) => {
+                     const tile = document.getElementById(`tile${x},${y}`);
+                     if (!tile) return "missing";
+                     const door = Array.from(tile.classList).find(
+                         c => c.indexOf("doorTile") === 0);
+                     return door || "none";
+                   }""", [x, y])
+
+        def read():
+            return {
+                "downPair": [orientation(3, 4), orientation(3, 5)],
+                "acrossPair": [orientation(9, 7), orientation(10, 7)],
+                "downSingle": orientation(3, 2),
+                "acrossSingle": orientation(12, 7),
+            }
+
+        stages = {"shut": read()}
+
+        paint_run(page, "doorOpen", [(3, 4), (9, 7)])
+        page.wait_for_timeout(700)
+        stages["opened"] = read()
+
+        # The whole map drawn again, which is what a reload or any map-wide
+        # update does, and what the bug waited for.
+        page.reload()
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_function(
+            "() => mapObject && mapObject.mapArray.length === 10",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_timeout(900)
+        stages["redrawn"] = read()
+
+        return {"stages": stages, "errors": errors}
+    finally:
+        context.close()
+
+
+class TestADoubleDoorway:
+    def test_both_leaves_lie_in_the_wall_they_are_in(self, doorways):
+        assert doorways["stages"]["shut"]["downPair"] == ["doorTileB", "doorTileB"]
+        assert doorways["stages"]["shut"]["acrossPair"] == ["doorTileA", "doorTileA"]
+
+    def test_opening_one_leaf_leaves_the_other_alone(self, doorways):
+        assert doorways["stages"]["opened"]["downPair"] == \
+            ["doorTileBOpen", "doorTileB"]
+        assert doorways["stages"]["opened"]["acrossPair"] == \
+            ["doorTileAOpen", "doorTileA"]
+
+    def test_and_it_still_does_after_the_whole_map_is_drawn_again(self, doorways):
+        """The bug this exists for. The shut leaf used to come back at right
+        angles to the wall it was standing in, one redraw later."""
+        assert doorways["stages"]["redrawn"]["downPair"] == \
+            ["doorTileBOpen", "doorTileB"]
+        assert doorways["stages"]["redrawn"]["acrossPair"] == \
+            ["doorTileAOpen", "doorTileA"]
+
+    def test_a_single_door_is_unchanged(self, doorways):
+        """One door in a wall was always drawn correctly, and still is."""
+        for stage in ("shut", "opened", "redrawn"):
+            assert doorways["stages"][stage]["downSingle"] == "doorTileB", stage
+            assert doorways["stages"][stage]["acrossSingle"] == "doorTileA", stage
+
+    def test_nothing_raised(self, doorways):
+        assert doorways["errors"] == []

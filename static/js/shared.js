@@ -305,6 +305,51 @@ function lightToggle(obj) {
     }
 }
 
+function tileAt(mapArray, x, y) {
+    if (typeof mapArray[y] === "undefined" || typeof mapArray[y][x] === "undefined") {
+        return null;
+    }
+    return mapArray[y][x];
+}
+
+// Part of a wall line. A door counts: it is a hole in a wall, and it still
+// says which way that wall runs -- whether it happens to be standing open or
+// not. An undiscovered square says nothing either way, so it does not vote.
+function continuesWall(tile) {
+    if (!tile || tile.tile === "unseenTile") {
+        return false;
+    }
+    return !tile.walkable || tile.tile === "doorClosed" || tile.tile === "doorOpen";
+}
+
+// Which way a door lies: across the square (a bar drawn left to right, walked
+// through from above or below) or along it.
+//
+// This used to ask whether the square above or below was walkable, which gets
+// the answer from the wrong thing. An open door is walkable, so a door that
+// was opened told the door beside it there was floor that way -- and at the
+// next full redraw its neighbour drew itself across the doorway, at right
+// angles to the wall it was standing in. It stayed wrong until something
+// redrew it again, because map_edit sends only the square that changed, which
+// is what made it look like it happened at random.
+//
+// The wall the door sits in is the thing that decides, so that is what is
+// read. Where there is no wall line to read -- a door in a corner, with walls
+// both ways, or one standing in the open with none -- neither axis wins and
+// the old question is asked as a tiebreak, so those keep the look they had.
+function doorLiesAcross(mapArray, x, y) {
+    var across = continuesWall(tileAt(mapArray, x - 1, y))
+        || continuesWall(tileAt(mapArray, x + 1, y));
+    var along = continuesWall(tileAt(mapArray, x, y - 1))
+        || continuesWall(tileAt(mapArray, x, y + 1));
+    if (across !== along) {
+        return across;
+    }
+    var above = tileAt(mapArray, x, y - 1);
+    var below = tileAt(mapArray, x, y + 1);
+    return !!((above && above.walkable) || (below && below.walkable));
+}
+
 function drawSingleTile(mapData, x, y) {
     mapArray = mapData.mapArray
     newMapTile = document.createElement("div");
@@ -333,13 +378,13 @@ function drawSingleTile(mapData, x, y) {
     if (mapArray[y][x].tile == "unseenTile" && mapData.showBackground) {
         newMapTile.classList.add("unseenTile");
     } else if (mapArray[y][x].tile == "doorOpen") {
-        if ((typeof mapArray[y+1] !== "undefined" && mapArray[y+1][x].walkable) || (typeof mapArray[y-1] !== "undefined" && mapArray[y-1][x].walkable)) {
+        if (doorLiesAcross(mapArray, x, y)) {
             newMapTile.classList.add("doorTileAOpen");
         } else {
             newMapTile.classList.add("doorTileBOpen");
         }
     } else if (mapArray[y][x].tile == "doorClosed") {
-        if ((typeof mapArray[y+1] !== "undefined" && mapArray[y+1][x].walkable) || (typeof mapArray[y-1] !== "undefined" && mapArray[y-1][x].walkable)) {
+        if (doorLiesAcross(mapArray, x, y)) {
             if (isGM && mapArray[y][x].locked) {
                 newMapTile.classList.add("doorTileALocked");
             } else {
