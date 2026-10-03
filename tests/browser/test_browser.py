@@ -6689,6 +6689,53 @@ def creature_selection(browser, live_server):
         page.evaluate("() => selectUnit({shiftKey: true}, 3)")
         picked["shiftOffTheList"] = selection()
 
+        def highlighted():
+            """How many rows are drawn as selected.
+
+            Two code paths mark a row: drawSelected puts the class on the row
+            itself, and a redraw of the list puts it on the entry inside. A
+            descendant selector counts either, so this does not depend on
+            which one last ran.
+            """
+            return page.evaluate(
+                "() => document.querySelectorAll('#unitsDiv .selected').length")
+
+        # Letting go. A second plain click on the one selected row.
+        page.click(rows + " >> nth=1")
+        picked["beforeLettingGo"] = selection()
+        picked["highlightedBefore"] = highlighted()
+        page.click(rows + " >> nth=1")
+        picked["letGo"] = selection()
+        picked["highlightedAfter"] = highlighted()
+
+        # And it can be picked up again.
+        page.click(rows + " >> nth=1")
+        picked["pickedUpAgain"] = selection()
+
+        # A shift-click after letting go must not range from the row just
+        # dropped, which would take it back.
+        page.click(rows + " >> nth=2")
+        page.click(rows + " >> nth=2")
+        page.click(rows + " >> nth=4", modifiers=["Shift"])
+        picked["shiftAfterLettingGo"] = selection()
+
+        # One of several: narrow to it, as a file list does, and only then
+        # let go.
+        page.click(rows + " >> nth=1")
+        page.click(rows + " >> nth=3", modifiers=["Shift"])
+        picked["several"] = selection()
+        page.click(rows + " >> nth=2")
+        picked["narrowedToOne"] = selection()
+        page.click(rows + " >> nth=2")
+        picked["narrowedThenLetGo"] = selection()
+
+        # The map must not toggle: those squares carry a dblclick handler, and
+        # a double click arrives as two clicks first. fromList is what tells
+        # the two apart, so this calls selectUnit the way the map does.
+        page.click(rows + " >> nth=0")
+        page.evaluate("() => selectUnit({}, 0)")
+        picked["mapClickKeepsIt"] = selection()
+
         return {"picked": picked, "errors": errors}
     finally:
         context.close()
@@ -6727,6 +6774,41 @@ class TestPickingSeveralCreatures:
         """On the map a range over the list's order means nothing, so shift
         keeps the meaning it had there."""
         assert creature_selection["picked"]["shiftOffTheList"] == [0, 3]
+
+    def test_a_second_plain_click_lets_go(self, creature_selection):
+        """The thing that was missing. A creature picked by accident could not
+        be unpicked: the only route back to nothing selected was to ctrl-click
+        the single selected row."""
+        assert creature_selection["picked"]["beforeLettingGo"] == [1]
+        assert creature_selection["picked"]["letGo"] == []
+
+    def test_the_row_stops_being_drawn_as_selected(self, creature_selection):
+        """Selection that lives only in the variable is not selection the GM
+        can see."""
+        assert creature_selection["picked"]["highlightedBefore"] > 0
+        assert creature_selection["picked"]["highlightedAfter"] == 0
+
+    def test_it_can_be_picked_up_again(self, creature_selection):
+        assert creature_selection["picked"]["pickedUpAgain"] == [1]
+
+    def test_shift_after_letting_go_does_not_take_it_back(self, creature_selection):
+        """The anchor goes when the selection does. Kept, it would range from
+        the row just dropped and undo the letting go."""
+        assert creature_selection["picked"]["shiftAfterLettingGo"] == [4]
+
+    def test_clicking_one_of_several_narrows_to_it(self, creature_selection):
+        """As a file list does: the click that follows is the one that lets
+        go, so nothing is lost by this being two clicks rather than one."""
+        assert creature_selection["picked"]["several"] == [1, 2, 3]
+        assert creature_selection["picked"]["narrowedToOne"] == [2]
+        assert creature_selection["picked"]["narrowedThenLetGo"] == []
+
+    def test_the_map_does_not_toggle(self, creature_selection):
+        """On the map, clicking a creature is the first half of ordering it to
+        move, and the map already lets go on its own once it has moved.
+        Toggling there would disarm the move, and the click aimed at a
+        destination would move whoever's turn it was instead."""
+        assert creature_selection["picked"]["mapClickKeepsIt"] == [0]
 
     def test_nothing_raised(self, creature_selection):
         assert creature_selection["errors"] == []
