@@ -47,7 +47,7 @@ for i in beta primary; do
     git clone https://github.com/jp-bennett/MUDFinder.git /opt/mudfinder-$i
     python3.11 -m venv /opt/mudfinder-$i/.venv
     /opt/mudfinder-$i/.venv/bin/pip install -r /opt/mudfinder-$i/requirements.txt
-    /opt/mudfinder-$i/.venv/bin/pip install gunicorn gevent gevent-websocket
+    /opt/mudfinder-$i/.venv/bin/pip install gunicorn gevent gevent-websocket packaging
     chown -R mudfinder: /opt/mudfinder-$i
 done
 
@@ -66,6 +66,12 @@ systemctl enable --now mudfinder@beta mudfinder@primary
 systemctl enable --now mudfinder-deploy@beta.path mudfinder-deploy@primary.path
 systemctl enable --now mudfinder-updatecli.timer
 ```
+
+`packaging` is in that pip line because gunicorn's gevent worker imports it
+without declaring it. Without it the unit starts, fails to load the worker
+class, and systemd restarts it on a loop -- the journal shows a
+`ModuleNotFoundError` inside gunicorn's own import machinery, which does not
+look like a missing dependency of yours.
 
 nginx goes in front of the two ports — see "Behind a reverse proxy" and
 "Serving it under a subpath" in the top-level README.

@@ -51,13 +51,18 @@ fine for a game night on your own machine or LAN. To serve it publicly, run it
 under a real server instead:
 
 ```
-pip install gunicorn gevent gevent-websocket
+pip install gunicorn gevent gevent-websocket packaging
 gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker \
          -w 1 -b 0.0.0.0:5000 mudfinder:app
 ```
 
 Use a **single worker**. Sessions live in the process, so a second worker would
 serve a different set of games.
+
+`packaging` is in that list because gunicorn's gevent worker imports it without
+declaring it as a dependency. Leave it out and gunicorn starts, reads the
+worker class, and dies with `ModuleNotFoundError: No module named 'packaging'`
+buried in an import traceback that names neither gunicorn nor this project.
 
 Python 3.9 or newer, which is what Flask 3 needs. On EL8 that means installing
 one alongside the system 3.6 (`dnf install python3.11`, or `dnf module install
