@@ -11,6 +11,8 @@ of the suite does not require it.
 """
 
 import os
+import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -95,6 +97,98 @@ def live_server():
         process.terminate()
         try:
             process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+        log.close()
+
+
+UNIT_FILE = os.path.join(REPO_ROOT, "deploy", "systemd", "mudfinder@.service")
+
+# Set in the unit by EnvironmentFile; the test has to choose its own port
+# anyway, so there is nothing gained by reproducing the env file too.
+BIND_PLACEHOLDER = "${MUDFINDER_BIND}"
+
+
+def _deployed_gunicorn_argv(port):
+    """The deploy unit's ExecStart, as a list, pointed at a test port.
+
+    Parsed out of the unit rather than restated, so that a unit edited to a
+    worker class which cannot carry a websocket fails the tests that use it.
+    systemd's continuation rules are the only parsing needed: a trailing
+    backslash joins the next line, and the first token is the executable.
+
+    That executable is an absolute path under /opt, which is not where
+    gunicorn lives when running a test, so that one token is replaced.
+    """
+    with open(UNIT_FILE) as handle:
+        body = handle.read()
+
+    body = re.sub(r"\\\n\s*", " ", body)
+    lines = [line for line in body.splitlines() if line.startswith("ExecStart=")]
+    if len(lines) != 1:
+        raise AssertionError(
+            "expected exactly one ExecStart in %s, found %r" % (UNIT_FILE, lines)
+        )
+
+    argv = lines[0][len("ExecStart=") :].split()
+    if BIND_PLACEHOLDER not in argv:
+        raise AssertionError(
+            "the unit no longer binds %s, so this fixture cannot give it a "
+            "free port: %r" % (BIND_PLACEHOLDER, argv)
+        )
+    argv[argv.index(BIND_PLACEHOLDER)] = "127.0.0.1:%d" % port
+
+    gunicorn = os.path.join(os.path.dirname(sys.executable), "gunicorn")
+    if not os.path.exists(gunicorn):
+        gunicorn = shutil.which("gunicorn")
+    if gunicorn is None:
+        pytest.skip(
+            "gunicorn is not installed; it is in requirements-dev.txt. These "
+            "tests run the deployed server rather than the development one."
+        )
+    argv[0] = gunicorn
+    return argv
+
+
+@pytest.fixture(scope="module")
+def deployed_server(tmp_path_factory):
+    """gunicorn, started exactly as deploy/ starts it; yields its base URL.
+
+    Given its own working directory because SAVE_DIR is relative: run in the
+    repository, this would drop test games into the developer's saves/. Only
+    what the app reads is linked in.
+    """
+    port = _free_port()
+    workdir = tmp_path_factory.mktemp("deployed")
+
+    # Every top-level module and asset directory, rather than a list of the
+    # ones the app happens to import today. A hand-written list silently drops
+    # a new module, and a missing module here is not a failed import in the
+    # report -- it is gunicorn's worker failing to boot, three screens of
+    # traceback away from the name of the file that is not there.
+    for name in sorted(os.listdir(REPO_ROOT)):
+        if name.startswith(".") or name in ("saves", "tests", "deploy", "docs"):
+            continue
+        if name.endswith(".py") or name in ("static", "templates", "tools") \
+                or name.endswith(".sql"):
+            os.symlink(os.path.join(REPO_ROOT, name), str(workdir / name))
+    (workdir / "saves").mkdir()
+
+    argv = _deployed_gunicorn_argv(port)
+    log = open(str(workdir / "server.log"), "w+b")
+    process = subprocess.Popen(
+        argv, cwd=str(workdir), stdout=log, stderr=subprocess.STDOUT
+    )
+    url = "http://127.0.0.1:%d" % port
+    try:
+        _wait_until_serving(url + "/", process, log)
+        yield url
+    finally:
+        # The same shutdown the unit relies on to flush saves/: SIGTERM to the
+        # master, which stops its own worker. TimeoutStopSec in the unit is 60.
+        process.terminate()
+        try:
+            process.wait(timeout=30)
         except subprocess.TimeoutExpired:
             process.kill()
         log.close()

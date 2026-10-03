@@ -1001,6 +1001,18 @@ def battlemap(browser, live_server):
         context.close()
 
 
+def background_width(computed):
+    """The width out of a computed background-size.
+
+    `background-size: 1400px` means 1400px wide and auto-height, and browsers
+    are free to serialise it either way. Chromium said "1400px" up to 141 and
+    says "1400px auto" from 153, so comparing the whole string pinned a
+    browser build rather than the behaviour -- CI went red on a Chromium
+    upgrade with nothing in this project changed.
+    """
+    return computed.split()[0]
+
+
 class TestBattlemapFromAnImage:
     """A GM uploads a battlemap, says how big it is, and lines it up.
 
@@ -1025,7 +1037,7 @@ class TestBattlemapFromAnImage:
     def test_resizing_the_grid_leaves_the_image_where_it_was(self, battlemap):
         """Changing how many squares the map is says nothing about how big the
         artwork should be. 20 squares at 70px, as setup started it."""
-        assert battlemap["created"]["backgroundSize"] == "1400px"
+        assert background_width(battlemap["created"]["backgroundSize"]) == "1400px"
 
     def test_the_image_starts_on_the_grid_origin(self, battlemap):
         assert battlemap["setupStarted"]["backgroundPosition"] == "0px 0px"
@@ -1040,7 +1052,7 @@ class TestBattlemapFromAnImage:
 
     def test_the_scale_field_resizes_the_image(self, battlemap):
         """24.5 squares at 70px."""
-        assert battlemap["scaled"]["backgroundSize"] == "1715px"
+        assert background_width(battlemap["scaled"]["backgroundSize"]) == "1715px"
         assert battlemap["scaled"]["tilesWide"] == 24.5
 
     def test_dragging_moves_the_image_by_whole_squares(self, battlemap):

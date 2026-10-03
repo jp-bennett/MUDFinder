@@ -7,3 +7,13 @@
 # Without one, those tests skip and the rest of the suite runs normally.
 pytest>=7.0
 playwright>=1.40
+
+# tests/browser/test_deploy_config.py starts the production server -- the
+# gunicorn command line out of deploy/systemd/mudfinder@.service -- because the
+# development server that every other browser test uses has a different
+# websocket implementation, and so cannot fail the way production did.
+# packaging is here for the same reason it is in the install instructions:
+# gunicorn's gevent worker imports it without declaring it.
+gunicorn>=20.1
+gevent>=21.12
+packaging

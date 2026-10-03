@@ -19,6 +19,8 @@ from werkzeug.utils import secure_filename
 
 from session import Session, BACKGROUND_ALIGNMENT_KEYS, BACKGROUND_ALIGNMENT_SEQ
 
+from wsfix import apply_whole_frame_writes
+
 from player import Player
 from unit import Unit
 global savegame_lock
@@ -694,6 +696,20 @@ app = Flask(__name__)
 # nothing said. Keep MAX_UPLOAD_BYTES in shared.js in step with this.
 MAX_UPLOAD_BYTES = 16 * 1024 * 1024
 
+# Before the server exists, so every websocket it opens gets whole frames.
+# Without this a token move in a game with uploaded images truncates its own
+# update packet and the browser drops the connection. See wsfix.py.
+apply_whole_frame_writes()
+
+# async_mode="threading" decides which gunicorn worker can serve this, so the
+# two cannot be chosen separately. In this mode Engine.IO opens the websocket
+# itself, with simple-websocket, by taking the raw socket out of the WSGI
+# environ and handshaking on it -- so the server underneath must hand over a
+# socket and otherwise keep out of the way. gunicorn's -k gevent does.
+# gevent-websocket's GeventWebSocketWorker does not: it handshakes first, and
+# the browser reads Engine.IO's second upgrade as a corrupt frame, serving
+# every page perfectly while no game ever loads. See README.md and
+# tests/browser/test_deploy_config.py.
 socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*",
                     max_http_buffer_size=MAX_UPLOAD_BYTES)
 
@@ -3058,7 +3074,8 @@ if __name__ == '__main__':
     # server, which Flask-SocketIO 5 otherwise refuses to do. That is fine for
     # running a game locally. To serve this to the internet, put it behind
     # gunicorn instead of running this file:
-    #   gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker \
-    #            -w 1 -b 0.0.0.0:5000 mudfinder:app
+    #   gunicorn -k gevent -w 1 -b 0.0.0.0:5000 mudfinder:app
+    # The worker class is not interchangeable -- see the comment on socketio
+    # above for why gevent-websocket's worker breaks the websocket.
     socketio.run(app, debug=False, host='0.0.0.0', port=5000,
                  allow_unsafe_werkzeug=True)
