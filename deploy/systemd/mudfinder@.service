@@ -21,13 +21,31 @@ EnvironmentFile=/etc/mudfinder/%i.env
 
 # A single worker, always. Sessions live in the process, so a second worker
 # serves a different set of games to whoever it happens to answer.
+#
+# -k gevent, and NOT geventwebsocket's GeventWebSocketWorker, which is what
+# this said first and which serves every page correctly while no websocket
+# will open: the browser console says "Invalid frame header" and the game
+# never loads. socketio is started in async_mode="threading" (mudfinder.py),
+# so engineio does the websocket itself with simple-websocket, taking the raw
+# socket out of the WSGI environ and performing its own handshake. The
+# geventwebsocket worker has already performed a handshake and replied by
+# then, and the browser reads the second upgrade as a corrupt frame. Two
+# implementations, one connection. tests/browser/test_deploy_config.py runs
+# the ExecStart below against a real Chromium so this cannot come back.
+#
+# gevent and not gthread either, though gthread matches the async mode and
+# does work: a live websocket holds its worker for as long as it is open, so
+# gthread caps the table at --threads clients, and the client past the cap
+# gets a page that never finishes loading -- not a slow game, a blank
+# browser. gevent's greenlets have no such ceiling.
+#
 # MUDFINDER_BIND is host:port, not just a port, because where nginx lives
 # decides the host. On the same machine, 127.0.0.1:5001 keeps the instance off
 # the network entirely. On another machine -- which is the setup this was first
 # installed on -- loopback is unreachable and nginx answers 502 while a local
 # curl returns 200, so it has to bind an address the proxy can route to.
 ExecStart=/opt/mudfinder-%i/.venv/bin/gunicorn \
-    -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker \
+    -k gevent \
     -w 1 -b ${MUDFINDER_BIND} \
     --graceful-timeout 30 \
     mudfinder:app
