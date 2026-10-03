@@ -6492,6 +6492,11 @@ def initiative_entry(browser, live_server):
         stages["rollButtons"] = page.evaluate(
             """() => Array.from(document.querySelectorAll("#initiativeDiv button"))
                  .map(b => b.innerText).filter(t => t.indexOf("Roll") === 0)""")
+        # The initiative rows are clicked to pick a creature too, so they must
+        # not drag a text selection either.
+        stages["rowUserSelect"] = page.evaluate(
+            """() => { const row = document.querySelector("#initiativeDiv .InitEntry");
+                       return row ? getComputedStyle(row).userSelect : null; }""")
         stages["arrows"] = page.evaluate(
             """() => Array.from(document.getElementById("initiativeDiv").children)
                  .map(row => ({name: row.innerText.split("\\n")[0].trim(),
@@ -6549,6 +6554,11 @@ class TestAskingThePartyForInitiative:
         waiting = [u for u in initiative_entry["seated"] if u["waiting"]]
         assert [u["name"] for u in waiting] == ["Vex", "Owl"]
         assert all(u["score"] == "" for u in waiting)
+
+    def test_the_rows_are_not_selectable_text(self, initiative_entry):
+        """Clicking one picks a creature, the same as in the creature list, so
+        a shift-click must not drag a blue selection over the names."""
+        assert initiative_entry["rowUserSelect"] == "none"
 
     def test_the_gms_own_creature_gets_no_slot(self, initiative_entry):
         """The GM adds those with a score already on them; a box there would
@@ -6736,6 +6746,17 @@ def creature_selection(browser, live_server):
         page.evaluate("() => selectUnit({}, 0)")
         picked["mapClickKeepsIt"] = selection()
 
+        # Shift-clicking a run used to drag a text selection across the names
+        # as well, which the browser paints over the row highlight: two kinds
+        # of "selected" on the same words.
+        page.click(rows + " >> nth=0")
+        page.click(rows + " >> nth=3", modifiers=["Shift"])
+        picked["textDragged"] = page.evaluate(
+            "() => window.getSelection().toString()")
+        picked["rowUserSelect"] = page.evaluate(
+            """() => getComputedStyle(
+                 document.querySelector("#unitsDiv .unitListEntry")).userSelect""")
+
         return {"picked": picked, "errors": errors}
     finally:
         context.close()
@@ -6809,6 +6830,16 @@ class TestPickingSeveralCreatures:
         Toggling there would disarm the move, and the click aimed at a
         destination would move whoever's turn it was instead."""
         assert creature_selection["picked"]["mapClickKeepsIt"] == [0]
+
+    def test_shift_clicking_a_run_does_not_drag_a_text_selection(
+            self, creature_selection):
+        """The row highlight says what is picked. A text selection dragged
+        across the names says it too, in a different colour, about a different
+        thing -- and it is the one the browser paints on top."""
+        assert creature_selection["picked"]["textDragged"] == ""
+
+    def test_the_rows_are_not_selectable_text(self, creature_selection):
+        assert creature_selection["picked"]["rowUserSelect"] == "none"
 
     def test_nothing_raised(self, creature_selection):
         assert creature_selection["errors"] == []
