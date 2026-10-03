@@ -25,6 +25,22 @@ BACKGROUND_ALIGNMENT_SEQ = "backgroundAlignmentSeq"
 # their party cannot see. It holds every field the client reads off an entry
 # and nothing else -- no name, no count, no position -- so the players know a
 # turn is passing without learning whose.
+def sees_through(tile):
+    """Whether sight carries on past a square that cannot be walked through.
+
+    A window, a portcullis, a chasm edge, a wall of force: it stops the move
+    and not the look. Sight and movement were the same question until now --
+    the ray stopped on `walkable`, so every square that turned a creature back
+    also hid whatever was behind it.
+
+    A secret square is excluded however it is marked. One is masked to the
+    players as the wall it is pretending to be, and a ray carrying on through
+    it would show them the room behind a door they have not found -- which is
+    the tell the mask exists to prevent.
+    """
+    return bool(tile.get("transparent")) and not tile.get("secret")
+
+
 def masked_initiative_entry():
     return {
         "charName": "?",
@@ -323,6 +339,15 @@ class Session(object):
                 # would be a tell.
                 if self.mapData["mapArray"][y][x]["seen"] and "light" in self.mapData["mapArray"][y][x]:
                     tmpMapLine[x]["light"] = self.mapData["mapArray"][y][x]["light"]
+                # Likewise after the masking, and for the same reason the warp
+                # is: a square nobody has been to must not say what it is. Sent
+                # at all because a player can see through one of these, and a
+                # square drawn as solid wall with a lit room visible past it
+                # reads as a bug rather than as a window.
+                if (self.mapData["mapArray"][y][x]["seen"]
+                        and not self.mapData["mapArray"][y][x]["secret"]
+                        and self.mapData["mapArray"][y][x].get("transparent")):
+                    tmpMapLine[x]["transparent"] = True
                 # Likewise after the masking. A staircase is drawn with a mark
                 # on it, and a mark on a square nobody has been to would say
                 # there is a way through where the fog says there is nothing --
@@ -423,7 +448,8 @@ class Session(object):
                         if mark:
                             changedTiles.append(self.mapData["mapArray"][cells[distance][1]][cells[distance][0]])
                             mark = False
-                        if not self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]["walkable"]:
+                        if (not self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]["walkable"]
+                                and not sees_through(self.mapData["mapArray"][cells[distance][1]][cells[distance][0]])):
                             break
                     except:
                         break

@@ -2157,6 +2157,17 @@ LIGHT_TOOLS = {
     "lightDarkness": "darkness",
 }
 
+# Whether sight carries on through a square that cannot be walked through.
+# A detail of a square rather than a kind of square: a window, a portcullis,
+# a chasm edge and a wall of force are all "you can see it, you cannot cross
+# it", and making each a tile type would multiply every tile this ever applies
+# to. Like the light tools, these ids avoid the substring "Tile" -- see the
+# ordering note in map_edit.
+TRANSPARENT_TOOLS = {
+    "seeThroughOn": True,
+    "seeThroughOff": False,
+}
+
 MAX_MAP_DIMENSION = 300
 
 
@@ -2362,6 +2373,16 @@ def on_map_edit(data_pack):
                     tile.pop("light", None)
                 else:
                     tile["light"] = level
+            elif data["newTile"] in TRANSPARENT_TOOLS:
+                # Before the tile-type branches for the same reason as the
+                # light tools above.
+                tile = ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]
+                if TRANSPARENT_TOOLS[data["newTile"]]:
+                    tile["transparent"] = True
+                else:
+                    # Opaque is the absence of the key, so there is exactly one
+                    # way to spell a square you cannot see through.
+                    tile.pop("transparent", None)
             elif "thinWallTile" in data["newTile"]:
                 print(data_pack)
                 #find which wall is closest
