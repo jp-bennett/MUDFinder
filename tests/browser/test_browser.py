@@ -1626,6 +1626,19 @@ def paint_square(page, tool, x, y):
     page.click('[id="tile%d,%d"]' % (x, y))
 
 
+def paint_run(page, tool, squares):
+    """Pick a tool once, then click several squares with it.
+
+    Not a loop over paint_square: the palette toggles, so clicking the tool
+    that is already selected puts it down again. Picking the tool per square
+    therefore lays every other square and silently skips the rest -- which
+    looks like the squares themselves refusing to paint.
+    """
+    page.click("#" + tool)
+    for x, y in squares:
+        page.click('[id="tile%d,%d"]' % (x, y))
+
+
 @pytest.fixture(scope="module")
 def lighting(browser, live_server):
     """Paint light levels through the real palette and measure what happens.
@@ -7129,3 +7142,270 @@ class TestAWindowInAWall:
     def test_nothing_raised(self, see_through):
         assert see_through["errors"] == []
         assert see_through["playerErrors"] == []
+
+
+@pytest.fixture(scope="module")
+def doorways(browser, live_server):
+    """Two-square doorways, with one leaf opened.
+
+    Which way a door is drawn used to be decided by asking whether the square
+    above or below it was walkable. An open door is walkable, so opening one
+    leaf of a double door told the other leaf there was floor that way, and at
+    the next full redraw the shut leaf drew itself across the opening -- at
+    right angles to the wall it was standing in, and at right angles to the
+    leaf beside it.
+
+    It needs the redraw to show, which is the awkward part and the reason this
+    drives one: map_edit sends back only the square that changed, so the
+    neighbour keeps the class it already had until something redraws the whole
+    map. The bug arrives later, on a reload or the next map-wide update,
+    looking like it came from nowhere.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT,
+        )
+        page.fill("#gameName", "doorways")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        page.evaluate(
+            """() => socket.emit('map_generate', {room: room, gmKey: gmKey,
+                 mapWidth: 14, mapHeight: 10, discovered: true})""")
+        page.wait_for_function(
+            "() => mapObject && mapObject.mapArray.length === 10",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_timeout(500)
+
+        # A wall running down the map with a two-square doorway in it, and a
+        # wall running across with the same. One single door in each as well,
+        # to show the ordinary case is untouched.
+        paint_run(page, "wallTile",
+                  [(3, y) for y in range(1, 8)] + [(x, 7) for x in range(7, 13)])
+        page.wait_for_timeout(400)
+        paint_run(page, "doorClosed",
+                  [(3, 4), (3, 5), (9, 7), (10, 7), (3, 2), (12, 7)])
+        page.wait_for_timeout(700)
+
+        def orientation(x, y):
+            """A for a door drawn across the square, B for one drawn along it."""
+            return page.evaluate(
+                """([x, y]) => {
+                     const tile = document.getElementById(`tile${x},${y}`);
+                     if (!tile) return "missing";
+                     const door = Array.from(tile.classList).find(
+                         c => c.indexOf("doorTile") === 0);
+                     return door || "none";
+                   }""", [x, y])
+
+        def read():
+            return {
+                "downPair": [orientation(3, 4), orientation(3, 5)],
+                "acrossPair": [orientation(9, 7), orientation(10, 7)],
+                "downSingle": orientation(3, 2),
+                "acrossSingle": orientation(12, 7),
+            }
+
+        stages = {"shut": read()}
+
+        paint_run(page, "doorOpen", [(3, 4), (9, 7)])
+        page.wait_for_timeout(700)
+        stages["opened"] = read()
+
+        # The whole map drawn again, which is what a reload or any map-wide
+        # update does, and what the bug waited for.
+        page.reload()
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_function(
+            "() => mapObject && mapObject.mapArray.length === 10",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_timeout(900)
+        stages["redrawn"] = read()
+
+        return {"stages": stages, "errors": errors}
+    finally:
+        context.close()
+
+
+class TestADoubleDoorway:
+    def test_both_leaves_lie_in_the_wall_they_are_in(self, doorways):
+        assert doorways["stages"]["shut"]["downPair"] == ["doorTileB", "doorTileB"]
+        assert doorways["stages"]["shut"]["acrossPair"] == ["doorTileA", "doorTileA"]
+
+    def test_opening_one_leaf_leaves_the_other_alone(self, doorways):
+        assert doorways["stages"]["opened"]["downPair"] == \
+            ["doorTileBOpen", "doorTileB"]
+        assert doorways["stages"]["opened"]["acrossPair"] == \
+            ["doorTileAOpen", "doorTileA"]
+
+    def test_and_it_still_does_after_the_whole_map_is_drawn_again(self, doorways):
+        """The bug this exists for. The shut leaf used to come back at right
+        angles to the wall it was standing in, one redraw later."""
+        assert doorways["stages"]["redrawn"]["downPair"] == \
+            ["doorTileBOpen", "doorTileB"]
+        assert doorways["stages"]["redrawn"]["acrossPair"] == \
+            ["doorTileAOpen", "doorTileA"]
+
+    def test_a_single_door_is_unchanged(self, doorways):
+        """One door in a wall was always drawn correctly, and still is."""
+        for stage in ("shut", "opened", "redrawn"):
+            assert doorways["stages"][stage]["downSingle"] == "doorTileB", stage
+            assert doorways["stages"][stage]["acrossSingle"] == "doorTileA", stage
+
+    def test_nothing_raised(self, doorways):
+        assert doorways["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def thin_doors(browser, live_server):
+    """Doors on the edges between squares, drawn and painted through the UI.
+
+    A door that fills a square is a kind of square. A thin door is a detail of
+    an edge, the way a thin wall is, so two squares share one and the GM paints
+    it by clicking near the edge rather than on a square.
+    """
+    context = browser.new_context(viewport={"width": 1400, "height": 950})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.fill("#gameName", "thin doors")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        args = dict(pair.split("=", 1) for pair in page.url.split("?", 1)[1].split("&"))
+        room, key = args["room"], args["gmKey"]
+        page.fill("#mapWidth", "8")
+        page.fill("#mapHeight", "5")
+        # Discovered, so the players are looking at the map rather than at fog.
+        # What an undiscovered square sends is its own question, and the fog is
+        # a wide enough subject that it is tested on its own elsewhere.
+        page.check("#mapIsDiscovered")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 40",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_timeout(400)
+
+        player_errors = []
+        player = context.new_page()
+        player.on("pageerror", lambda error: player_errors.append(str(error)))
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_timeout(400)
+
+        stages = {}
+        stages["tools"] = page.evaluate(
+            """() => Array.from(document.querySelectorAll('.mapTile'))
+                 .map(d => d.id).filter(id => id.indexOf('thinDoor') === 0)""")
+
+        def mark(view, x, y, side):
+            return view.evaluate(
+                """([x, y, side]) => {
+                     const el = document.getElementById(`door${x},${y},${side}`);
+                     if (!el) return null;
+                     return {classes: el.className,
+                             parent: el.parentElement.id,
+                             clickable: getComputedStyle(el).pointerEvents};
+                   }""", [x, y, side])
+
+        # Clicking a square near its right-hand edge, with the tool picked from
+        # the palette, which is the whole gesture.
+        page.click("#thinDoorClosed")
+        box = page.locator('[id="tile2,2"]').bounding_box()
+        page.mouse.click(box["x"] + box["width"] - 3, box["y"] + box["height"] / 2)
+        page.wait_for_timeout(500)
+        stages["painted"] = mark(page, 2, 2, "right")
+        stages["sharedWithNeighbour"] = mark(page, 3, 2, "left")
+        stages["player"] = mark(player, 2, 2, "right")
+
+        # Clicking the same edge again, landing on the mark itself. The mark
+        # must not swallow the click, or the edge worked out from where in the
+        # square it landed would be the wrong one.
+        #
+        # The tool is not picked again: it is still held after painting, and
+        # clicking the palette item a second time would put it down instead.
+        page.mouse.click(box["x"] + box["width"] - 3, box["y"] + box["height"] / 2)
+        page.wait_for_timeout(500)
+        stages["afterSecondClick"] = mark(page, 2, 2, "right")
+        stages["neighbourAfterSecondClick"] = mark(page, 3, 2, "left")
+
+        # Each tool paints its own state.
+        for tool, x, state in [("thinDoorLocked", 5, "locked"),
+                               ("thinDoorOpen", 6, "open")]:
+            page.click("#" + tool)
+            spot = page.locator('[id="tile%d,2"]' % x).bounding_box()
+            page.mouse.click(spot["x"] + spot["width"] - 3,
+                             spot["y"] + spot["height"] / 2)
+            page.wait_for_timeout(400)
+            stages[state] = mark(page, x, 2, "right")
+
+        return {"stages": stages, "errors": errors, "playerErrors": player_errors}
+    finally:
+        context.close()
+
+
+class TestThinDoors:
+    def test_the_palette_offers_the_three_states(self, thin_doors):
+        assert thin_doors["stages"]["tools"] == [
+            "thinDoorClosed", "thinDoorLocked", "thinDoorOpen"]
+
+    def test_clicking_near_an_edge_puts_a_door_on_it(self, thin_doors):
+        painted = thin_doors["stages"]["painted"]
+        assert painted is not None
+        assert "thinDoor-right" in painted["classes"]
+        assert "thinDoor-closed" in painted["classes"]
+
+    def test_the_square_on_the_other_side_draws_it_too(self, thin_doors):
+        """One doorway described from both sides, so either square redrawing
+        is enough to draw it."""
+        shared = thin_doors["stages"]["sharedWithNeighbour"]
+        assert shared is not None
+        assert "thinDoor-left" in shared["classes"]
+
+    def test_it_is_drawn_over_the_map_and_not_inside_a_square(self, thin_doors):
+        """A square's opacity belongs to Show Features and to whether a
+        battlemap image is loaded -- with one, every square is opacity 0 so the
+        artwork shows through. A door drawn as part of a square would vanish on
+        exactly the maps most games are played on."""
+        assert thin_doors["stages"]["painted"]["parent"] == "mapGraphic"
+
+    def test_the_mark_does_not_take_clicks(self, thin_doors):
+        """Which edge was meant is worked out from where in the square the
+        click landed. A mark that took clicks would report a position inside
+        itself, and the GM would paint a different edge from the one aimed at."""
+        assert thin_doors["stages"]["painted"]["clickable"] == "none"
+
+    def test_clicking_the_same_edge_again_takes_the_door_off(self, thin_doors):
+        """The second click lands on the mark, which is the case that proves
+        the mark is not swallowing it."""
+        assert thin_doors["stages"]["afterSecondClick"] is None
+        assert thin_doors["stages"]["neighbourAfterSecondClick"] is None
+
+    def test_each_tool_paints_its_own_state(self, thin_doors):
+        assert "thinDoor-locked" in thin_doors["stages"]["locked"]["classes"]
+        assert "thinDoor-open" in thin_doors["stages"]["open"]["classes"]
+
+    def test_the_players_are_shown_it(self, thin_doors):
+        """A door the party can see is a door they have to be able to see."""
+        seen = thin_doors["stages"]["player"]
+        assert seen is not None
+        assert "thinDoor-closed" in seen["classes"]
+
+    def test_nothing_raised(self, thin_doors):
+        assert thin_doors["errors"] == []
+        assert thin_doors["playerErrors"] == []

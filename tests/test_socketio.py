@@ -3240,3 +3240,284 @@ class TestPaintingSeeThroughSquares:
         restored = Session(room, key, "placeholder")
         restored.from_json(session.gen_save())
         assert restored.mapData["mapArray"][1][1]["transparent"] is True
+
+
+# Sixteen units across a square whatever it is drawn at, so a click lands on an
+# edge at any zoom. Middle of the square is (8, 8).
+NEAR_LEFT = {"relative_x": 1, "relative_y": 8}
+NEAR_RIGHT = {"relative_x": 15, "relative_y": 8}
+NEAR_TOP = {"relative_x": 8, "relative_y": 1}
+NEAR_BOTTOM = {"relative_x": 8, "relative_y": 15}
+
+
+class TestWhichEdgeAClickMeans:
+    """The arithmetic the thin wall tool has always used, now shared with the
+    thin door tools and so worth pinning on its own."""
+
+    def test_each_side_in_turn(self):
+        assert mudfinder.nearest_edge(1, 8) == "left"
+        assert mudfinder.nearest_edge(15, 8) == "right"
+        assert mudfinder.nearest_edge(8, 1) == "top"
+        assert mudfinder.nearest_edge(8, 15) == "bottom"
+
+    def test_a_corner_goes_to_the_nearer_of_the_two(self):
+        assert mudfinder.nearest_edge(2, 1) == "top"
+        assert mudfinder.nearest_edge(1, 2) == "left"
+        assert mudfinder.nearest_edge(14, 15) == "bottom"
+
+
+class TestPaintingAThinDoor:
+    """A door on the edge between two squares rather than one filling a square.
+
+    The edge belongs to both squares, so both have to carry it -- a creature
+    leaving one and a creature entering the other have to get the same answer
+    about the same doorway.
+    """
+
+    def paint(self, gm_client, room, key, tool, x, y, where):
+        edit = {"room": room, "gmKey": key,
+                "tiles": [{"newTile": tool, "xCoord": x, "yCoord": y}]}
+        edit.update(where)
+        gm_client.emit("map_edit", edit)
+        gm_client.get_received()
+
+    def mapped(self, gm_client, room, key):
+        gm_client.emit("map_generate", {"room": room, "gmKey": key,
+                                        "mapWidth": 6, "mapHeight": 6,
+                                        "discovered": True})
+        gm_client.get_received()
+        return mudfinder.ROOMS[room]
+
+    def test_a_fresh_square_carries_no_doors(self, gm):
+        """No key at all, which is what makes every map drawn before this one
+        a map with nothing to migrate."""
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        assert "doors" not in session.mapData["mapArray"][2][2]
+
+    def test_the_tool_puts_one_on_the_edge_clicked(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "thinDoorClosed", 2, 2, NEAR_RIGHT)
+        assert session.mapData["mapArray"][2][2]["doors"] == {"right": "closed"}
+
+    def test_the_square_on_the_other_side_carries_it_too(self, gm):
+        """One doorway, described twice. Both squares are asked about it."""
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "thinDoorClosed", 2, 2, NEAR_RIGHT)
+        assert session.mapData["mapArray"][2][3]["doors"] == {"left": "closed"}
+
+    def test_each_tool_paints_its_own_state(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "thinDoorLocked", 2, 2, NEAR_TOP)
+        self.paint(gm_client, room, key, "thinDoorOpen", 4, 4, NEAR_BOTTOM)
+        assert session.mapData["mapArray"][2][2]["doors"]["top"] == "locked"
+        assert session.mapData["mapArray"][4][4]["doors"]["bottom"] == "open"
+
+    def test_painting_the_same_state_again_takes_it_off(self, gm):
+        """The only way to get rid of one, and the gesture the thin wall tool
+        already uses."""
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "thinDoorClosed", 2, 2, NEAR_RIGHT)
+        self.paint(gm_client, room, key, "thinDoorClosed", 2, 2, NEAR_RIGHT)
+        assert "doors" not in session.mapData["mapArray"][2][2]
+        assert "doors" not in session.mapData["mapArray"][2][3]
+
+    def test_a_different_state_replaces_it_rather_than_removing_it(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "thinDoorClosed", 2, 2, NEAR_RIGHT)
+        self.paint(gm_client, room, key, "thinDoorLocked", 2, 2, NEAR_RIGHT)
+        assert session.mapData["mapArray"][2][2]["doors"] == {"right": "locked"}
+        assert session.mapData["mapArray"][2][3]["doors"] == {"left": "locked"}
+
+    def test_the_square_is_still_what_it_was(self, gm):
+        """A detail of an edge, not a kind of square. It must not turn the
+        floor it is standing on into something else."""
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "thinDoorLocked", 2, 2, NEAR_RIGHT)
+        assert session.mapData["mapArray"][2][2]["tile"] == "floorTile"
+        assert session.mapData["mapArray"][2][2]["walkable"] is True
+
+    def test_it_survives_a_save_and_load(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "thinDoorLocked", 2, 2, NEAR_RIGHT)
+        restored = Session(room, key, "placeholder")
+        restored.from_json(session.gen_save())
+        assert restored.mapData["mapArray"][2][2]["doors"] == {"right": "locked"}
+
+
+class TestAThinDoorInTheWay:
+    """What a thin door does to a creature trying to get past it.
+
+    Locked turns it back. Shut does not: walking through is how a door gets
+    opened, here as on a door that fills a whole square, so the route has to go
+    through it before anything can open it.
+
+    The doorway is the only way through, which is the point. On open ground a
+    creature simply walks around a locked edge, and a test built that way
+    passes whatever the door does.
+    """
+
+    def doorway(self, gm_client, room, key, tool):
+        """A wall down the map with one gap in it, and a door on that gap."""
+        gm_client.emit("map_generate", {"room": room, "gmKey": key,
+                                        "mapWidth": 6, "mapHeight": 6,
+                                        "discovered": True})
+        gm_client.get_received()
+        gm_client.emit("map_edit", {
+            "room": room, "gmKey": key, "relative_x": 8, "relative_y": 8,
+            "tiles": [{"newTile": "wallTile", "xCoord": 3, "yCoord": y}
+                      for y in range(6) if y != 2]})
+        gm_client.get_received()
+        if tool:
+            gm_client.emit("map_edit", dict(
+                {"room": room, "gmKey": key,
+                 "tiles": [{"newTile": tool, "xCoord": 2, "yCoord": 2}]},
+                **NEAR_RIGHT))
+            gm_client.get_received()
+        session = mudfinder.ROOMS[room]
+        # Controlled by a player, and moved as that player. A GM move outside
+        # initiative does not pathfind at all -- on_locate_unit hands calc_path
+        # moveType 5, which puts the creature where it was told and asks
+        # nothing -- so the GM walks a creature through walls as well as
+        # doors, deliberately, and is given the palette to open doors with.
+        session.unitList.append(Unit({"charName": "Walker", "controlledBy": "Aria"}))
+        session.number_units()
+        unit = session.unitList[-1]
+        unit.location = [2, 2]
+        unit.y, unit.x = 2, 2
+        unit.movementSpeed = 30
+        return session, unit
+
+    def step_east(self, gm_client, room, key, session, unit):
+        """Ordered one square east, across the edge the door is on.
+
+        Through the handler rather than calling calc_path, because opening a
+        door sends the squares either side of it to both views, and an emit
+        wants the request a handler runs in.
+        """
+        gm_client.emit("locate_unit", {
+            "room": room, "selectedUnit": session.unitList.index(unit),
+            "xCoord": 3, "yCoord": 2, "relative_x": 8, "relative_y": 8,
+            "moveType": 3, "requestingPlayer": "Aria"})
+        gm_client.get_received()
+        return [unit.y, unit.x]
+
+    def test_with_nothing_there_the_step_is_taken(self, gm):
+        gm_client, room, key = gm
+        session, unit = self.doorway(gm_client, room, key, None)
+        assert self.step_east(gm_client, room, key, session, unit) == [2, 3]
+
+    def test_a_locked_door_turns_it_back(self, gm):
+        gm_client, room, key = gm
+        session, unit = self.doorway(gm_client, room, key, "thinDoorLocked")
+        assert self.step_east(gm_client, room, key, session, unit) == [2, 2]
+
+    def test_a_shut_door_is_walked_through(self, gm):
+        gm_client, room, key = gm
+        session, unit = self.doorway(gm_client, room, key, "thinDoorClosed")
+        assert self.step_east(gm_client, room, key, session, unit) == [2, 3]
+
+    def test_and_walking_through_it_opens_it(self, gm):
+        gm_client, room, key = gm
+        session, unit = self.doorway(gm_client, room, key, "thinDoorClosed")
+        self.step_east(gm_client, room, key, session, unit)
+        assert session.mapData["mapArray"][2][2]["doors"] == {"right": "open"}
+
+    def test_the_far_side_of_the_doorway_opens_with_it(self, gm):
+        """Both squares carry the door, so leaving one shut would have the two
+        of them disagreeing about the same doorway."""
+        gm_client, room, key = gm
+        session, unit = self.doorway(gm_client, room, key, "thinDoorClosed")
+        self.step_east(gm_client, room, key, session, unit)
+        assert session.mapData["mapArray"][2][3]["doors"] == {"left": "open"}
+
+    def test_an_open_door_is_walked_through_and_left_alone(self, gm):
+        gm_client, room, key = gm
+        session, unit = self.doorway(gm_client, room, key, "thinDoorOpen")
+        assert self.step_east(gm_client, room, key, session, unit) == [2, 3]
+        assert session.mapData["mapArray"][2][2]["doors"] == {"right": "open"}
+
+    def test_a_locked_door_stays_shut(self, gm):
+        gm_client, room, key = gm
+        session, unit = self.doorway(gm_client, room, key, "thinDoorLocked")
+        self.step_east(gm_client, room, key, session, unit)
+        assert session.mapData["mapArray"][2][2]["doors"] == {"right": "locked"}
+
+    def test_the_gm_is_told_the_door_opened(self, gm):
+        """The move itself reaches the clients through send_updates, which
+        carries creatures and not map squares, so without this the door stays
+        drawn shut until something else redraws the map."""
+        gm_client, room, key = gm
+        session, unit = self.doorway(gm_client, room, key, "thinDoorClosed")
+        gm_client.emit("locate_unit", {
+            "room": room, "selectedUnit": session.unitList.index(unit),
+            "xCoord": 3, "yCoord": 2, "relative_x": 8, "relative_y": 8,
+            "moveType": 3, "requestingPlayer": "Aria"})
+        received = gm_client.get_received()
+        update = event(received, "gm_map_update")["args"][0]
+        opened = [tile for tile in update["mapArray"] if tile.get("doors")]
+        assert {"right": "open"} in [tile["doors"] for tile in opened]
+
+
+class TestSeeingPastAThinDoor:
+    """A shut door is as opaque as the wall it is set into; an open one is a
+    doorway to look through."""
+
+    def looker(self, gm_client, room, key, tool):
+        gm_client.emit("map_generate", {"room": room, "gmKey": key,
+                                        "mapWidth": 8, "mapHeight": 8,
+                                        "discovered": False})
+        gm_client.get_received()
+        if tool:
+            gm_client.emit("map_edit", dict(
+                {"room": room, "gmKey": key,
+                 "tiles": [{"newTile": tool, "xCoord": 2, "yCoord": 4}]},
+                **NEAR_RIGHT))
+            gm_client.get_received()
+        session = mudfinder.ROOMS[room]
+        session.unitList.append(Unit({"charName": "Scout", "controlledBy": "gm"}))
+        session.number_units()
+        unit = session.unitList[-1]
+        unit.location = [4, 2]
+        unit.y, unit.x = 4, 2
+        unit.revealsMap = True
+        session.reveal_map(len(session.unitList) - 1)
+        return session
+
+    def seen_beyond(self, session):
+        """The square on the far side of the doorway."""
+        return session.mapData["mapArray"][4][3]["seen"]
+
+    def test_without_a_door_the_square_beyond_is_seen(self, gm):
+        gm_client, room, key = gm
+        assert self.looker(gm_client, room, key, None) is not None
+        assert self.seen_beyond(self.looker(gm_client, room, key, None)) is True
+
+    def test_a_shut_door_stops_the_look(self, gm):
+        gm_client, room, key = gm
+        session = self.looker(gm_client, room, key, "thinDoorClosed")
+        assert self.seen_beyond(session) is False
+
+    def test_a_locked_door_stops_it_too(self, gm):
+        gm_client, room, key = gm
+        session = self.looker(gm_client, room, key, "thinDoorLocked")
+        assert self.seen_beyond(session) is False
+
+    def test_an_open_door_is_looked_through(self, gm):
+        gm_client, room, key = gm
+        session = self.looker(gm_client, room, key, "thinDoorOpen")
+        assert self.seen_beyond(session) is True
+
+    def test_the_square_the_door_is_on_is_still_seen(self, gm):
+        """The door is on the edge, not over the square. Standing on it must
+        not hide the ground underfoot."""
+        gm_client, room, key = gm
+        session = self.looker(gm_client, room, key, "thinDoorClosed")
+        assert session.mapData["mapArray"][4][2]["seen"] is True

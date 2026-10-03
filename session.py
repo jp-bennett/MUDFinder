@@ -41,6 +41,89 @@ def sees_through(tile):
     return bool(tile.get("transparent")) and not tile.get("secret")
 
 
+# A thin door sits on the edge between two squares, the way a thin wall does,
+# and both squares carry it: the "left" of one is the "right" of its
+# neighbour. Keeping both in step is what lets either square be asked about a
+# crossing without having to look at the other.
+#
+# Three states, and a fourth in the absence of the key -- no door on that edge
+# at all -- so a map drawn before any of this existed needs nothing doing to
+# it.
+DOOR_OPEN = "open"
+DOOR_CLOSED = "closed"
+DOOR_LOCKED = "locked"
+DOOR_STATES = (DOOR_CLOSED, DOOR_OPEN, DOOR_LOCKED)
+
+OPPOSITE_SIDE = {"left": "right", "right": "left", "top": "bottom", "bottom": "top"}
+SIDE_OFFSET = {"left": (0, -1), "right": (0, 1), "top": (-1, 0), "bottom": (1, 0)}
+
+
+def door_on(tile, side):
+    """The thin door on one edge of a square, or None where there is none."""
+    doors = tile.get("doors")
+    if not doors:
+        return None
+    return doors.get(side)
+
+
+def door_stops_movement(tile, side):
+    """Only a locked one.
+
+    A shut door is walked through rather than around: the move opens it, the
+    same as ordering a creature onto a door that fills a whole square. Locked
+    is the one that turns a creature back.
+    """
+    return door_on(tile, side) == DOOR_LOCKED
+
+
+def door_stops_sight(tile, side):
+    """Anything that is not standing open.
+
+    A shut door is as opaque as the wall it is set into. See-through is a
+    detail of a square rather than of an edge, so a portcullis across a
+    doorway cannot be spelled yet -- that wants the transparent detail
+    extended to edges, which is its own piece of work.
+    """
+    return door_on(tile, side) in (DOOR_CLOSED, DOOR_LOCKED)
+
+
+def set_door(tile, side, state):
+    """Put a thin door on an edge, or take it off with state None.
+
+    The key goes when the last door does, so that a square with no doors is
+    spelled one way rather than two.
+    """
+    doors = tile.get("doors")
+    if state is None:
+        if doors:
+            doors.pop(side, None)
+            if not doors:
+                tile.pop("doors", None)
+        return
+    if doors is None:
+        doors = tile["doors"] = {}
+    doors[side] = state
+
+
+def entry_sides(previous, current):
+    """Which sides of `current` a step from `previous` crosses.
+
+    Both are (y, x). A diagonal crosses two of them, which is why this is a
+    list -- a step up and to the left enters through the bottom edge and the
+    right edge at once, and either can be the one that stops it.
+    """
+    sides = []
+    if current[0] - previous[0] == -1:
+        sides.append("bottom")
+    elif current[0] - previous[0] == 1:
+        sides.append("top")
+    if current[1] - previous[1] == -1:
+        sides.append("right")
+    elif current[1] - previous[1] == 1:
+        sides.append("left")
+    return sides
+
+
 def masked_initiative_entry():
     return {
         "charName": "?",
@@ -348,6 +431,16 @@ class Session(object):
                         and not self.mapData["mapArray"][y][x]["secret"]
                         and self.mapData["mapArray"][y][x].get("transparent")):
                     tmpMapLine[x]["transparent"] = True
+                # Likewise after the masking. A thin door is drawn on an edge
+                # of the square, and an edge of a square nobody has been to
+                # would draw the shape of a doorway through the fog. A secret
+                # square is excluded for the reason its own mask exists: a
+                # door marked on the face of what is pretending to be solid
+                # wall is the tell.
+                if (self.mapData["mapArray"][y][x]["seen"]
+                        and not self.mapData["mapArray"][y][x]["secret"]
+                        and self.mapData["mapArray"][y][x].get("doors")):
+                    tmpMapLine[x]["doors"] = dict(self.mapData["mapArray"][y][x]["doors"])
                 # Likewise after the masking. A staircase is drawn with a mark
                 # on it, and a mark on a square nobody has been to would say
                 # there is a way through where the fog says there is nothing --
@@ -404,6 +497,7 @@ class Session(object):
             ignoreSeen = True
         else:
             ignoreSeen = False
+        start = (tmpUnit.y, tmpUnit.x)
         path = astar(self.mapData["mapArray"], (tmpUnit.y, tmpUnit.x), end, maxMove, ignoreSeen)
         if path is None:
             return
@@ -413,7 +507,68 @@ class Session(object):
         tmpUnit.location = path[-1]
         tmpUnit.y = path[-1][0]
         tmpUnit.x = path[-1][1]
+        # Shut doors the route went through are now standing open, and the
+        # squares either side of each of them have changed. Sent from here
+        # because this is what knows: the move itself reaches the clients
+        # through send_updates, which carries creatures and not map squares.
+        self.broadcast_tiles(self.open_doors_along([start] + path))
         return
+
+    def open_doors_along(self, steps):
+        """Open every shut thin door a path crosses; return the squares changed.
+
+        Walking through a door is how it opens, the same as ordering a
+        creature onto a door that fills a whole square. A locked one never
+        reaches here, because astar will not route a path through one.
+
+        Both squares either side of the edge are changed, since both carry the
+        door, and both are returned so that either can be redrawn.
+        """
+        changed = []
+        grid = self.mapData["mapArray"]
+        for previous, current in zip(steps, steps[1:]):
+            tile = grid[current[0]][current[1]]
+            for side in entry_sides(previous, current):
+                if door_on(tile, side) != DOOR_CLOSED:
+                    continue
+                set_door(tile, side, DOOR_OPEN)
+                changed.append(tile)
+                offset = SIDE_OFFSET[side]
+                row, column = current[0] + offset[0], current[1] + offset[1]
+                if 0 <= row < len(grid) and 0 <= column < len(grid[row]):
+                    set_door(grid[row][column], OPPOSITE_SIDE[side], DOOR_OPEN)
+                    changed.append(grid[row][column])
+        return changed
+
+    def mask_tiles(self, tiles):
+        """A few changed squares as the players may see them.
+
+        The rules player_map works by, applied to a handful of squares rather
+        than to the whole board: an undiscovered square says nothing about
+        itself, and a secret one says it is the wall it is pretending to be.
+        """
+        masked = copy.deepcopy(tiles)
+        for tile in masked:
+            if not tile.get("seen"):
+                tile["tile"] = "unseenTile"
+                tile["walkable"] = False
+                for detail in ("warp", "light", "transparent", "doors", "walls"):
+                    tile.pop(detail, None)
+            elif tile.get("secret"):
+                tile["tile"] = "wallTile"
+                tile["walkable"] = False
+                tile.pop("warp", None)
+        return masked
+
+    def broadcast_tiles(self, tiles):
+        """Send a handful of changed squares to both views."""
+        if not tiles:
+            return
+        update = {"showBackground": self.mapData["showBackground"],
+                  "mapBackground": self.mapData["mapBackground"]}
+        emit('gm_map_update', dict(update, mapArray=tiles), room=self.gmRoom)
+        emit('player_map_update', dict(update, mapArray=self.mask_tiles(tiles)),
+             room=self.room)
 
     def reveal_map(self, selectedPlayer):
         mark = False
@@ -429,19 +584,22 @@ class Session(object):
                 for distance in range(len(cells)):
                     try:
 
-                        if distance > 0 and "walls" in self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]:
-                            if cells[distance][1] - cells[distance - 1][1] == -1: #I think thes means the ray is moving down
-                                if "bottom" in self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]["walls"]:
-                                    break
-                            if cells[distance][1] - cells[distance - 1][1] == 1: #I think thes means the ray is moving up
-                                if "top" in self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]["walls"]:
-                                    break
-                            if cells[distance][0] - cells[distance - 1][0] == -1: #I think thes means the ray is moving right
-                                if "right" in self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]["walls"]:
-                                    break
-                            if cells[distance][0] - cells[distance - 1][0] == 1: #I think thes means the ray is moving left
-                                if "left" in self.mapData["mapArray"][cells[distance ][1]][cells[distance][0]]["walls"]:
-                                    break
+                        # What the ray crosses to get into this square, rather
+                        # than what the square is: a thin wall and a shut thin
+                        # door both live on the edge between two squares, and
+                        # stop a look that crosses that edge while leaving the
+                        # square itself perfectly visible from the other side.
+                        #
+                        # raytrace works in [x, y]; entry_sides takes (y, x).
+                        if distance > 0:
+                            tile = self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]
+                            crossed = entry_sides(
+                                (cells[distance - 1][1], cells[distance - 1][0]),
+                                (cells[distance][1], cells[distance][0]))
+                            if any(side in tile.get("walls", []) for side in crossed):
+                                break
+                            if any(door_stops_sight(tile, side) for side in crossed):
+                                break
                         if self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]["seen"] == False:
                             mark = True
                         self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]["seen"] = True
@@ -690,6 +848,12 @@ def testStep(maze, current_node, new_position, node_position, ignoreSeen):
                 return False
             if new_position[0] == 1 and "top" in maze[node_position[0]][node_position[1]]["walls"]:
                 return False
+        # A locked thin door on the far side of the same diagonal. A shut one
+        # is not checked anywhere: walking through is what opens it, so it has
+        # to be routed through first.
+        for side in entry_sides((0, 0), (new_position[0], new_position[1])):
+            if door_stops_movement(maze[node_position[0]][node_position[1]], side):
+                return False
 
 
     #test next step for unwalkable
@@ -707,6 +871,13 @@ def testStep(maze, current_node, new_position, node_position, ignoreSeen):
         if new_position[0] == -1 and "top" in maze[current_node.position[0]][current_node.position[1]]["walls"]:
             return False
         if new_position[0] == 1 and "bottom" in maze[current_node.position[0]][current_node.position[1]]["walls"]:
+            return False
+    # The side of the square being left, which is the opposite of the side of
+    # the one being entered. Both carry the door, so either would do; this one
+    # matches the wall checks above it.
+    for side in entry_sides((0, 0), (new_position[0], new_position[1])):
+        if door_stops_movement(maze[current_node.position[0]][current_node.position[1]],
+                               OPPOSITE_SIDE[side]):
             return False
     return True
 

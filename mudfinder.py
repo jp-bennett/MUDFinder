@@ -17,7 +17,9 @@ from flask import Flask, abort, render_template, request, redirect
 from flask_socketio import SocketIO, join_room, emit
 from werkzeug.utils import secure_filename
 
-from session import Session, BACKGROUND_ALIGNMENT_KEYS, BACKGROUND_ALIGNMENT_SEQ
+from session import (Session, BACKGROUND_ALIGNMENT_KEYS, BACKGROUND_ALIGNMENT_SEQ,
+                     DOOR_CLOSED, DOOR_OPEN, DOOR_LOCKED, OPPOSITE_SIDE,
+                     SIDE_OFFSET, door_on, set_door)
 
 from wsfix import apply_whole_frame_writes
 
@@ -2495,6 +2497,54 @@ def toggleWall(tile, wall_side):
         tile["walls"].append(wall_side)
 
 
+# Which edge of a square a click was aiming at, from where in the square it
+# landed. Squares are sixteen units across whatever they are drawn at, so this
+# is the same arithmetic at any zoom.
+def nearest_edge(relative_x, relative_y):
+    side = "left"
+    distance = relative_x
+    if relative_x > 8:
+        side = "right"
+        distance = 16 - relative_x
+    if relative_y < distance:
+        side = "top"
+        distance = relative_y
+    elif 16 - relative_y < distance:
+        side = "bottom"
+    return side
+
+
+# The three thin-door tools, each painting its own state onto the edge nearest
+# the click. Painting the state an edge already has takes the door off again,
+# which is the only way to get rid of one -- the same gesture the thin wall
+# tool uses to take a wall back off.
+THIN_DOOR_TOOLS = {
+    "thinDoorClosed": DOOR_CLOSED,
+    "thinDoorOpen": DOOR_OPEN,
+    "thinDoorLocked": DOOR_LOCKED,
+}
+
+
+def paint_thin_door(room, y, x, side, state):
+    """Put a thin door on one edge, and the same door on the other side of it.
+
+    Both squares carry it, so both have to be told, and both come back as
+    changed squares -- the edge is drawn by whichever of them is redrawn.
+    """
+    grid = ROOMS[room].mapData["mapArray"]
+    tile = grid[y][x]
+    going = None if door_on(tile, side) == state else state
+    set_door(tile, side, going)
+    changed = [tile]
+    offset = SIDE_OFFSET[side]
+    neighbour_y, neighbour_x = y + offset[0], x + offset[1]
+    if in_map(room, neighbour_y, neighbour_x):
+        set_door(grid[neighbour_y][neighbour_x],
+                                OPPOSITE_SIDE[side], going)
+        changed.append(grid[neighbour_y][neighbour_x])
+    return changed
+
+
 @socketio.on('map_edit')
 def on_map_edit(data_pack):
     room = data_pack['room']
@@ -2529,21 +2579,17 @@ def on_map_edit(data_pack):
                     # Opaque is the absence of the key, so there is exactly one
                     # way to spell a square you cannot see through.
                     tile.pop("transparent", None)
+            elif data["newTile"] in THIN_DOOR_TOOLS:
+                # With the other detail tools, before the branches that
+                # dispatch on substrings of a tile name, and for the same
+                # reason: these ids name an edge of a square rather than a
+                # kind of square.
+                updatedTiles.extend(paint_thin_door(
+                    room, data["yCoord"], data["xCoord"],
+                    nearest_edge(data_pack["relative_x"], data_pack["relative_y"]),
+                    THIN_DOOR_TOOLS[data["newTile"]]))
             elif "thinWallTile" in data["newTile"]:
-                print(data_pack)
-                #find which wall is closest
-                wall_side = "left"
-                wall_distance = data_pack["relative_x"]
-                if data_pack["relative_x"] > 8:
-                    wall_side = "right"
-                    wall_distance = 16 - data_pack["relative_x"]
-                if data_pack["relative_y"] < wall_distance:
-                    wall_side = "top"
-                    wall_distance = data_pack["relative_y"]
-                elif 16 - data_pack["relative_y"] < wall_distance:
-                    wall_side = "bottom"
-                print(wall_side)
-                print(ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]])
+                wall_side = nearest_edge(data_pack["relative_x"], data_pack["relative_y"])
                 toggleWall(ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]], wall_side)
 
                 if wall_side == "left" and ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"] - 1]:
@@ -2602,6 +2648,11 @@ def on_map_edit(data_pack):
                 # on an undiscovered square would put a way through in the
                 # middle of the fog and name where it comes out.
                 tmpUpdatedTiles[index].pop("warp", None)
+                # And the doors on its edges, which are drawn on the face of
+                # the square: a doorway marked on undiscovered ground draws
+                # the shape of a way through where the fog says there is
+                # nothing.
+                tmpUpdatedTiles[index].pop("doors", None)
                 # This mask edits the tile in place rather than rebuilding it
                 # the way player_map does, so anything not named here reaches
                 # the players untouched. A light level on an undiscovered
@@ -2612,8 +2663,10 @@ def on_map_edit(data_pack):
                 tmpUpdatedTiles[index]["tile"] = "wallTile"
                 tmpUpdatedTiles[index]["walkable"] = False
                 # A secret door has to match the wall it is pretending to be,
-                # and a wall with a staircase mark on it is a tell.
+                # and a wall with a staircase mark on it is a tell. So is a
+                # door drawn on its edge.
                 tmpUpdatedTiles[index].pop("warp", None)
+                tmpUpdatedTiles[index].pop("doors", None)
         if len(tmpUpdatedTiles) > 0:
             updatedMap["mapArray"] = tmpUpdatedTiles
             emit('player_map_update', updatedMap, room=room)

@@ -305,6 +305,115 @@ function lightToggle(obj) {
     }
 }
 
+// A thin door is drawn on the edge it sits on, as its own element over the
+// grid rather than as part of the square -- the same way the light wash and
+// the undiscovered wash are drawn, and for the same reason. A square's opacity
+// belongs to Show Features and to whether a battlemap image is loaded: with
+// one, every square is opacity 0 so the artwork shows through, and anything
+// drawn as part of the square goes with it. A door is state the GM changes
+// mid-game and has to be able to see on any map, which is not true of the
+// terrain around it.
+//
+// pointer-events: none on all of them, and that is not cosmetic. The map's
+// click handler reads e.offsetX to work out which edge was aimed at, and
+// offsetX is measured from whatever was clicked -- so a mark that took clicks
+// would answer with a position inside itself and paint the wrong edge.
+var DOOR_SIDES = ["left", "right", "top", "bottom"];
+
+// How much of the edge the leaf covers, and how far it stands out from it.
+var DOOR_LEAF_LENGTH = 0.7;
+var DOOR_LEAF_THICKNESS = 0.11;
+
+function clearThinDoors(x, y) {
+    DOOR_SIDES.forEach(function (side) {
+        var old = document.getElementById(`door${x},${y},${side}`);
+        if (old) {
+            old.remove();
+        }
+    });
+}
+
+function drawThinDoors(mapArray, x, y) {
+    clearThinDoors(x, y);
+    var doors = mapArray[y][x].doors;
+    if (!doors) {
+        return;
+    }
+    DOOR_SIDES.forEach(function (side) {
+        var state = doors[side];
+        if (!state) {
+            return;
+        }
+        var length = zoomSize * DOOR_LEAF_LENGTH;
+        var thickness = zoomSize * DOOR_LEAF_THICKNESS;
+        var along = (zoomSize - length) / 2;
+        var mark = document.createElement("div");
+        mark.id = `door${x},${y},${side}`;
+        mark.className = "thinDoor thinDoor-" + side + " thinDoor-" + state;
+        mark.style.position = "absolute";
+        if (side === "left" || side === "right") {
+            mark.style.width = thickness + "px";
+            mark.style.height = length + "px";
+            mark.style.top = (y * zoomSize + along) + "px";
+            // Straddling the edge, because the edge belongs to both squares.
+            mark.style.left = (x * zoomSize
+                + (side === "right" ? zoomSize : 0) - thickness / 2) + "px";
+        } else {
+            mark.style.width = length + "px";
+            mark.style.height = thickness + "px";
+            mark.style.left = (x * zoomSize + along) + "px";
+            mark.style.top = (y * zoomSize
+                + (side === "bottom" ? zoomSize : 0) - thickness / 2) + "px";
+        }
+        document.getElementById("mapGraphic").appendChild(mark);
+    });
+}
+
+function tileAt(mapArray, x, y) {
+    if (typeof mapArray[y] === "undefined" || typeof mapArray[y][x] === "undefined") {
+        return null;
+    }
+    return mapArray[y][x];
+}
+
+// Part of a wall line. A door counts: it is a hole in a wall, and it still
+// says which way that wall runs -- whether it happens to be standing open or
+// not. An undiscovered square says nothing either way, so it does not vote.
+function continuesWall(tile) {
+    if (!tile || tile.tile === "unseenTile") {
+        return false;
+    }
+    return !tile.walkable || tile.tile === "doorClosed" || tile.tile === "doorOpen";
+}
+
+// Which way a door lies: across the square (a bar drawn left to right, walked
+// through from above or below) or along it.
+//
+// This used to ask whether the square above or below was walkable, which gets
+// the answer from the wrong thing. An open door is walkable, so a door that
+// was opened told the door beside it there was floor that way -- and at the
+// next full redraw its neighbour drew itself across the doorway, at right
+// angles to the wall it was standing in. It stayed wrong until something
+// redrew it again, because map_edit sends only the square that changed, which
+// is what made it look like it happened at random.
+//
+// The wall the door sits in is the thing that decides, so that is what is
+// read. Where there is no wall line to read -- a door in a corner, with walls
+// both ways, or one standing in the open with none -- neither axis wins and
+// the old question is asked as a tiebreak, so those keep the look they had.
+function doorLiesAcross(mapArray, x, y) {
+    var across = continuesWall(tileAt(mapArray, x - 1, y))
+        || continuesWall(tileAt(mapArray, x + 1, y));
+    var along = continuesWall(tileAt(mapArray, x, y - 1))
+        || continuesWall(tileAt(mapArray, x, y + 1));
+    if (across !== along) {
+        return across;
+    }
+    var above = tileAt(mapArray, x, y - 1);
+    var below = tileAt(mapArray, x, y + 1);
+    return !!((above && above.walkable) || (below && below.walkable));
+}
+
 function drawSingleTile(mapData, x, y) {
     mapArray = mapData.mapArray
     newMapTile = document.createElement("div");
@@ -333,13 +442,13 @@ function drawSingleTile(mapData, x, y) {
     if (mapArray[y][x].tile == "unseenTile" && mapData.showBackground) {
         newMapTile.classList.add("unseenTile");
     } else if (mapArray[y][x].tile == "doorOpen") {
-        if ((typeof mapArray[y+1] !== "undefined" && mapArray[y+1][x].walkable) || (typeof mapArray[y-1] !== "undefined" && mapArray[y-1][x].walkable)) {
+        if (doorLiesAcross(mapArray, x, y)) {
             newMapTile.classList.add("doorTileAOpen");
         } else {
             newMapTile.classList.add("doorTileBOpen");
         }
     } else if (mapArray[y][x].tile == "doorClosed") {
-        if ((typeof mapArray[y+1] !== "undefined" && mapArray[y+1][x].walkable) || (typeof mapArray[y-1] !== "undefined" && mapArray[y-1][x].walkable)) {
+        if (doorLiesAcross(mapArray, x, y)) {
             if (isGM && mapArray[y][x].locked) {
                 newMapTile.classList.add("doorTileALocked");
             } else {
@@ -415,6 +524,7 @@ function drawSingleTile(mapData, x, y) {
             else {newMapTile.style.background += "linear-gradient(to bottom, transparent calc(80%), black calc(80%) calc(100%))";}
         }
     }
+    drawThinDoors(mapArray, x, y);
     // Light first, so the undiscovered wash lands on top of it. drawLightWash
     // clears any previous one itself, which is what returns a square repainted
     // back to normal light to having no element at all.

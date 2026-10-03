@@ -2165,3 +2165,66 @@ button.primaryAction {
     width: 42px;
     text-align: center;
 }
+
+/* Thin doors: a door on the edge between two squares rather than one filling a
+   square of its own. Drawn over the grid rather than as part of a square --
+   see drawThinDoors in shared.js for why, and for where the geometry comes
+   from. Only the look is here.
+
+   z-index above the light wash, so a door in a dark room is still visible as
+   a door. pointer-events because the map's click handler works out which edge
+   was meant from where in the square the click landed, and a mark that took
+   clicks would answer with a position inside itself. */
+.thinDoor {
+    pointer-events: none;
+    z-index: 5;
+    background: var(--ink, #1c1917);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+/* Open: the leaf has swung out of the doorway, so what is left is the two
+   jambs it swung away from. A gradient rather than borders, because
+   border-width does not take percentages and the leaf is sized in pixels from
+   the zoom. */
+.thinDoor-open.thinDoor-left, .thinDoor-open.thinDoor-right {
+    background: linear-gradient(to bottom,
+        var(--ink, #1c1917) 0 22%, transparent 22% 78%, var(--ink, #1c1917) 78% 100%);
+    box-shadow: none;
+}
+.thinDoor-open.thinDoor-top, .thinDoor-open.thinDoor-bottom {
+    background: linear-gradient(to right,
+        var(--ink, #1c1917) 0 22%, transparent 22% 78%, var(--ink, #1c1917) 78% 100%);
+    box-shadow: none;
+}
+
+/* Locked: barred across, in the colour the rest of the app uses to say no. */
+.thinDoor-locked {
+    background: repeating-linear-gradient(
+        45deg, var(--ink, #1c1917), var(--ink, #1c1917) 2px,
+        var(--danger, #7f1d1d) 2px, var(--danger, #7f1d1d) 4px);
+}
+
+/* The palette swatches. These tools paint an edge rather than a square, so the
+   swatch shows a leaf standing on one. */
+.thinDoorSwatch {
+    position: relative;
+    background: var(--paper-warm, #efe6d2);
+}
+.thinDoorSwatch::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 15%;
+    height: 70%;
+    width: 22%;
+    background: var(--ink, #1c1917);
+}
+.thinDoorSwatchOpen::after {
+    background: linear-gradient(to bottom,
+        var(--ink, #1c1917) 0 22%, transparent 22% 78%, var(--ink, #1c1917) 78% 100%);
+}
+.thinDoorSwatchLocked::after {
+    background: repeating-linear-gradient(
+        45deg, var(--ink, #1c1917), var(--ink, #1c1917) 2px,
+        var(--danger, #7f1d1d) 2px, var(--danger, #7f1d1d) 4px);
+}
