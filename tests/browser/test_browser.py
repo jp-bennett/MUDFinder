@@ -1637,6 +1637,21 @@ def paint_square(page, tool, x, y):
     page.click('[id="tile%d,%d"]' % (x, y))
 
 
+def pick_tool(page, tool):
+    """Hold a palette tool, if it is not being held already.
+
+    The palette toggles: clicking the tool that is already selected puts it
+    down. So picking a tool unconditionally before every paint lays every
+    other square and silently skips the rest -- which looks like the squares
+    refusing to take the paint.
+    """
+    held = page.evaluate(
+        "() => (typeof selectedTool !== 'undefined' && selectedTool)"
+        " ? selectedTool.id : null")
+    if held != tool:
+        page.click("#" + tool)
+
+
 def paint_run(page, tool, squares):
     """Pick a tool once, then click several squares with it.
 
@@ -7122,7 +7137,9 @@ def see_through(browser, live_server):
 
 class TestAWindowInAWall:
     def test_the_gm_has_a_tool_for_it(self, see_through):
-        assert see_through["tools"] == ["seeThroughOn", "seeThroughOff"]
+        """Two for the square, and one for an edge of it."""
+        assert see_through["tools"] == [
+            "seeThroughOn", "seeThroughOff", "seeThroughEdge"]
 
     def test_a_solid_wall_hides_what_is_behind_it(self, see_through):
         assert see_through["solid"] == ["oooo#...."] * 5
@@ -7571,3 +7588,109 @@ class TestEveryDoorDrawsSomething:
 
     def test_nothing_raised(self, every_door):
         assert every_door["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def see_through_edges(browser, live_server):
+    """A window in a thin wall and a portcullis in a thin door.
+
+    The square could already be painted see-through; the edge could not, so a
+    doorway with a grille across it had to be a whole square of wall pretending
+    to be one.
+    """
+    context = browser.new_context(viewport={"width": 1400, "height": 950})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.fill("#gameName", "portcullis")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        args = dict(pair.split("=", 1) for pair in page.url.split("?", 1)[1].split("&"))
+        room = args["room"]
+        page.fill("#mapWidth", "8")
+        page.fill("#mapHeight", "5")
+        page.check("#mapIsDiscovered")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 40",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_timeout(400)
+
+        player_errors = []
+        player = context.new_page()
+        player.on("pageerror", lambda error: player_errors.append(str(error)))
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_timeout(400)
+
+        stages = {"tools": page.evaluate(
+            """() => Array.from(
+                 document.querySelectorAll('#seeThroughTools .mapTile')).map(d => d.id)""")}
+
+        def near_right_edge(x, y, tool):
+            pick_tool(page, tool)
+            box = page.locator('[id="tile%d,%d"]' % (x, y)).bounding_box()
+            page.mouse.click(box["x"] + box["width"] - 3, box["y"] + box["height"] / 2)
+            page.wait_for_timeout(400)
+
+        def classes(view, element_id):
+            return view.evaluate(
+                """(id) => { const el = document.getElementById(id);
+                             return el ? el.className : null; }""", element_id)
+
+        near_right_edge(2, 2, "thinWallTile")
+        stages["wallSolid"] = classes(page, "edge2,2,right")
+        near_right_edge(2, 2, "seeThroughEdge")
+        stages["wallClear"] = classes(page, "edge2,2,right")
+        stages["playerWallClear"] = classes(player, "edge2,2,right")
+        near_right_edge(2, 2, "seeThroughEdge")
+        stages["wallSolidAgain"] = classes(page, "edge2,2,right")
+
+        near_right_edge(5, 2, "thinDoorClosed")
+        near_right_edge(5, 2, "seeThroughEdge")
+        stages["doorLeaf"] = classes(page, "doorLeaf5,2,right")
+        stages["doorJamb"] = classes(page, "door5,2,right")
+
+        return {"stages": stages, "errors": errors, "playerErrors": player_errors}
+    finally:
+        context.close()
+
+
+class TestSeeThroughEdges:
+    def test_the_tool_is_in_the_see_through_group(self, see_through_edges):
+        assert see_through_edges["stages"]["tools"] == [
+            "seeThroughOn", "seeThroughOff", "seeThroughEdge"]
+
+    def test_a_plain_thin_wall_is_solid(self, see_through_edges):
+        assert "thinEdgeClear" not in see_through_edges["stages"]["wallSolid"]
+
+    def test_the_tool_bars_the_wall(self, see_through_edges):
+        """Bars with the floor showing between them: the one look that says
+        this stops the move and not the look."""
+        assert "thinEdgeClear" in see_through_edges["stages"]["wallClear"]
+
+    def test_painting_it_again_makes_it_solid(self, see_through_edges):
+        assert "thinEdgeClear" not in see_through_edges["stages"]["wallSolidAgain"]
+
+    def test_a_portcullis_bars_the_leaf_and_not_the_jamb(self, see_through_edges):
+        """The jambs are the frame the door is set in, and a portcullis has a
+        solid one."""
+        assert "thinEdgeClear" in see_through_edges["stages"]["doorLeaf"]
+        assert "thinEdgeClear" not in see_through_edges["stages"]["doorJamb"]
+
+    def test_the_players_are_shown_it(self, see_through_edges):
+        """They can see through it, so they have to be able to see why."""
+        assert see_through_edges["stages"]["playerWallClear"] is not None
+        assert "thinEdgeClear" in see_through_edges["stages"]["playerWallClear"]
+
+    def test_nothing_raised(self, see_through_edges):
+        assert see_through_edges["errors"] == []
+        assert see_through_edges["playerErrors"] == []

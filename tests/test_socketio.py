@@ -15,7 +15,10 @@ import pytest
 
 import mudfinder
 from helpers import GM_KEY, event, event_names, make_player
-from session import Session
+# Renamed on the way in: pytest collects anything in a test module whose
+# name starts with "test", and would take this for a test of its own and
+# try to hand it fixtures named maze, current_node and so on.
+from session import Session, testStep as step_is_allowed
 from unit import Unit
 
 
@@ -3598,3 +3601,139 @@ class TestAnEdgeIsOneThingOrTheOther:
         self.paint(gm_client, room, key, "thinWallTile", where=NEAR_RIGHT)
         assert session.mapData["mapArray"][2][2]["doors"] == {"top": "closed"}
         assert session.mapData["mapArray"][2][2]["walls"] == ["right"]
+
+
+class _Node:
+    """Just the one attribute testStep reads off a pathfinding node."""
+
+    def __init__(self, position):
+        self.position = position
+
+
+class TestSeeingThroughAnEdge:
+    """A portcullis, a window, a railing: it stops the move, not the look.
+
+    The square already had this -- a wall can be painted see-through -- and an
+    edge could not, so a doorway with a grille across it had to be a whole
+    square of wall pretending to be one.
+    """
+
+    def mapped(self, gm_client, room, key, discovered=True):
+        gm_client.emit("map_generate", {"room": room, "gmKey": key,
+                                        "mapWidth": 8, "mapHeight": 8,
+                                        "discovered": discovered})
+        gm_client.get_received()
+        return mudfinder.ROOMS[room]
+
+    def paint(self, gm_client, room, key, tool, x=2, y=4, where=None):
+        edit = {"room": room, "gmKey": key,
+                "tiles": [{"newTile": tool, "xCoord": x, "yCoord": y}]}
+        edit.update(where or NEAR_RIGHT)
+        gm_client.emit("map_edit", edit)
+        gm_client.get_received()
+
+    def look(self, session):
+        """A scout west of the edge, and whether the square east of it is seen."""
+        session.unitList.append(Unit({"charName": "Scout", "controlledBy": "gm"}))
+        session.number_units()
+        unit = session.unitList[-1]
+        unit.location = [4, 2]
+        unit.y, unit.x = 4, 2
+        unit.revealsMap = True
+        session.reveal_map(len(session.unitList) - 1)
+        return session.mapData["mapArray"][4][3]["seen"]
+
+    def test_a_fresh_square_has_no_see_through_edges(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        assert "transparentEdges" not in session.mapData["mapArray"][4][2]
+
+    def test_the_tool_marks_the_edge_clicked(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "seeThroughEdge")
+        assert session.mapData["mapArray"][4][2]["transparentEdges"] == ["right"]
+
+    def test_the_other_side_of_the_edge_is_marked_too(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "seeThroughEdge")
+        assert session.mapData["mapArray"][4][3]["transparentEdges"] == ["left"]
+
+    def test_painting_it_again_makes_it_solid(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "seeThroughEdge")
+        self.paint(gm_client, room, key, "seeThroughEdge")
+        assert "transparentEdges" not in session.mapData["mapArray"][4][2]
+        assert "transparentEdges" not in session.mapData["mapArray"][4][3]
+
+    def test_a_thin_wall_stops_the_look(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key, discovered=False)
+        self.paint(gm_client, room, key, "thinWallTile")
+        assert self.look(session) is False
+
+    def test_a_see_through_wall_does_not(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key, discovered=False)
+        self.paint(gm_client, room, key, "thinWallTile")
+        self.paint(gm_client, room, key, "seeThroughEdge")
+        assert self.look(session) is True
+
+    def test_and_still_turns_a_creature_back(self, gm):
+        """The whole point of it. Sight and movement part company here."""
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "thinWallTile")
+        self.paint(gm_client, room, key, "seeThroughEdge")
+        session.unitList.append(Unit({"charName": "Walker", "controlledBy": "Aria"}))
+        session.number_units()
+        unit = session.unitList[-1]
+        unit.location = [4, 2]
+        unit.y, unit.x = 4, 2
+        unit.movementSpeed = 30
+        assert step_is_allowed(session.mapData["mapArray"],
+                        _Node((4, 2)), (0, 1), (4, 3), True) is False
+
+    def test_a_shut_door_stops_the_look(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key, discovered=False)
+        self.paint(gm_client, room, key, "thinDoorClosed")
+        assert self.look(session) is False
+
+    def test_a_portcullis_does_not(self, gm):
+        """A shut door you can see through, which is what this is for."""
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key, discovered=False)
+        self.paint(gm_client, room, key, "thinDoorClosed")
+        self.paint(gm_client, room, key, "seeThroughEdge")
+        assert self.look(session) is True
+
+    def test_a_locked_portcullis_is_looked_through_and_not_walked_through(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key, discovered=False)
+        self.paint(gm_client, room, key, "thinDoorLocked")
+        self.paint(gm_client, room, key, "seeThroughEdge")
+        assert self.look(session) is True
+        assert step_is_allowed(session.mapData["mapArray"],
+                        _Node((4, 2)), (0, 1), (4, 3), True) is False
+
+    def test_a_secret_square_is_not_seen_through(self, gm):
+        """A secret square is masked to the players as the wall it pretends to
+        be. A look carrying on through one would show them the room behind a
+        door they have not found."""
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key, discovered=False)
+        self.paint(gm_client, room, key, "thinWallTile")
+        self.paint(gm_client, room, key, "seeThroughEdge")
+        session.mapData["mapArray"][4][3]["secret"] = True
+        assert self.look(session) is False
+
+    def test_it_survives_a_save_and_load(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "seeThroughEdge")
+        restored = Session(room, key, "placeholder")
+        restored.from_json(session.gen_save())
+        assert restored.mapData["mapArray"][4][2]["transparentEdges"] == ["right"]
