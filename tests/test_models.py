@@ -1856,3 +1856,37 @@ class TestSeeingThroughWhatYouCannotCross:
         for tile in session.mapData["mapArray"][0]:
             assert "transparent" not in tile
         assert self.looked(session) == "XXXX..."
+
+
+class TestTheStylesheetParses:
+    """A rule the CSS parser throws away is invisible everywhere else.
+
+    A stray `}` sat after each of the two locked-door rules for a long time.
+    Browsers recover from it, so the page loaded, every test passed and the
+    stylesheet looked fine -- and `.doorTileBLocked` was silently dropped, so a
+    locked door in a vertical wall rendered as bare floor. It took a GM
+    noticing a door missing from their map.
+    """
+
+    def test_the_braces_balance(self):
+        css = stylesheet()
+        depth = 0
+        line = 1
+        for character in css:
+            if character == "\n":
+                line += 1
+            elif character == "{":
+                depth += 1
+            elif character == "}":
+                depth -= 1
+                assert depth >= 0, (
+                    "closing brace with nothing open at line %d -- the rule "
+                    "after it is dropped by the parser" % line)
+        assert depth == 0, "%d rule(s) left open at the end of the stylesheet" % depth
+
+    def test_every_rule_has_a_selector(self):
+        """The shape the stray brace made: `}` then a selector, which some
+        parsers read as one selector list and drop whole."""
+        css = stylesheet()
+        assert not re.search(r"\}\s*\}", css), \
+            "two closing braces in a row outside a block"
