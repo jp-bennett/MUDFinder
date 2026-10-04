@@ -319,9 +319,11 @@ class TestSelfContained:
         assert external == []
 
 
-# Every one of these paints through the background property -- the CSS classes
-# for these types, and inline gradients for thin walls -- which the overlay
-# used to overwrite.
+# Every one of these paints through the background property, from the CSS class
+# for its type, which the overlay used to overwrite. Thin walls are measured
+# separately below: they are no longer part of a square at all, but their own
+# element on the edge between two, so the question for them is whether that
+# element survives rather than whether a gradient does.
 TILE_KINDS = ["floorTile", "floorTileD", "wallTile", "doorClosed", "doorOpen", "stairsUp"]
 WALL_CASES = [["left"], ["right"], ["top"], ["bottom"], ["left", "right", "top", "bottom"]]
 
@@ -369,6 +371,8 @@ MEASURE_JS = """
       gradients: (computed.backgroundImage.match(/gradient/g) || []).length,
       washed: !!wash,
       washClickable: wash ? getComputedStyle(wash).pointerEvents !== "none" : null,
+      // Thin walls live on the graphic beside the square, not inside it.
+      edges: graphic.querySelectorAll(".thinWallEdge").length,
     };
     graphic.innerHTML = "";
     return result;
@@ -463,7 +467,14 @@ class TestSeenOverlay:
         ("left+right+top+bottom", 4),
     ])
     def test_thin_walls_survive_the_overlay(self, overlay, walls, expected):
-        assert overlay["walls"][walls]["gradients"] == expected
+        """One element per walled edge, still there under the wash.
+
+        These counted gradients on the square until thin walls stopped being
+        drawn into one. The square could not draw the edge between itself and
+        its neighbour: both drew half of it, 2px apart, so a wall came out as
+        two hairlines with a gap -- and under a battlemap image, where every
+        square is opacity 0, it came out as nothing at all."""
+        assert overlay["walls"][walls]["edges"] == expected
         assert overlay["walls"][walls]["washed"]
 
     def test_the_wash_does_not_swallow_clicks(self, overlay):
@@ -7330,6 +7341,10 @@ def thin_doors(browser, live_server):
         page.mouse.click(box["x"] + box["width"] - 3, box["y"] + box["height"] / 2)
         page.wait_for_timeout(500)
         stages["painted"] = mark(page, 2, 2, "right")
+        # Read while it is there: a later step in this fixture takes it off.
+        stages["doorWidth"] = page.evaluate(
+            """() => { const el = document.getElementById("door2,2,right");
+                       return el ? el.style.width : null; }""")
         stages["sharedWithNeighbour"] = mark(page, 3, 2, "left")
         stages["player"] = mark(player, 2, 2, "right")
 
@@ -7343,6 +7358,30 @@ def thin_doors(browser, live_server):
         page.wait_for_timeout(500)
         stages["afterSecondClick"] = mark(page, 2, 2, "right")
         stages["neighbourAfterSecondClick"] = mark(page, 3, 2, "left")
+
+        # A thin wall, which is drawn the same way and at the same weight.
+        page.click("#thinWallTile")
+        wall = page.locator('[id="tile1,3"]').bounding_box()
+        page.mouse.click(wall["x"] + wall["width"] - 3, wall["y"] + wall["height"] / 2)
+        page.wait_for_timeout(400)
+        stages["wall"] = page.evaluate(
+            """() => {
+                 const el = document.getElementById("edge1,3,right");
+                 if (!el) return null;
+                 const style = getComputedStyle(el);
+                 return {parent: el.parentElement.id,
+                         width: el.style.width,
+                         background: style.backgroundImage + style.backgroundColor,
+                         clickable: style.pointerEvents};
+               }""")
+        # Painting a door onto an edge that has a wall replaces it.
+        page.click("#thinDoorOpen")
+        page.mouse.click(wall["x"] + wall["width"] - 3, wall["y"] + wall["height"] / 2)
+        page.wait_for_timeout(400)
+        stages["wallAfterDoor"] = page.evaluate(
+            """() => document.getElementById("edge1,3,right") ? "still there" : null""")
+        stages["doorOverWall"] = page.evaluate(
+            """() => document.getElementById("door1,3,right") ? "drawn" : null""")
 
         # Each tool paints its own state.
         for tool, x, state in [("thinDoorLocked", 5, "locked"),
@@ -7405,6 +7444,29 @@ class TestThinDoors:
         seen = thin_doors["stages"]["player"]
         assert seen is not None
         assert "thinDoor-closed" in seen["classes"]
+
+    def test_a_thin_wall_is_drawn_the_same_way(self, thin_doors):
+        """Over the grid, straddling the edge. Drawn into the two squares'
+        own backgrounds instead, it came out as two hairlines with a 2px gap
+        between them -- the squares are drawn 2px apart -- and disappeared
+        altogether under a battlemap image, where every square is opacity 0."""
+        wall = thin_doors["stages"]["wall"]
+        assert wall is not None
+        assert wall["parent"] == "mapGraphic"
+        assert wall["clickable"] == "none"
+        assert "rgba(0, 0, 0, 0)" not in wall["background"]
+
+    def test_a_wall_and_a_door_are_the_same_weight(self, thin_doors):
+        """A doorway should read as a gap in a line, not as a different kind
+        of thing standing beside one."""
+        assert thin_doors["stages"]["wall"]["width"] == thin_doors["stages"]["doorWidth"]
+
+    def test_a_door_painted_over_a_wall_replaces_it(self, thin_doors):
+        """An edge is one thing or the other. Both at once was a door that
+        could not be walked through -- the wall is checked first -- drawn as
+        though it could."""
+        assert thin_doors["stages"]["wallAfterDoor"] is None
+        assert thin_doors["stages"]["doorOverWall"] == "drawn"
 
     def test_nothing_raised(self, thin_doors):
         assert thin_doors["errors"] == []

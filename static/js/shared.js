@@ -320,52 +320,89 @@ function lightToggle(obj) {
 // would answer with a position inside itself and paint the wrong edge.
 var DOOR_SIDES = ["left", "right", "top", "bottom"];
 
-// How much of the edge the leaf covers, and how far it stands out from it.
-var DOOR_LEAF_LENGTH = 0.7;
-var DOOR_LEAF_THICKNESS = 0.11;
+// A door is the same thickness as a thin wall, so a doorway reads as a gap in
+// a wall line rather than as something thicker sitting next to one. A wall is
+// drawn by both squares either side of the edge and so draws half of it each;
+// a door is one element straddling the edge and draws all of it, which is why
+// this is twice --thin-edge.
+var DOOR_THICKNESS = 0.12;
 
-function clearThinDoors(x, y) {
+// A thin wall is drawn the same way and at the same weight, so that a doorway
+// reads as a gap in a line rather than as a different kind of thing beside
+// one. It used to be a gradient in each of the two squares' own backgrounds,
+// which put a 2px gap down the middle of every wall -- the squares are drawn
+// 2px apart -- and made walls invisible under a battlemap image, where every
+// square is opacity 0 so the artwork shows through.
+
+// Two elements per doorway. The jamb is the piece of wall the door is set
+// into, drawn at both ends of the edge so the line is not left with a hole in
+// it where the leaf does not reach; the leaf is the door itself. Keeping them
+// apart is what lets an open door be a real gap -- one element would have to
+// draw the jambs and the opening in a single background, and the locked
+// hatching could not then be confined to the leaf.
+var DOOR_JAMB = 0.16;   // how much of each end of the edge is jamb
+var DOOR_LEAF = 0.20;   // where the leaf starts, leaving a reveal either side
+
+function clearThinEdges(x, y) {
     DOOR_SIDES.forEach(function (side) {
-        var old = document.getElementById(`door${x},${y},${side}`);
-        if (old) {
-            old.remove();
-        }
+        [`edge${x},${y},${side}`,
+         `door${x},${y},${side}`,
+         `doorLeaf${x},${y},${side}`].forEach(function (id) {
+            var old = document.getElementById(id);
+            if (old) {
+                old.remove();
+            }
+        });
     });
 }
 
-function drawThinDoors(mapArray, x, y) {
-    clearThinDoors(x, y);
-    var doors = mapArray[y][x].doors;
-    if (!doors) {
-        return;
-    }
+function drawThinEdges(mapArray, x, y) {
+    clearThinEdges(x, y);
+    var doors = mapArray[y][x].doors || {};
+    var walls = mapArray[y][x].walls || [];
     DOOR_SIDES.forEach(function (side) {
-        var state = doors[side];
+        // A door wins: painting one takes the wall off that edge, so both at
+        // once should not arise, and if an older map carries both the door is
+        // what the server lets a creature through.
+        var state = doors[side] || (walls.indexOf(side) > -1 ? "wall" : null);
         if (!state) {
             return;
         }
-        var length = zoomSize * DOOR_LEAF_LENGTH;
-        var thickness = zoomSize * DOOR_LEAF_THICKNESS;
-        var along = (zoomSize - length) / 2;
-        var mark = document.createElement("div");
-        mark.id = `door${x},${y},${side}`;
-        mark.className = "thinDoor thinDoor-" + side + " thinDoor-" + state;
-        mark.style.position = "absolute";
-        if (side === "left" || side === "right") {
-            mark.style.width = thickness + "px";
-            mark.style.height = length + "px";
-            mark.style.top = (y * zoomSize + along) + "px";
-            // Straddling the edge, because the edge belongs to both squares.
-            mark.style.left = (x * zoomSize
-                + (side === "right" ? zoomSize : 0) - thickness / 2) + "px";
-        } else {
-            mark.style.width = length + "px";
-            mark.style.height = thickness + "px";
-            mark.style.left = (x * zoomSize + along) + "px";
-            mark.style.top = (y * zoomSize
-                + (side === "bottom" ? zoomSize : 0) - thickness / 2) + "px";
+        var vertical = (side === "left" || side === "right");
+        var thickness = zoomSize * DOOR_THICKNESS;
+        // Straddling the edge, because the edge belongs to both squares.
+        var across = (vertical ? x : y) * zoomSize
+            + ((side === "right" || side === "bottom") ? zoomSize : 0)
+            - thickness / 2;
+
+        function piece(id, extraClass, from, to) {
+            var mark = document.createElement("div");
+            mark.id = id;
+            mark.className = "thinDoor " + extraClass
+                + " thinDoor-" + side + " thinDoor-" + state;
+            mark.style.position = "absolute";
+            var start = (vertical ? y : x) * zoomSize + from * zoomSize;
+            var length = (to - from) * zoomSize;
+            if (vertical) {
+                mark.style.left = across + "px";
+                mark.style.width = thickness + "px";
+                mark.style.top = start + "px";
+                mark.style.height = length + "px";
+            } else {
+                mark.style.top = across + "px";
+                mark.style.height = thickness + "px";
+                mark.style.left = start + "px";
+                mark.style.width = length + "px";
+            }
+            document.getElementById("mapGraphic").appendChild(mark);
         }
-        document.getElementById("mapGraphic").appendChild(mark);
+
+        if (state === "wall") {
+            piece(`edge${x},${y},${side}`, "thinWallEdge", 0, 1);
+            return;
+        }
+        piece(`door${x},${y},${side}`, "thinDoorJamb", 0, 1);
+        piece(`doorLeaf${x},${y},${side}`, "thinDoorLeaf", DOOR_LEAF, 1 - DOOR_LEAF);
     });
 }
 
@@ -506,25 +543,7 @@ function drawSingleTile(mapData, x, y) {
     } else {
         newMapTile.classList.add(mapArray[y][x].tile);
     }
-    if (mapArray[y][x].walls) {
-        if (mapArray[y][x].walls.includes("left")) {
-            if (newMapTile.style.background != "") {newMapTile.style.background += ",linear-gradient(to left, transparent calc(80%), black calc(80%) calc(100%))";}
-            else {newMapTile.style.background = "linear-gradient(to left, transparent calc(80%), black calc(80%) calc(100%))";}
-        }
-        if (mapArray[y][x].walls.includes("right")) {
-            if (newMapTile.style.background != "") {newMapTile.style.background += ",linear-gradient(to right, transparent calc(80%), black calc(80%) calc(100%))"}
-            else {newMapTile.style.background += "linear-gradient(to right, transparent calc(80%), black calc(80%) calc(100%))";}
-        }
-        if (mapArray[y][x].walls.includes("top")) {
-            if (newMapTile.style.background != "") {newMapTile.style.background += ",linear-gradient(to top, transparent calc(80%), black calc(80%) calc(100%))"}
-            else {newMapTile.style.background += "linear-gradient(to top, transparent calc(80%), black calc(80%) calc(100%))";}
-        }
-        if (mapArray[y][x].walls.includes("bottom")) {
-            if (newMapTile.style.background != "") {newMapTile.style.background += ",linear-gradient(to bottom, transparent calc(80%), black calc(80%) calc(100%))"}
-            else {newMapTile.style.background += "linear-gradient(to bottom, transparent calc(80%), black calc(80%) calc(100%))";}
-        }
-    }
-    drawThinDoors(mapArray, x, y);
+    drawThinEdges(mapArray, x, y);
     // Light first, so the undiscovered wash lands on top of it. drawLightWash
     // clears any previous one itself, which is what returns a square repainted
     // back to normal light to having no element at all.

@@ -81,6 +81,11 @@
     /* Two radii: one for controls, a slightly larger one for the sheets they
        sit on. */
     --radius: 3px;
+    /* How thick a thin wall is drawn, as a share of a square. A thin wall is
+       drawn by both squares either side of the edge, so each draws this much
+       and the line comes out twice it. DOOR_THICKNESS in shared.js is that
+       doubled, so a door and a wall are the same weight. */
+    --thin-edge: 6%;
     --radius-panel: 6px;
 
     /* Section headings are small caps under a double rule, which is what makes
@@ -2169,57 +2174,87 @@ button.primaryAction {
    see drawThinDoors in shared.js for why, and for where the geometry comes
    from. Only the look is here.
 
-   z-index above the light wash, so a door in a dark room is still visible as
-   a door. pointer-events because the map's click handler works out which edge
-   was meant from where in the square the click landed, and a mark that took
+   Two elements to a doorway. The jamb is the wall the door is set into, drawn
+   at both ends of the edge so the wall line is not left with a hole in it
+   either side of the leaf; the leaf is the door. A reveal of bare floor
+   between them is what tells a shut door from a plain thin wall, now that the
+   two are the same weight.
+
+   z-index above the light wash, so a door in a dark room is still a door.
+   pointer-events because the map's click handler works out which edge was
+   meant from where in the square the click landed, and a mark that took
    clicks would answer with a position inside itself. */
 .thinDoor {
     pointer-events: none;
     z-index: 5;
+}
+
+/* A thin wall: the whole edge, solid. Drawn the same way a door is, over the
+   grid and straddling the edge, rather than into the backgrounds of the two
+   squares either side of it. Those squares are 2px apart and go to opacity 0
+   under a battlemap image, so a wall drawn into them came out as two hairlines
+   with a gap down the middle, and vanished entirely on the maps most games are
+   played on. */
+.thinWallEdge {
+    background: var(--ink, #1c1917);
+}
+
+/* The jamb: solid at both ends of the edge, nothing across the middle where
+   the leaf goes -- so an open door is a real gap and not a paler bar. */
+.thinDoorJamb.thinDoor-left, .thinDoorJamb.thinDoor-right {
+    background: linear-gradient(to bottom,
+        var(--ink, #1c1917) 0 16%, transparent 16% 84%, var(--ink, #1c1917) 84% 100%);
+}
+.thinDoorJamb.thinDoor-top, .thinDoorJamb.thinDoor-bottom {
+    background: linear-gradient(to right,
+        var(--ink, #1c1917) 0 16%, transparent 16% 84%, var(--ink, #1c1917) 84% 100%);
+}
+
+/* The leaf. Shut is solid, with a hairline of paper around it so it reads as
+   a panel set into the wall on a dark battlemap as well as on parchment. */
+.thinDoorLeaf {
     background: var(--ink, #1c1917);
     box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
 }
 
-/* Open: the leaf has swung out of the doorway, so what is left is the two
-   jambs it swung away from. A gradient rather than borders, because
-   border-width does not take percentages and the leaf is sized in pixels from
-   the zoom. */
-.thinDoor-open.thinDoor-left, .thinDoor-open.thinDoor-right {
-    background: linear-gradient(to bottom,
-        var(--ink, #1c1917) 0 22%, transparent 22% 78%, var(--ink, #1c1917) 78% 100%);
-    box-shadow: none;
-}
-.thinDoor-open.thinDoor-top, .thinDoor-open.thinDoor-bottom {
-    background: linear-gradient(to right,
-        var(--ink, #1c1917) 0 22%, transparent 22% 78%, var(--ink, #1c1917) 78% 100%);
-    box-shadow: none;
-}
-
 /* Locked: barred across, in the colour the rest of the app uses to say no. */
-.thinDoor-locked {
+.thinDoorLeaf.thinDoor-locked {
     background: repeating-linear-gradient(
         45deg, var(--ink, #1c1917), var(--ink, #1c1917) 2px,
         var(--danger, #7f1d1d) 2px, var(--danger, #7f1d1d) 4px);
 }
 
-/* The palette swatches. These tools paint an edge rather than a square, so the
-   swatch shows a leaf standing on one. */
+/* Open: the leaf has swung out of the doorway, so there is nothing to draw
+   between the jambs. No outline either, or the gap would be drawn as a box. */
+.thinDoorLeaf.thinDoor-open {
+    background: transparent;
+    box-shadow: none;
+}
+
+/* The palette swatches, showing a leaf set between two jambs on an edge. */
 .thinDoorSwatch {
     position: relative;
     background: var(--paper-warm, #efe6d2);
 }
-.thinDoorSwatch::after {
+.thinDoorSwatch::before, .thinDoorSwatch::after {
     content: "";
     position: absolute;
     left: 0;
-    top: 15%;
-    height: 70%;
     width: 22%;
+}
+.thinDoorSwatch::before {
+    top: 0;
+    height: 100%;
+    background: linear-gradient(to bottom,
+        var(--ink, #1c1917) 0 16%, transparent 16% 84%, var(--ink, #1c1917) 84% 100%);
+}
+.thinDoorSwatch::after {
+    top: 20%;
+    height: 60%;
     background: var(--ink, #1c1917);
 }
 .thinDoorSwatchOpen::after {
-    background: linear-gradient(to bottom,
-        var(--ink, #1c1917) 0 22%, transparent 22% 78%, var(--ink, #1c1917) 78% 100%);
+    background: transparent;
 }
 .thinDoorSwatchLocked::after {
     background: repeating-linear-gradient(
