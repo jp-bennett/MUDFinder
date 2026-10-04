@@ -7409,3 +7409,103 @@ class TestThinDoors:
     def test_nothing_raised(self, thin_doors):
         assert thin_doors["errors"] == []
         assert thin_doors["playerErrors"] == []
+
+
+@pytest.fixture(scope="module")
+def every_door(browser, live_server):
+    """One of each kind of door, in each orientation, asked what it draws.
+
+    A door picks its class from the wall it stands in and from whether it is
+    shut, open or locked, which is six combinations. Nothing checked that the
+    class it picked drew anything: `.doorTileBLocked` was dropped by the CSS
+    parser for a long time -- a stray `}` ahead of it -- so a locked door in a
+    vertical wall was a square of bare floor on the GM's map. Every test
+    passed throughout, because they all asked for the class name.
+    """
+    context = browser.new_context(viewport={"width": 1400, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.fill("#gameName", "doors drawn")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        page.evaluate(
+            """() => socket.emit('map_generate', {room: room, gmKey: gmKey,
+                 mapWidth: 12, mapHeight: 9, discovered: true})""")
+        page.wait_for_function(
+            "() => mapObject && mapObject.mapArray.length === 9",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_timeout(400)
+
+        # Three doorways in walls running down the map, and three in walls
+        # running across it, so each door has an orientation to read.
+        down = [(2, 3), (5, 3), (8, 3)]
+        across = [(2, 6), (5, 6), (8, 6)]
+        walls = []
+        for x, y in down:
+            walls += [{"newTile": "wallTile", "xCoord": x, "yCoord": y - 1},
+                      {"newTile": "wallTile", "xCoord": x, "yCoord": y + 1}]
+        for x, y in across:
+            walls += [{"newTile": "wallTile", "xCoord": x - 1, "yCoord": y},
+                      {"newTile": "wallTile", "xCoord": x + 1, "yCoord": y}]
+        page.evaluate(
+            """(tiles) => socket.emit('map_edit', {tiles: tiles, room: room,
+                 gmKey: gmKey, relative_x: 8, relative_y: 8})""", walls)
+        page.wait_for_timeout(500)
+
+        tools = ["doorClosed", "doorLocked", "doorOpen"]
+        doors = [{"newTile": tool, "xCoord": x, "yCoord": y}
+                 for tool, (x, y) in zip(tools, down)]
+        doors += [{"newTile": tool, "xCoord": x, "yCoord": y}
+                  for tool, (x, y) in zip(tools, across)]
+        page.evaluate(
+            """(tiles) => socket.emit('map_edit', {tiles: tiles, room: room,
+                 gmKey: gmKey, relative_x: 8, relative_y: 8})""", doors)
+        page.wait_for_timeout(800)
+
+        drawn = {}
+        for label, spots in (("down", down), ("across", across)):
+            for tool, (x, y) in zip(tools, spots):
+                drawn["%s %s" % (label, tool)] = page.evaluate(
+                    """([x, y]) => {
+                         const el = document.getElementById(`tile${x},${y}`);
+                         const style = getComputedStyle(el);
+                         return {
+                           cls: Array.from(el.classList).find(
+                               c => c.indexOf("doorTile") === 0) || "none",
+                           background: style.backgroundImage,
+                         };
+                       }""", [x, y])
+        return {"drawn": drawn, "errors": errors}
+    finally:
+        context.close()
+
+
+class TestEveryDoorDrawsSomething:
+    def test_each_one_picked_a_door_class(self, every_door):
+        picked = {name: info["cls"] for name, info in every_door["drawn"].items()}
+        assert picked == {
+            "down doorClosed": "doorTileB",
+            "down doorLocked": "doorTileBLocked",
+            "down doorOpen": "doorTileBOpen",
+            "across doorClosed": "doorTileA",
+            "across doorLocked": "doorTileALocked",
+            "across doorOpen": "doorTileAOpen",
+        }
+
+    def test_each_class_actually_draws(self, every_door):
+        """The check that was missing. A class the stylesheet does not define,
+        or defines in a rule the parser threw away, leaves the square drawing
+        nothing at all -- and a door you cannot see is not a door."""
+        bare = [name for name, info in every_door["drawn"].items()
+                if info["background"] == "none"]
+        assert bare == [], "drawn as bare floor: %r" % bare
+
+    def test_nothing_raised(self, every_door):
+        assert every_door["errors"] == []
