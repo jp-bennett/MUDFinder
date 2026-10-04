@@ -2489,12 +2489,28 @@ def on_set_background_alignment(data):
 
 
 def toggleWall(tile, wall_side):
+    """Put a thin wall on an edge or take it off. True if it is now there.
+
+    A door on that edge goes when a wall arrives. An edge is one thing or the
+    other: a wall with a door in it is a door, and the two drawn over each
+    other were a door you could not walk through and a wall you could see the
+    door through.
+    """
     if "walls" not in tile:
         tile["walls"] = []
     if wall_side in tile["walls"]:
         tile["walls"].remove(wall_side)
-    else:
-        tile["walls"].append(wall_side)
+        return False
+    tile["walls"].append(wall_side)
+    set_door(tile, wall_side, None)
+    return True
+
+
+def clear_wall(tile, wall_side):
+    """Take a thin wall off an edge, for a door arriving on it."""
+    walls = tile.get("walls")
+    if walls and wall_side in walls:
+        walls.remove(wall_side)
 
 
 # Which edge of a square a click was aiming at, from where in the square it
@@ -2535,13 +2551,20 @@ def paint_thin_door(room, y, x, side, state):
     tile = grid[y][x]
     going = None if door_on(tile, side) == state else state
     set_door(tile, side, going)
+    # The wall that was on this edge goes with it, both sides. An edge is one
+    # thing or the other, and a wall left under a door is a door that cannot be
+    # walked through -- the wall is checked first and turns the creature back.
+    if going is not None:
+        clear_wall(tile, side)
     changed = [tile]
     offset = SIDE_OFFSET[side]
     neighbour_y, neighbour_x = y + offset[0], x + offset[1]
     if in_map(room, neighbour_y, neighbour_x):
-        set_door(grid[neighbour_y][neighbour_x],
-                                OPPOSITE_SIDE[side], going)
-        changed.append(grid[neighbour_y][neighbour_x])
+        neighbour = grid[neighbour_y][neighbour_x]
+        set_door(neighbour, OPPOSITE_SIDE[side], going)
+        if going is not None:
+            clear_wall(neighbour, OPPOSITE_SIDE[side])
+        changed.append(neighbour)
     return changed
 
 
@@ -2653,6 +2676,11 @@ def on_map_edit(data_pack):
                 # the shape of a way through where the fog says there is
                 # nothing.
                 tmpUpdatedTiles[index].pop("doors", None)
+                # And the thin walls, for the same reason now that those are
+                # drawn on the edge rather than into the square: a wall line
+                # on undiscovered ground draws the shape of a room nobody has
+                # been in.
+                tmpUpdatedTiles[index].pop("walls", None)
                 # This mask edits the tile in place rather than rebuilding it
                 # the way player_map does, so anything not named here reaches
                 # the players untouched. A light level on an undiscovered

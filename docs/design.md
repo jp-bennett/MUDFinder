@@ -574,14 +574,19 @@ washes, which cost real debugging to get right:
 - A dark wash must stack **above** the tile. `.mapTile` is `z-index: 2`; behind
   it, fully opaque black comes out mid-grey through 0.6 opacity.
 
-Thin doors joined that family and added one reason to it. A thin wall is drawn
-into the square's own `background`, which is fine for terrain: with a battlemap
-image loaded every square is `opacity: 0` so the artwork shows through, and a
-wall drawn into the square goes with it — but the artwork already shows the
-wall. **A door is state rather than terrain.** The GM opens and locks it
-mid-game and has to see which it is on any map, so it is drawn over the grid
-like the washes are, not into the square. The same rule catches anything else
-the map carries that can change during play.
+Thin doors joined that family, and thin walls followed them into it. Both sit
+on the **edge between two squares**, and an edge is the one thing a square's
+own `background` cannot draw. A wall drawn as a gradient in each of the two
+squares came out as two hairlines with a gap down the middle — the squares are
+positioned `zoomSize` apart and drawn 2px narrower than that — and vanished
+under a battlemap image, where every square is `opacity: 0` so the artwork
+shows through. It was invisible on the maps most games are played on, which
+went unnoticed while walls were thick enough to read as one bar on parchment.
+
+So an edge is **its own element over the grid**, straddling the boundary, sized
+from the zoom. A door is two of them: the jamb, which is the wall it is set
+into, and the leaf. Keeping those apart is what lets an open door be a real
+gap rather than a paler bar, and keeps the locked hatching on the leaf alone.
 
 ## Working on this
 

@@ -3521,3 +3521,80 @@ class TestSeeingPastAThinDoor:
         gm_client, room, key = gm
         session = self.looker(gm_client, room, key, "thinDoorClosed")
         assert session.mapData["mapArray"][4][2]["seen"] is True
+
+
+class TestAnEdgeIsOneThingOrTheOther:
+    """A thin wall and a thin door on the same edge.
+
+    Both were allowed, and the pair made no sense from either side: the wall
+    is checked first, so the door could not be walked through, and the door
+    was drawn over the wall so it looked as though it could.
+    """
+
+    def mapped(self, gm_client, room, key):
+        gm_client.emit("map_generate", {"room": room, "gmKey": key,
+                                        "mapWidth": 6, "mapHeight": 6,
+                                        "discovered": True})
+        gm_client.get_received()
+        return mudfinder.ROOMS[room]
+
+    def paint(self, gm_client, room, key, tool, x=2, y=2, where=None):
+        edit = {"room": room, "gmKey": key,
+                "tiles": [{"newTile": tool, "xCoord": x, "yCoord": y}]}
+        edit.update(where or NEAR_RIGHT)
+        gm_client.emit("map_edit", edit)
+        gm_client.get_received()
+
+    def test_a_door_takes_the_wall_off_that_edge(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "thinWallTile")
+        assert session.mapData["mapArray"][2][2]["walls"] == ["right"]
+        self.paint(gm_client, room, key, "thinDoorClosed")
+        assert session.mapData["mapArray"][2][2]["walls"] == []
+        assert session.mapData["mapArray"][2][2]["doors"] == {"right": "closed"}
+
+    def test_on_both_sides_of_the_edge(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "thinWallTile")
+        self.paint(gm_client, room, key, "thinDoorClosed")
+        assert session.mapData["mapArray"][2][3]["walls"] == []
+        assert session.mapData["mapArray"][2][3]["doors"] == {"left": "closed"}
+
+    def test_a_wall_takes_the_door_off_that_edge(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "thinDoorLocked")
+        assert session.mapData["mapArray"][2][2]["doors"] == {"right": "locked"}
+        self.paint(gm_client, room, key, "thinWallTile")
+        assert "doors" not in session.mapData["mapArray"][2][2]
+        assert session.mapData["mapArray"][2][2]["walls"] == ["right"]
+
+    def test_the_wall_takes_it_off_both_sides(self, gm):
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "thinDoorLocked")
+        self.paint(gm_client, room, key, "thinWallTile")
+        assert "doors" not in session.mapData["mapArray"][2][3]
+        assert session.mapData["mapArray"][2][3]["walls"] == ["left"]
+
+    def test_taking_a_wall_off_leaves_the_edge_bare(self, gm):
+        """Toggling a wall away must not bring back a door it replaced."""
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "thinDoorClosed")
+        self.paint(gm_client, room, key, "thinWallTile")
+        self.paint(gm_client, room, key, "thinWallTile")
+        assert session.mapData["mapArray"][2][2]["walls"] == []
+        assert "doors" not in session.mapData["mapArray"][2][2]
+
+    def test_a_door_on_another_edge_is_left_alone(self, gm):
+        """Only the edge being painted. The other three are nothing to do
+        with it."""
+        gm_client, room, key = gm
+        session = self.mapped(gm_client, room, key)
+        self.paint(gm_client, room, key, "thinDoorClosed", where=NEAR_TOP)
+        self.paint(gm_client, room, key, "thinWallTile", where=NEAR_RIGHT)
+        assert session.mapData["mapArray"][2][2]["doors"] == {"top": "closed"}
+        assert session.mapData["mapArray"][2][2]["walls"] == ["right"]
