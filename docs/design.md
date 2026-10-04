@@ -588,6 +588,13 @@ from the zoom. A door is two of them: the jamb, which is the wall it is set
 into, and the leaf. Keeping those apart is what lets an open door be a real
 gap rather than a paler bar, and keeps the locked hatching on the leaf alone.
 
+See-through rides on whichever of them is standing there, drawn as bars with
+the floor showing between: on a wall it is the whole line, a window or a
+railing; on a door it is the leaf alone, because the jambs are the frame and a
+portcullis has a solid one. Which is the general shape of all of this — **the
+edge carries the detail, and what is standing on the edge decides how it is
+drawn.**
+
 ## Working on this
 
 **Panels that JavaScript rewrites cannot be styled in the template.**

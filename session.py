@@ -87,6 +87,51 @@ def door_stops_sight(tile, side):
     return door_on(tile, side) in (DOOR_CLOSED, DOOR_LOCKED)
 
 
+def edge_sees_through(tile, side):
+    """Whether sight carries across one edge of a square.
+
+    What `transparent` says about a square, said about an edge instead: a
+    portcullis across a doorway, a window in a thin wall, a railing along a
+    gallery. It stops the move and not the look, and it is the edge that
+    carries it rather than either square, because the thing is in the wall
+    between them.
+
+    A secret square is excluded for the reason sees_through excludes one: a
+    secret square is masked to the players as the wall it is pretending to be,
+    and a look carrying on through it would show them what is behind a door
+    they have not found.
+    """
+    if tile.get("secret"):
+        return False
+    return side in (tile.get("transparentEdges") or [])
+
+
+def edge_stops_sight(tile, side):
+    """A thin wall or a shut thin door on this edge, unless you can see through it."""
+    if side not in tile.get("walls", []) and not door_stops_sight(tile, side):
+        return False
+    return not edge_sees_through(tile, side)
+
+
+def set_edge_transparent(tile, side, clear):
+    """Mark one edge see-through, or take the mark off.
+
+    The key goes when the last edge does, so a square with nothing see-through
+    about it is spelled one way rather than two.
+    """
+    edges = tile.get("transparentEdges")
+    if clear:
+        if edges is None:
+            edges = tile["transparentEdges"] = []
+        if side not in edges:
+            edges.append(side)
+        return
+    if edges and side in edges:
+        edges.remove(side)
+        if not edges:
+            tile.pop("transparentEdges", None)
+
+
 def set_door(tile, side, state):
     """Put a thin door on an edge, or take it off with state None.
 
@@ -441,6 +486,15 @@ class Session(object):
                         and not self.mapData["mapArray"][y][x]["secret"]
                         and self.mapData["mapArray"][y][x].get("doors")):
                     tmpMapLine[x]["doors"] = dict(self.mapData["mapArray"][y][x]["doors"])
+                # Likewise after the masking, and for the same reasons: it is
+                # drawn on an edge of the square, and it is what tells a
+                # portcullis from a shut door, which is not something an
+                # undiscovered square should be saying.
+                if (self.mapData["mapArray"][y][x]["seen"]
+                        and not self.mapData["mapArray"][y][x]["secret"]
+                        and self.mapData["mapArray"][y][x].get("transparentEdges")):
+                    tmpMapLine[x]["transparentEdges"] = list(
+                        self.mapData["mapArray"][y][x]["transparentEdges"])
                 # Likewise after the masking. A staircase is drawn with a mark
                 # on it, and a mark on a square nobody has been to would say
                 # there is a way through where the fog says there is nothing --
@@ -552,7 +606,8 @@ class Session(object):
             if not tile.get("seen"):
                 tile["tile"] = "unseenTile"
                 tile["walkable"] = False
-                for detail in ("warp", "light", "transparent", "doors", "walls"):
+                for detail in ("warp", "light", "transparent", "doors", "walls",
+                               "transparentEdges"):
                     tile.pop(detail, None)
             elif tile.get("secret"):
                 tile["tile"] = "wallTile"
@@ -596,9 +651,7 @@ class Session(object):
                             crossed = entry_sides(
                                 (cells[distance - 1][1], cells[distance - 1][0]),
                                 (cells[distance][1], cells[distance][0]))
-                            if any(side in tile.get("walls", []) for side in crossed):
-                                break
-                            if any(door_stops_sight(tile, side) for side in crossed):
+                            if any(edge_stops_sight(tile, side) for side in crossed):
                                 break
                         if self.mapData["mapArray"][cells[distance][1]][cells[distance][0]]["seen"] == False:
                             mark = True
