@@ -1637,6 +1637,21 @@ def paint_square(page, tool, x, y):
     page.click('[id="tile%d,%d"]' % (x, y))
 
 
+def pick_tool(page, tool):
+    """Hold a palette tool, if it is not being held already.
+
+    The palette toggles: clicking the tool that is already selected puts it
+    down. So picking a tool unconditionally before every paint lays every
+    other square and silently skips the rest -- which looks like the squares
+    refusing to take the paint.
+    """
+    held = page.evaluate(
+        "() => (typeof selectedTool !== 'undefined' && selectedTool)"
+        " ? selectedTool.id : null")
+    if held != tool:
+        page.click("#" + tool)
+
+
 def paint_run(page, tool, squares):
     """Pick a tool once, then click several squares with it.
 
@@ -7122,7 +7137,9 @@ def see_through(browser, live_server):
 
 class TestAWindowInAWall:
     def test_the_gm_has_a_tool_for_it(self, see_through):
-        assert see_through["tools"] == ["seeThroughOn", "seeThroughOff"]
+        """Two for the square, and one for an edge of it."""
+        assert see_through["tools"] == [
+            "seeThroughOn", "seeThroughOff", "seeThroughEdge"]
 
     def test_a_solid_wall_hides_what_is_behind_it(self, see_through):
         assert see_through["solid"] == ["oooo#...."] * 5
@@ -7571,3 +7588,359 @@ class TestEveryDoorDrawsSomething:
 
     def test_nothing_raised(self, every_door):
         assert every_door["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def see_through_edges(browser, live_server):
+    """A window in a thin wall and a portcullis in a thin door.
+
+    The square could already be painted see-through; the edge could not, so a
+    doorway with a grille across it had to be a whole square of wall pretending
+    to be one.
+    """
+    context = browser.new_context(viewport={"width": 1400, "height": 950})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.fill("#gameName", "portcullis")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+        args = dict(pair.split("=", 1) for pair in page.url.split("?", 1)[1].split("&"))
+        room = args["room"]
+        page.fill("#mapWidth", "8")
+        page.fill("#mapHeight", "5")
+        page.check("#mapIsDiscovered")
+        page.click("text=Generate Map")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#mapGraphic .mapTile').length === 40",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_timeout(400)
+
+        player_errors = []
+        player = context.new_page()
+        player.on("pageerror", lambda error: player_errors.append(str(error)))
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_timeout(400)
+
+        stages = {"tools": page.evaluate(
+            """() => Array.from(
+                 document.querySelectorAll('#seeThroughTools .mapTile')).map(d => d.id)""")}
+
+        def near_right_edge(x, y, tool):
+            pick_tool(page, tool)
+            box = page.locator('[id="tile%d,%d"]' % (x, y)).bounding_box()
+            page.mouse.click(box["x"] + box["width"] - 3, box["y"] + box["height"] / 2)
+            page.wait_for_timeout(400)
+
+        def classes(view, element_id):
+            return view.evaluate(
+                """(id) => { const el = document.getElementById(id);
+                             return el ? el.className : null; }""", element_id)
+
+        near_right_edge(2, 2, "thinWallTile")
+        stages["wallSolid"] = classes(page, "edge2,2,right")
+        near_right_edge(2, 2, "seeThroughEdge")
+        stages["wallClear"] = classes(page, "edge2,2,right")
+        stages["playerWallClear"] = classes(player, "edge2,2,right")
+        near_right_edge(2, 2, "seeThroughEdge")
+        stages["wallSolidAgain"] = classes(page, "edge2,2,right")
+
+        near_right_edge(5, 2, "thinDoorClosed")
+        near_right_edge(5, 2, "seeThroughEdge")
+        stages["doorLeaf"] = classes(page, "doorLeaf5,2,right")
+        stages["doorJamb"] = classes(page, "door5,2,right")
+
+        return {"stages": stages, "errors": errors, "playerErrors": player_errors}
+    finally:
+        context.close()
+
+
+class TestSeeThroughEdges:
+    def test_the_tool_is_in_the_see_through_group(self, see_through_edges):
+        assert see_through_edges["stages"]["tools"] == [
+            "seeThroughOn", "seeThroughOff", "seeThroughEdge"]
+
+    def test_a_plain_thin_wall_is_solid(self, see_through_edges):
+        assert "thinEdgeClear" not in see_through_edges["stages"]["wallSolid"]
+
+    def test_the_tool_bars_the_wall(self, see_through_edges):
+        """Bars with the floor showing between them: the one look that says
+        this stops the move and not the look."""
+        assert "thinEdgeClear" in see_through_edges["stages"]["wallClear"]
+
+    def test_painting_it_again_makes_it_solid(self, see_through_edges):
+        assert "thinEdgeClear" not in see_through_edges["stages"]["wallSolidAgain"]
+
+    def test_a_portcullis_bars_the_leaf_and_not_the_jamb(self, see_through_edges):
+        """The jambs are the frame the door is set in, and a portcullis has a
+        solid one."""
+        assert "thinEdgeClear" in see_through_edges["stages"]["doorLeaf"]
+        assert "thinEdgeClear" not in see_through_edges["stages"]["doorJamb"]
+
+    def test_the_players_are_shown_it(self, see_through_edges):
+        """They can see through it, so they have to be able to see why."""
+        assert see_through_edges["stages"]["playerWallClear"] is not None
+        assert "thinEdgeClear" in see_through_edges["stages"]["playerWallClear"]
+
+    def test_nothing_raised(self, see_through_edges):
+        assert see_through_edges["errors"] == []
+        assert see_through_edges["playerErrors"] == []
+
+
+@pytest.fixture(scope="module")
+def initiative_selection(browser, live_server):
+    """Picking a creature out of the initiative order, and putting it down.
+
+    In a fight the order is the list the GM works from, and a creature picked
+    there could not be let go of: the second click re-selected it. Letting go
+    was added to the creature list and the initiative order was left out, so
+    the gesture worked everywhere except where a fight actually happens.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.fill("#gameName", "initiative selection")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+
+        page.click("div.tab:text-is('Encounter')")
+        page.check("#addToInit")
+        for name, score in [("Rat", "18"), ("Bat", "12"), ("Cat", "6")]:
+            page.fill("#unitName", name)
+            page.fill("#unitHP", "4")
+            page.fill("#unitInit", score)
+            page.select_option("#unitControlledBy", "gm")
+            page.click("text=Add Unit")
+            page.wait_for_function(
+                """(who) => gmData.unitList.some(u => u.charName === who)""",
+                arg=name, timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_function(
+            """() => document.getElementById("initiativeDiv").children.length === 3""",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_timeout(500)
+
+        def click_row(name):
+            """The creature's name, not the middle of the row.
+
+            The click listener is on the entry, and the entry's middle is the
+            HP box, which stops the click so that typing a number into it does
+            not also select the creature. A row clicked by its centre
+            therefore does nothing at all.
+            """
+            page.locator("#initiativeDiv .InitEntry").filter(
+                has_text=name).locator("div").first.click()
+
+        def selection():
+            return page.evaluate("() => selectedUnits.slice().sort((a, b) => a - b)")
+
+        def highlighted():
+            return page.evaluate(
+                "() => document.querySelectorAll('#initiativeDiv .selected').length")
+
+        picked = {"rows": page.evaluate(
+            """() => Array.from(document.getElementById("initiativeDiv").children)
+                 .map(r => r.innerText.split("\\n")[0].trim())""")}
+
+        click_row("Bat")
+        picked["picked"] = selection()
+        picked["highlightedWhenPicked"] = highlighted()
+        click_row("Bat")
+        picked["letGo"] = selection()
+        picked["highlightedAfter"] = highlighted()
+        click_row("Bat")
+        picked["pickedAgain"] = selection()
+
+        # Another row takes over rather than letting go.
+        click_row("Cat")
+        picked["another"] = selection()
+
+        # Shift does not range here: the order is its own order, and a run
+        # across it means nothing.
+        click_row("Rat")
+        page.keyboard.down("Shift")
+        click_row("Cat")
+        page.keyboard.up("Shift")
+        picked["shift"] = selection()
+
+        return {"picked": picked, "errors": errors}
+    finally:
+        context.close()
+
+
+class TestPickingFromTheInitiativeOrder:
+    def test_a_click_picks_the_creature(self, initiative_selection):
+        assert len(initiative_selection["picked"]["rows"]) == 3
+        assert len(initiative_selection["picked"]["picked"]) == 1
+        assert initiative_selection["picked"]["highlightedWhenPicked"] > 0
+
+    def test_a_second_click_lets_go(self, initiative_selection):
+        """The thing that was missing in a fight."""
+        assert initiative_selection["picked"]["letGo"] == []
+        assert initiative_selection["picked"]["highlightedAfter"] == 0
+
+    def test_it_can_be_picked_up_again(self, initiative_selection):
+        assert len(initiative_selection["picked"]["pickedAgain"]) == 1
+
+    def test_another_row_takes_over(self, initiative_selection):
+        assert len(initiative_selection["picked"]["another"]) == 1
+        assert initiative_selection["picked"]["another"] != \
+            initiative_selection["picked"]["pickedAgain"]
+
+    def test_shift_means_nothing_in_the_order(self, initiative_selection):
+        """A click in the order is always a plain click.
+
+        The row handler calls selectUnit with no event at all, so neither
+        shift nor ctrl reaches it -- and a range over the initiative order
+        would mean nothing anyway, since its order is its own and not the
+        creature list's. Pinned because letting go had to be added here
+        without bringing ranging with it."""
+        assert len(initiative_selection["picked"]["shift"]) == 1
+
+    def test_nothing_raised(self, initiative_selection):
+        assert initiative_selection["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def spectator_in_a_fight(browser, live_server):
+    """What a spectator sees while a fight runs and things keep changing.
+
+    The spectator view loads shared.js and neither gm.js nor player.js, so it
+    builds the initiative order itself -- and it asked for the row before the
+    one whose turn it was. At the top of a round that is children[-1], which
+    threw from inside the update handler and stopped the rest of it: the list
+    of who is connected froze for the whole fight, and the turn marker sat on
+    the wrong creature the rest of the time.
+    """
+    context = browser.new_context(viewport={"width": 1400, "height": 950})
+    try:
+        gm = context.new_page()
+        errors = []
+        gm.on("pageerror", lambda error: errors.append("gm: " + str(error)))
+        gm.goto(live_server + "/")
+        gm.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        gm.fill("#gameName", "spectated fight")
+        gm.click("text=Create Game")
+        gm.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        gm.wait_for_selector("#mapForm", state="attached")
+        args = dict(pair.split("=", 1) for pair in gm.url.split("?", 1)[1].split("&"))
+        room, key = args["room"], args["gmKey"]
+        gm.evaluate(
+            """() => socket.emit('map_generate', {room: room, gmKey: gmKey,
+                 mapWidth: 8, mapHeight: 6, discovered: true})""")
+        gm.wait_for_function("() => mapObject && mapObject.mapArray.length === 6",
+                             timeout=HANDSHAKE_TIMEOUT)
+        gm.wait_for_timeout(400)
+
+        for name, score in [("Rat", 18), ("Bat", 12), ("Cat", 6)]:
+            gm.evaluate(
+                """([n, s]) => socket.emit('add_unit', {room: room, gmKey: gmKey,
+                     addToInitiative: true,
+                     unit: {charName: n, HP: 5, maxHP: 5, initiative: s,
+                            x: 2, y: 2, location: [2, 2]}})""", [name, score])
+            gm.wait_for_timeout(300)
+
+        spectator = context.new_page()
+        spectator_errors = []
+        spectator.on("pageerror",
+                     lambda error: spectator_errors.append(str(error)))
+        spectator.goto("%s/spectator.html?room=%s" % (live_server, room))
+        spectator.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        spectator.wait_for_timeout(800)
+
+        player = context.new_page()
+        player.on("pageerror", lambda error: errors.append("player: " + str(error)))
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        gm.wait_for_timeout(600)
+
+        gm.evaluate("() => socket.emit('begin_init', {room: room, gmKey: gmKey})")
+        gm.wait_for_timeout(1000)
+
+        def marked():
+            """Which row the spectator draws as the one whose turn it is."""
+            return spectator.evaluate(
+                """() => {
+                     const rows = Array.from(
+                         document.getElementById("initiativeDiv").children);
+                     return rows.findIndex(r => r.className === "selectedInit");
+                   }""")
+
+        def whose_turn():
+            return gm.evaluate("() => gmData.initiativeCount")
+
+        stages = {"rows": spectator.evaluate(
+            """() => Array.from(document.getElementById("initiativeDiv").children)
+                 .map(r => r.innerText.replace(/\\s+/g, " ").trim())""")}
+        stages["turns"] = []
+        for _ in range(4):
+            stages["turns"].append({"gm": whose_turn(), "spectator": marked()})
+            gm.evaluate("() => socket.emit('advance_init', {room: room, gmKey: gmKey})")
+            gm.wait_for_timeout(700)
+
+        # Something changes mid-fight, which is what froze before.
+        stages["connectedDuringFight"] = spectator.evaluate(
+            """() => document.getElementById("connectedPlayers").innerText.trim()""")
+        gm.evaluate(
+            """() => socket.emit('map_edit', {room: room, gmKey: gmKey,
+                 relative_x: 8, relative_y: 8,
+                 tiles: [{newTile: 'wallTile', xCoord: 6, yCoord: 3}]})""")
+        gm.wait_for_timeout(900)
+        stages["tileMidFight"] = spectator.evaluate(
+            """() => { const t = document.getElementById("tile6,3");
+                       return t ? t.className.indexOf("wallTile") > -1 : null; }""")
+
+        return {"stages": stages, "errors": errors,
+                "spectatorErrors": spectator_errors}
+    finally:
+        context.close()
+
+
+class TestASpectatorWatchingAFight:
+    def test_the_order_is_drawn(self, spectator_in_a_fight):
+        assert len(spectator_in_a_fight["stages"]["rows"]) == 3
+
+    def test_the_turn_marker_is_on_the_creature_whose_turn_it_is(
+            self, spectator_in_a_fight):
+        """It used to be on the one before, and on nobody at the top of a
+        round -- where the count is zero and the row asked for is -1."""
+        for turn in spectator_in_a_fight["stages"]["turns"]:
+            assert turn["spectator"] == turn["gm"], turn
+
+    def test_the_marker_moves_as_turns_pass(self, spectator_in_a_fight):
+        seen = [t["spectator"] for t in spectator_in_a_fight["stages"]["turns"]]
+        assert seen == [0, 1, 2, 0], seen
+
+    def test_the_connected_players_are_listed_during_the_fight(
+            self, spectator_in_a_fight):
+        """The line after the throw. It never ran once a fight started, so
+        this list showed whoever had been connected when the fight began."""
+        assert "Aria" in spectator_in_a_fight["stages"]["connectedDuringFight"]
+
+    def test_the_map_still_updates_during_the_fight(self, spectator_in_a_fight):
+        assert spectator_in_a_fight["stages"]["tileMidFight"] is True
+
+    def test_nothing_raised(self, spectator_in_a_fight):
+        assert spectator_in_a_fight["spectatorErrors"] == []
+        assert spectator_in_a_fight["errors"] == []

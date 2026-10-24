@@ -19,7 +19,7 @@ from werkzeug.utils import secure_filename
 
 from session import (Session, BACKGROUND_ALIGNMENT_KEYS, BACKGROUND_ALIGNMENT_SEQ,
                      DOOR_CLOSED, DOOR_OPEN, DOOR_LOCKED, OPPOSITE_SIDE,
-                     SIDE_OFFSET, door_on, set_door)
+                     SIDE_OFFSET, door_on, set_door, set_edge_transparent)
 
 from wsfix import apply_whole_frame_writes
 
@@ -2541,6 +2541,33 @@ THIN_DOOR_TOOLS = {
 }
 
 
+# One tool rather than an on and an off pair, because an edge either carries
+# the mark or it does not -- the same shape as the thin wall tool, which puts a
+# wall on an edge and takes it off again.
+SEE_THROUGH_EDGE_TOOL = "seeThroughEdge"
+
+
+def paint_edge_transparency(room, y, x, side):
+    """Toggle see-through on one edge, and on the other side of it.
+
+    Marked whether or not there is anything on the edge yet. It says what a
+    wall or a door there would be made of, so painting it first and the wall
+    after is as reasonable an order as the other way round.
+    """
+    grid = ROOMS[room].mapData["mapArray"]
+    tile = grid[y][x]
+    clear = side not in (tile.get("transparentEdges") or [])
+    set_edge_transparent(tile, side, clear)
+    changed = [tile]
+    offset = SIDE_OFFSET[side]
+    neighbour_y, neighbour_x = y + offset[0], x + offset[1]
+    if in_map(room, neighbour_y, neighbour_x):
+        set_edge_transparent(grid[neighbour_y][neighbour_x],
+                             OPPOSITE_SIDE[side], clear)
+        changed.append(grid[neighbour_y][neighbour_x])
+    return changed
+
+
 def paint_thin_door(room, y, x, side, state):
     """Put a thin door on one edge, and the same door on the other side of it.
 
@@ -2602,6 +2629,12 @@ def on_map_edit(data_pack):
                     # Opaque is the absence of the key, so there is exactly one
                     # way to spell a square you cannot see through.
                     tile.pop("transparent", None)
+            elif data["newTile"] == SEE_THROUGH_EDGE_TOOL:
+                # With the other edge tools, before the branches that dispatch
+                # on substrings of a tile name.
+                updatedTiles.extend(paint_edge_transparency(
+                    room, data["yCoord"], data["xCoord"],
+                    nearest_edge(data_pack["relative_x"], data_pack["relative_y"])))
             elif data["newTile"] in THIN_DOOR_TOOLS:
                 # With the other detail tools, before the branches that
                 # dispatch on substrings of a tile name, and for the same
@@ -2655,11 +2688,17 @@ def on_map_edit(data_pack):
             elif data["newTile"] == "seen":
                 ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["seen"] = not \
                     ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["seen"]
-            if data["newTile"] in ["doorOpen", "doorTileAOpen", "doorTileBOpen"]:
-                for players in ROOMS[room].playerList.keys():
-                    revealedTiles = ROOMS[room].reveal_map(ROOMS[room].playerList[players].unitNum)
-                    updatedTiles.extend(revealedTiles)
             updatedTiles.append(ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]])
+        # Sight, once, after the whole batch. This used to run for one kind of
+        # edit -- a full-square door painted open -- and so every other way of
+        # opening a view left the fog where it was: a thin door, a wall painted
+        # back to floor, a square or an edge made see-through. The party could
+        # be looking down a corridor that the map still said was unexplored,
+        # until somebody took a step and sight was worked out again.
+        #
+        # After the loop rather than inside it, because a drag across twenty
+        # squares arrives as one batch and wants one answer.
+        updatedTiles.extend(ROOMS[room].reveal_for_everyone())
         updatedMap["mapArray"] = updatedTiles
         emit_to_gm('gm_map_update', updatedMap, room)
         tmpUpdatedTiles = copy.deepcopy(updatedTiles)
@@ -2681,6 +2720,7 @@ def on_map_edit(data_pack):
                 # on undiscovered ground draws the shape of a room nobody has
                 # been in.
                 tmpUpdatedTiles[index].pop("walls", None)
+                tmpUpdatedTiles[index].pop("transparentEdges", None)
                 # This mask edits the tile in place rather than rebuilding it
                 # the way player_map does, so anything not named here reaches
                 # the players untouched. A light level on an undiscovered
@@ -2695,6 +2735,7 @@ def on_map_edit(data_pack):
                 # door drawn on its edge.
                 tmpUpdatedTiles[index].pop("warp", None)
                 tmpUpdatedTiles[index].pop("doors", None)
+                tmpUpdatedTiles[index].pop("transparentEdges", None)
         if len(tmpUpdatedTiles) > 0:
             updatedMap["mapArray"] = tmpUpdatedTiles
             emit('player_map_update', updatedMap, room=room)

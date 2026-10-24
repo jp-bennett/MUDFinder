@@ -368,6 +368,12 @@ function drawThinEdges(mapArray, x, y) {
         if (!state) {
             return;
         }
+        // See-through is a property of the edge, so it rides on whatever is
+        // standing there. On a wall it is the whole line -- a window, a
+        // railing; on a door it is the leaf alone, because the jambs are the
+        // frame it is set in and a portcullis has a solid one.
+        var clear = (mapArray[y][x].transparentEdges || []).indexOf(side) > -1
+            ? " thinEdgeClear" : "";
         var vertical = (side === "left" || side === "right");
         var thickness = zoomSize * DOOR_THICKNESS;
         // Straddling the edge, because the edge belongs to both squares.
@@ -398,11 +404,12 @@ function drawThinEdges(mapArray, x, y) {
         }
 
         if (state === "wall") {
-            piece(`edge${x},${y},${side}`, "thinWallEdge", 0, 1);
+            piece(`edge${x},${y},${side}`, "thinWallEdge" + clear, 0, 1);
             return;
         }
         piece(`door${x},${y},${side}`, "thinDoorJamb", 0, 1);
-        piece(`doorLeaf${x},${y},${side}`, "thinDoorLeaf", DOOR_LEAF, 1 - DOOR_LEAF);
+        piece(`doorLeaf${x},${y},${side}`, "thinDoorLeaf" + clear,
+              DOOR_LEAF, 1 - DOOR_LEAF);
     });
 }
 

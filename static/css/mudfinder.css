@@ -2261,3 +2261,46 @@ button.primaryAction {
         45deg, var(--ink, #1c1917), var(--ink, #1c1917) 2px,
         var(--danger, #7f1d1d) 2px, var(--danger, #7f1d1d) 4px);
 }
+
+/* A see-through edge: a portcullis across a doorway, a window in a thin wall,
+   a railing along a gallery. Bars with the floor showing between them, which
+   is the one look that says "this stops the move and not the look" without
+   needing a legend.
+
+   Drawn across the edge's thickness and repeated along its length, so the
+   direction depends on which way the edge runs. Locked keeps the colour the
+   rest of the app says no in -- a barred gate is still a barred gate. */
+.thinEdgeClear.thinDoor-left, .thinEdgeClear.thinDoor-right {
+    background: repeating-linear-gradient(to bottom,
+        var(--ink, #1c1917) 0 2px, transparent 2px 6px);
+}
+.thinEdgeClear.thinDoor-top, .thinEdgeClear.thinDoor-bottom {
+    background: repeating-linear-gradient(to right,
+        var(--ink, #1c1917) 0 2px, transparent 2px 6px);
+}
+.thinEdgeClear.thinDoor-locked.thinDoor-left,
+.thinEdgeClear.thinDoor-locked.thinDoor-right {
+    background: repeating-linear-gradient(to bottom,
+        var(--danger, #7f1d1d) 0 2px, transparent 2px 6px);
+}
+.thinEdgeClear.thinDoor-locked.thinDoor-top,
+.thinEdgeClear.thinDoor-locked.thinDoor-bottom {
+    background: repeating-linear-gradient(to right,
+        var(--danger, #7f1d1d) 0 2px, transparent 2px 6px);
+}
+
+/* The palette swatch: an edge with the floor showing between its bars. */
+.swatchSeeThroughEdge {
+    position: relative;
+    background: var(--paper-warm, #efe6d2);
+}
+.swatchSeeThroughEdge::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 22%;
+    background: repeating-linear-gradient(to bottom,
+        var(--ink, #1c1917) 0 2px, transparent 2px 6px);
+}
