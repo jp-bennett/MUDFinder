@@ -7814,3 +7814,133 @@ class TestPickingFromTheInitiativeOrder:
 
     def test_nothing_raised(self, initiative_selection):
         assert initiative_selection["errors"] == []
+
+
+@pytest.fixture(scope="module")
+def spectator_in_a_fight(browser, live_server):
+    """What a spectator sees while a fight runs and things keep changing.
+
+    The spectator view loads shared.js and neither gm.js nor player.js, so it
+    builds the initiative order itself -- and it asked for the row before the
+    one whose turn it was. At the top of a round that is children[-1], which
+    threw from inside the update handler and stopped the rest of it: the list
+    of who is connected froze for the whole fight, and the turn marker sat on
+    the wrong creature the rest of the time.
+    """
+    context = browser.new_context(viewport={"width": 1400, "height": 950})
+    try:
+        gm = context.new_page()
+        errors = []
+        gm.on("pageerror", lambda error: errors.append("gm: " + str(error)))
+        gm.goto(live_server + "/")
+        gm.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        gm.fill("#gameName", "spectated fight")
+        gm.click("text=Create Game")
+        gm.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        gm.wait_for_selector("#mapForm", state="attached")
+        args = dict(pair.split("=", 1) for pair in gm.url.split("?", 1)[1].split("&"))
+        room, key = args["room"], args["gmKey"]
+        gm.evaluate(
+            """() => socket.emit('map_generate', {room: room, gmKey: gmKey,
+                 mapWidth: 8, mapHeight: 6, discovered: true})""")
+        gm.wait_for_function("() => mapObject && mapObject.mapArray.length === 6",
+                             timeout=HANDSHAKE_TIMEOUT)
+        gm.wait_for_timeout(400)
+
+        for name, score in [("Rat", 18), ("Bat", 12), ("Cat", 6)]:
+            gm.evaluate(
+                """([n, s]) => socket.emit('add_unit', {room: room, gmKey: gmKey,
+                     addToInitiative: true,
+                     unit: {charName: n, HP: 5, maxHP: 5, initiative: s,
+                            x: 2, y: 2, location: [2, 2]}})""", [name, score])
+            gm.wait_for_timeout(300)
+
+        spectator = context.new_page()
+        spectator_errors = []
+        spectator.on("pageerror",
+                     lambda error: spectator_errors.append(str(error)))
+        spectator.goto("%s/spectator.html?room=%s" % (live_server, room))
+        spectator.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        spectator.wait_for_timeout(800)
+
+        player = context.new_page()
+        player.on("pageerror", lambda error: errors.append("player: " + str(error)))
+        player.goto("%s/player.html?room=%s&charName=Aria" % (live_server, room))
+        player.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        gm.wait_for_timeout(600)
+
+        gm.evaluate("() => socket.emit('begin_init', {room: room, gmKey: gmKey})")
+        gm.wait_for_timeout(1000)
+
+        def marked():
+            """Which row the spectator draws as the one whose turn it is."""
+            return spectator.evaluate(
+                """() => {
+                     const rows = Array.from(
+                         document.getElementById("initiativeDiv").children);
+                     return rows.findIndex(r => r.className === "selectedInit");
+                   }""")
+
+        def whose_turn():
+            return gm.evaluate("() => gmData.initiativeCount")
+
+        stages = {"rows": spectator.evaluate(
+            """() => Array.from(document.getElementById("initiativeDiv").children)
+                 .map(r => r.innerText.replace(/\\s+/g, " ").trim())""")}
+        stages["turns"] = []
+        for _ in range(4):
+            stages["turns"].append({"gm": whose_turn(), "spectator": marked()})
+            gm.evaluate("() => socket.emit('advance_init', {room: room, gmKey: gmKey})")
+            gm.wait_for_timeout(700)
+
+        # Something changes mid-fight, which is what froze before.
+        stages["connectedDuringFight"] = spectator.evaluate(
+            """() => document.getElementById("connectedPlayers").innerText.trim()""")
+        gm.evaluate(
+            """() => socket.emit('map_edit', {room: room, gmKey: gmKey,
+                 relative_x: 8, relative_y: 8,
+                 tiles: [{newTile: 'wallTile', xCoord: 6, yCoord: 3}]})""")
+        gm.wait_for_timeout(900)
+        stages["tileMidFight"] = spectator.evaluate(
+            """() => { const t = document.getElementById("tile6,3");
+                       return t ? t.className.indexOf("wallTile") > -1 : null; }""")
+
+        return {"stages": stages, "errors": errors,
+                "spectatorErrors": spectator_errors}
+    finally:
+        context.close()
+
+
+class TestASpectatorWatchingAFight:
+    def test_the_order_is_drawn(self, spectator_in_a_fight):
+        assert len(spectator_in_a_fight["stages"]["rows"]) == 3
+
+    def test_the_turn_marker_is_on_the_creature_whose_turn_it_is(
+            self, spectator_in_a_fight):
+        """It used to be on the one before, and on nobody at the top of a
+        round -- where the count is zero and the row asked for is -1."""
+        for turn in spectator_in_a_fight["stages"]["turns"]:
+            assert turn["spectator"] == turn["gm"], turn
+
+    def test_the_marker_moves_as_turns_pass(self, spectator_in_a_fight):
+        seen = [t["spectator"] for t in spectator_in_a_fight["stages"]["turns"]]
+        assert seen == [0, 1, 2, 0], seen
+
+    def test_the_connected_players_are_listed_during_the_fight(
+            self, spectator_in_a_fight):
+        """The line after the throw. It never ran once a fight started, so
+        this list showed whoever had been connected when the fight began."""
+        assert "Aria" in spectator_in_a_fight["stages"]["connectedDuringFight"]
+
+    def test_the_map_still_updates_during_the_fight(self, spectator_in_a_fight):
+        assert spectator_in_a_fight["stages"]["tileMidFight"] is True
+
+    def test_nothing_raised(self, spectator_in_a_fight):
+        assert spectator_in_a_fight["spectatorErrors"] == []
+        assert spectator_in_a_fight["errors"] == []

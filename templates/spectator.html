@@ -88,7 +88,6 @@
     });
     socket.on('do_update', function(msg) {
       playerData = msg;
-      console.log(playerData);
       document.title = playerData.name
       //populate map
       drawUnits(playerData);
@@ -112,7 +111,14 @@
           row.appendChild(score);
           document.getElementById("initiativeDiv").appendChild(row);
         }
-        selectInitiative(playerData.initiativeCount - 1) //this value counts from 1
+        // initiativeCount is the index of whose turn it is, counting from
+        // zero, the same as everywhere else. Taking one off it marked the
+        // creature before the one that was up -- and at the top of a round,
+        // where the count is zero, asked for children[-1] and threw. The
+        // throw landed in the middle of this handler, so everything after it
+        // stopped running: the spectator's list of who is connected froze for
+        // the whole fight.
+        selectInitiative(playerData.initiativeCount)
       } else {
         document.getElementById("initiativeDivContainer").style.display = "none";
       }
@@ -139,7 +145,14 @@
 
     } //end onload
     function selectInitiative(initiativeNum) {
-        document.getElementById("initiativeDiv").children[initiativeNum].className = "selectedInit";
+        // Guarded because this runs from inside the update handler, and
+        // anything thrown here stops the rest of that handler rather than
+        // just this line.
+        var row = document.getElementById("initiativeDiv").children[initiativeNum];
+        if (!row) {
+            return;
+        }
+        row.className = "selectedInit";
         selectedInitiative = initiativeNum;
     }
 
