@@ -3737,3 +3737,118 @@ class TestSeeingThroughAnEdge:
         restored = Session(room, key, "placeholder")
         restored.from_json(session.gen_save())
         assert restored.mapData["mapArray"][4][2]["transparentEdges"] == ["right"]
+
+
+class TestSightIsWorkedOutAgainAfterAMapEdit:
+    """Most of what changes what can be seen does not move.
+
+    Sight was worked out when a creature moved, and for one kind of map edit:
+    a full-square door painted open. Every other way of opening a view left
+    the fog where it was -- a thin door, a wall painted back to floor, a
+    square or an edge made see-through -- so the party could be looking down
+    a corridor the map still drew as unexplored, until somebody took a step.
+    """
+
+    def scouted(self, gm_client, room, key):
+        """A dark map, a wall down the middle of it, and Aria to the west."""
+        gm_client.emit("map_generate", {"room": room, "gmKey": key,
+                                        "mapWidth": 8, "mapHeight": 8,
+                                        "discovered": False})
+        gm_client.get_received()
+        gm_client.emit("map_edit", {
+            "room": room, "gmKey": key, "relative_x": 8, "relative_y": 8,
+            "tiles": [{"newTile": "wallTile", "xCoord": 3, "yCoord": y}
+                      for y in range(8)]})
+        gm_client.get_received()
+        session = mudfinder.ROOMS[room]
+        aria = seat_a_player(room, "Aria")
+        aria.location = [4, 2]
+        aria.y, aria.x = 4, 2
+        session.reveal_map(0)
+        return session
+
+    def edit(self, gm_client, room, key, tool, x, y, where=None):
+        packet = {"room": room, "gmKey": key,
+                  "tiles": [{"newTile": tool, "xCoord": x, "yCoord": y}]}
+        packet.update(where or {"relative_x": 8, "relative_y": 8})
+        gm_client.emit("map_edit", packet)
+        return gm_client.get_received()
+
+    def beyond(self, session):
+        """The square on the far side of the wall."""
+        return session.mapData["mapArray"][4][4]["seen"]
+
+    def test_the_wall_hides_what_is_behind_it(self, gm):
+        gm_client, room, key = gm
+        assert self.beyond(self.scouted(gm_client, room, key)) is False
+
+    def test_painting_the_wall_away_reveals_it(self, gm):
+        gm_client, room, key = gm
+        session = self.scouted(gm_client, room, key)
+        self.edit(gm_client, room, key, "floorTile", 3, 4)
+        assert self.beyond(session) is True
+
+    def test_and_the_newly_seen_square_is_sent(self, gm):
+        """Marking it seen on the server is half the job. Without the square
+        in the update nobody draws it until the next full redraw."""
+        gm_client, room, key = gm
+        session = self.scouted(gm_client, room, key)
+        received = self.edit(gm_client, room, key, "floorTile", 3, 4)
+        sent = event(received, "gm_map_update")["args"][0]["mapArray"]
+        assert any(tile["x"] == 4 and tile["y"] == 4 for tile in sent)
+
+    def test_opening_a_thin_door_reveals_it(self, gm):
+        """The case that prompted this. Only full-square doors ran sight
+        again, so a thin door opened onto a corridor that stayed dark."""
+        gm_client, room, key = gm
+        session = self.scouted(gm_client, room, key)
+        self.edit(gm_client, room, key, "floorTile", 3, 4)
+        self.edit(gm_client, room, key, "thinDoorClosed", 2, 4, NEAR_RIGHT)
+        session.mapData["mapArray"][4][4]["seen"] = False
+        self.edit(gm_client, room, key, "thinDoorOpen", 2, 4, NEAR_RIGHT)
+        assert self.beyond(session) is True
+
+    def test_making_a_square_see_through_reveals_it(self, gm):
+        gm_client, room, key = gm
+        session = self.scouted(gm_client, room, key)
+        self.edit(gm_client, room, key, "seeThroughOn", 3, 4)
+        assert self.beyond(session) is True
+
+    def test_making_an_edge_see_through_reveals_it(self, gm):
+        gm_client, room, key = gm
+        session = self.scouted(gm_client, room, key)
+        self.edit(gm_client, room, key, "floorTile", 3, 4)
+        self.edit(gm_client, room, key, "thinWallTile", 2, 4, NEAR_RIGHT)
+        session.mapData["mapArray"][4][4]["seen"] = False
+        self.edit(gm_client, room, key, "seeThroughEdge", 2, 4, NEAR_RIGHT)
+        assert self.beyond(session) is True
+
+    def test_a_creature_of_the_gms_reveals_if_it_is_told_to(self, gm):
+        """Not only the party. The box on the sheet says which creatures see,
+        and the GM's own scout is one of them when it is ticked."""
+        gm_client, room, key = gm
+        session = self.scouted(gm_client, room, key)
+        session.unitList = [u for u in session.unitList if u.charName != "Aria"]
+        session.playerList = {}
+        scout = Unit({"charName": "Owl", "controlledBy": "gm"})
+        scout.revealsMap = True
+        scout.location = [4, 2]
+        scout.y, scout.x = 4, 2
+        session.unitList.append(scout)
+        session.number_units()
+        self.edit(gm_client, room, key, "floorTile", 3, 4)
+        assert self.beyond(session) is True
+
+    def test_a_creature_that_does_not_reveal_shows_nothing(self, gm):
+        gm_client, room, key = gm
+        session = self.scouted(gm_client, room, key)
+        session.unitList = [u for u in session.unitList if u.charName != "Aria"]
+        session.playerList = {}
+        blind = Unit({"charName": "Rat", "controlledBy": "gm"})
+        blind.location = [4, 2]
+        blind.y, blind.x = 4, 2
+        session.unitList.append(blind)
+        session.number_units()
+        session.mapData["mapArray"][4][4]["seen"] = False
+        self.edit(gm_client, room, key, "floorTile", 3, 4)
+        assert self.beyond(session) is False

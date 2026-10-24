@@ -7694,3 +7694,123 @@ class TestSeeThroughEdges:
     def test_nothing_raised(self, see_through_edges):
         assert see_through_edges["errors"] == []
         assert see_through_edges["playerErrors"] == []
+
+
+@pytest.fixture(scope="module")
+def initiative_selection(browser, live_server):
+    """Picking a creature out of the initiative order, and putting it down.
+
+    In a fight the order is the list the GM works from, and a creature picked
+    there could not be let go of: the second click re-selected it. Letting go
+    was added to the creature list and the initiative order was left out, so
+    the gesture worked everywhere except where a fight actually happens.
+    """
+    context = browser.new_context(viewport={"width": 1500, "height": 1000})
+    try:
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(live_server + "/")
+        page.wait_for_function(
+            "() => typeof socket !== 'undefined' && socket !== null && socket.connected",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.fill("#gameName", "initiative selection")
+        page.click("text=Create Game")
+        page.wait_for_url("**/gm.html*", timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_selector("#mapForm", state="attached")
+
+        page.click("div.tab:text-is('Encounter')")
+        page.check("#addToInit")
+        for name, score in [("Rat", "18"), ("Bat", "12"), ("Cat", "6")]:
+            page.fill("#unitName", name)
+            page.fill("#unitHP", "4")
+            page.fill("#unitInit", score)
+            page.select_option("#unitControlledBy", "gm")
+            page.click("text=Add Unit")
+            page.wait_for_function(
+                """(who) => gmData.unitList.some(u => u.charName === who)""",
+                arg=name, timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_function(
+            """() => document.getElementById("initiativeDiv").children.length === 3""",
+            timeout=HANDSHAKE_TIMEOUT)
+        page.wait_for_timeout(500)
+
+        def click_row(name):
+            """The creature's name, not the middle of the row.
+
+            The click listener is on the entry, and the entry's middle is the
+            HP box, which stops the click so that typing a number into it does
+            not also select the creature. A row clicked by its centre
+            therefore does nothing at all.
+            """
+            page.locator("#initiativeDiv .InitEntry").filter(
+                has_text=name).locator("div").first.click()
+
+        def selection():
+            return page.evaluate("() => selectedUnits.slice().sort((a, b) => a - b)")
+
+        def highlighted():
+            return page.evaluate(
+                "() => document.querySelectorAll('#initiativeDiv .selected').length")
+
+        picked = {"rows": page.evaluate(
+            """() => Array.from(document.getElementById("initiativeDiv").children)
+                 .map(r => r.innerText.split("\\n")[0].trim())""")}
+
+        click_row("Bat")
+        picked["picked"] = selection()
+        picked["highlightedWhenPicked"] = highlighted()
+        click_row("Bat")
+        picked["letGo"] = selection()
+        picked["highlightedAfter"] = highlighted()
+        click_row("Bat")
+        picked["pickedAgain"] = selection()
+
+        # Another row takes over rather than letting go.
+        click_row("Cat")
+        picked["another"] = selection()
+
+        # Shift does not range here: the order is its own order, and a run
+        # across it means nothing.
+        click_row("Rat")
+        page.keyboard.down("Shift")
+        click_row("Cat")
+        page.keyboard.up("Shift")
+        picked["shift"] = selection()
+
+        return {"picked": picked, "errors": errors}
+    finally:
+        context.close()
+
+
+class TestPickingFromTheInitiativeOrder:
+    def test_a_click_picks_the_creature(self, initiative_selection):
+        assert len(initiative_selection["picked"]["rows"]) == 3
+        assert len(initiative_selection["picked"]["picked"]) == 1
+        assert initiative_selection["picked"]["highlightedWhenPicked"] > 0
+
+    def test_a_second_click_lets_go(self, initiative_selection):
+        """The thing that was missing in a fight."""
+        assert initiative_selection["picked"]["letGo"] == []
+        assert initiative_selection["picked"]["highlightedAfter"] == 0
+
+    def test_it_can_be_picked_up_again(self, initiative_selection):
+        assert len(initiative_selection["picked"]["pickedAgain"]) == 1
+
+    def test_another_row_takes_over(self, initiative_selection):
+        assert len(initiative_selection["picked"]["another"]) == 1
+        assert initiative_selection["picked"]["another"] != \
+            initiative_selection["picked"]["pickedAgain"]
+
+    def test_shift_means_nothing_in_the_order(self, initiative_selection):
+        """A click in the order is always a plain click.
+
+        The row handler calls selectUnit with no event at all, so neither
+        shift nor ctrl reaches it -- and a range over the initiative order
+        would mean nothing anyway, since its order is its own and not the
+        creature list's. Pinned because letting go had to be added here
+        without bringing ranging with it."""
+        assert len(initiative_selection["picked"]["shift"]) == 1
+
+    def test_nothing_raised(self, initiative_selection):
+        assert initiative_selection["errors"] == []

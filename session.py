@@ -565,7 +565,13 @@ class Session(object):
         # squares either side of each of them have changed. Sent from here
         # because this is what knows: the move itself reaches the clients
         # through send_updates, which carries creatures and not map squares.
-        self.broadcast_tiles(self.open_doors_along([start] + path))
+        opened = self.open_doors_along([start] + path)
+        if opened:
+            # A door that was shut a moment ago is a way through now, and what
+            # can be seen past it has changed for everyone, not only for
+            # whoever pushed it open.
+            opened.extend(self.reveal_for_everyone())
+        self.broadcast_tiles(opened)
         return
 
     def open_doors_along(self, steps):
@@ -592,6 +598,25 @@ class Session(object):
                 if 0 <= row < len(grid) and 0 <= column < len(grid[row]):
                     set_door(grid[row][column], OPPOSITE_SIDE[side], DOOR_OPEN)
                     changed.append(grid[row][column])
+        return changed
+
+    def reveal_for_everyone(self):
+        """Line of sight again, for everyone who has any; the squares it won.
+
+        Sight is worked out when something moves, and most of what changes it
+        does not move. A door opened, a wall painted away, a square or an edge
+        made see-through: the party stands where it stood and can suddenly see
+        further, and nothing had asked the question again. The fog stayed until
+        somebody took a step.
+
+        Every player reveals -- Player sets revealsMap and is the same object
+        that sits in unitList -- so this covers the party and any creature of
+        the GM's with the box ticked.
+        """
+        changed = []
+        for index, unit in enumerate(self.unitList):
+            if unit.revealsMap:
+                changed.extend(self.reveal_map(index))
         return changed
 
     def mask_tiles(self, tiles):

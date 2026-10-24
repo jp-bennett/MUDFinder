@@ -799,7 +799,7 @@ function gmUnitRow(unit, index) {
         entry.classList.add("selected");
     }
     entry.style.width = "100%";
-    entry.addEventListener("click", function (e) { selectUnit(e, index, true); });
+    entry.addEventListener("click", function (e) { selectUnit(e, index, "list"); });
 
     var name = document.createElement("div");
     name.style.cssFloat = "left";
@@ -1359,7 +1359,7 @@ function changeHP(initnum) {
 
 function selectInitiative(initiativeNum) {
     try {
-        selectUnit([], gmData.initiativeList[initiativeNum].unitNum)
+        selectUnit([], gmData.initiativeList[initiativeNum].unitNum, "initiative")
     } catch (e) {
         socket.emit("error_handle", room, e);
     }
@@ -1426,8 +1426,10 @@ function showUnitInfoEvent(e, unitNum) {
 // ctrl (or cmd) adds or removes one, and shift takes everything between the
 // row last clicked and this one.
 //
-// In the list, a plain click on the one creature already selected lets go of
-// it. Before that the only way back to nothing selected was to ctrl-click the
+// A plain click on the one creature already selected lets go of it, in the
+// creature list and in the initiative order alike -- in a fight the order is
+// the list the GM is working from, and a creature picked there could not be
+// put down again. Before that the only way back to nothing selected was to ctrl-click the
 // single selected row, which is not a gesture anyone guesses, so a creature
 // picked by accident stayed picked -- and the players' view had toggled on a
 // second click all along, so the two halves of the app disagreed.
@@ -1435,24 +1437,29 @@ function showUnitInfoEvent(e, unitNum) {
 // Clicking one of several selected rows still narrows to that one rather than
 // dropping it, as a file list does; the click after that lets go.
 //
-// Only in the list, because on the map a click on a creature is the first
-// half of ordering it to move, and the map lets go on its own: the click that
-// names a destination moves it and calls deselectAll(). Toggling there would
-// mean a second click on a token silently disarmed the move, and the click
-// after it -- aimed at a destination -- would fall through to the initiative
-// branch below and move whoever's turn it is instead.
+// Not on the map, where a click on a creature is the first half of ordering
+// it to move and the map lets go on its own: the click that names a
+// destination moves it and calls deselectAll(). Toggling there would mean a
+// second click on a token silently disarmed the move, and the click after it
+// -- aimed at a destination -- would fall through to the initiative branch
+// below and move whoever's turn it is instead.
+//
+// Which is what `source` is for. Letting go happens wherever a click means
+// "this creature" rather than "go here", so both lists; ranging happens only
+// in the creature list, since the shift key ranges over that list's order and
+// the initiative order is in an order of its own.
 //
 // Shift only ranges in the creature list. On the map it keeps the meaning it
 // had -- add this creature to the selection -- because the rows' order is the
 // unit list's, and a range over it means nothing spatially. The map's own
 // handler reads shift as well, to tell a click that adds a creature from a
 // click that orders the selected one to move.
-function selectUnit(e, unitNum, fromList) {
+function selectUnit(e, unitNum, source) {
     try {
         selectedTool = undefined;
         var addOne = !!(e && (e.ctrlKey || e.metaKey));
         var ranging = !!(e && e.shiftKey);
-        if (fromList && ranging && selectionAnchor !== null
+        if (source === "list" && ranging && selectionAnchor !== null
                 && selectionAnchor < gmData.unitList.length) {
             var low = Math.min(selectionAnchor, unitNum);
             var high = Math.max(selectionAnchor, unitNum);
@@ -1469,7 +1476,7 @@ function selectUnit(e, unitNum, fromList) {
             // The anchor follows the last creature named by hand, so a ctrl
             // click then a shift click ranges from the one just added.
             selectionAnchor = unitNum;
-        } else if (fromList && selectedUnits.length === 1
+        } else if (source && selectedUnits.length === 1
                 && selectedUnits[0] === unitNum) {
             selectedUnits = [];
             // The anchor goes with it. Left behind, the next shift-click would

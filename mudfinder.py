@@ -2688,11 +2688,17 @@ def on_map_edit(data_pack):
             elif data["newTile"] == "seen":
                 ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["seen"] = not \
                     ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]]["seen"]
-            if data["newTile"] in ["doorOpen", "doorTileAOpen", "doorTileBOpen"]:
-                for players in ROOMS[room].playerList.keys():
-                    revealedTiles = ROOMS[room].reveal_map(ROOMS[room].playerList[players].unitNum)
-                    updatedTiles.extend(revealedTiles)
             updatedTiles.append(ROOMS[room].mapData["mapArray"][data["yCoord"]][data["xCoord"]])
+        # Sight, once, after the whole batch. This used to run for one kind of
+        # edit -- a full-square door painted open -- and so every other way of
+        # opening a view left the fog where it was: a thin door, a wall painted
+        # back to floor, a square or an edge made see-through. The party could
+        # be looking down a corridor that the map still said was unexplored,
+        # until somebody took a step and sight was worked out again.
+        #
+        # After the loop rather than inside it, because a drag across twenty
+        # squares arrives as one batch and wants one answer.
+        updatedTiles.extend(ROOMS[room].reveal_for_everyone())
         updatedMap["mapArray"] = updatedTiles
         emit_to_gm('gm_map_update', updatedMap, room)
         tmpUpdatedTiles = copy.deepcopy(updatedTiles)
